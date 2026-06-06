@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.database import engine, Base, SessionLocal
 from app.auth import verify_token, crear_usuario_inicial
-from app.routers import alumnos, tarjetas, operaciones, reportes, admin
+from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones
 from app.routers import auth as auth_router
 
 Base.metadata.create_all(bind=engine)
@@ -67,6 +67,7 @@ app.include_router(tarjetas.router)
 app.include_router(operaciones.router)
 app.include_router(reportes.router)
 app.include_router(admin.router)
+app.include_router(cupones.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

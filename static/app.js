@@ -424,6 +424,31 @@ async function ejecutarReintegro(e) {
     }
 }
 
+async function enviarCupon(e) {
+    e.preventDefault();
+    const alumnoId = document.getElementById('cupon-alumno').value;
+    const monto = parseFloat(document.getElementById('cupon-monto').value);
+    const div = document.getElementById('cupon-resultado');
+    if (!alumnoId) return toast('Seleccioná un alumno', 'error');
+    if (!monto || monto <= 0) return toast('Ingresá un monto válido', 'error');
+    try {
+        const res = await api('/api/cupones/recarga', {
+            method: 'POST',
+            body: JSON.stringify({ alumno_id: parseInt(alumnoId), monto }),
+        });
+        div.className = 'resultado';
+        div.style.display = 'block';
+        div.innerHTML = `<strong>${res.mensaje}</strong>` +
+            (res.url ? `<br><a href="${res.url}" target="_blank">Ver cupón de pago</a>` : '');
+        toast(res.mensaje);
+    } catch (err) {
+        div.className = 'resultado error';
+        div.style.display = 'block';
+        div.textContent = err.message;
+        toast(err.message, 'error');
+    }
+}
+
 async function ejecutarTransferencia(e) {
     e.preventDefault();
     try {
@@ -813,6 +838,22 @@ const buscadorTjDesact = crearBuscador({
     mostrarSaldo: false,
     onSelect: (alumno) => cargarTarjetasDesactivar(alumno.id),
     onClear: () => { document.getElementById('tj-lista-tarjetas').innerHTML = ''; },
+});
+
+const buscadorCupon = crearBuscador({
+    inputId: 'cupon-buscar',
+    hiddenId: 'cupon-alumno',
+    dropId: 'drop-cupon',
+    wrapId: 'wrap-cupon',
+    mostrarSaldo: true,
+    onSelect: (alumno) => {
+        const info = document.getElementById('cupon-info');
+        const email = alumno.email
+            ? alumno.email
+            : '<span style="color:#a01e22">sin email cargado</span>';
+        info.innerHTML = `Email: <strong>${email}</strong> &nbsp;·&nbsp; Cód. SIRO: <strong>${alumno.codigo_siro || '-'}</strong>`;
+    },
+    onClear: () => { document.getElementById('cupon-info').innerHTML = ''; },
 });
 
 // --- SESION ---
