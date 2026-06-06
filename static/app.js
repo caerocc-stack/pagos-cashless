@@ -424,6 +424,46 @@ async function ejecutarReintegro(e) {
     }
 }
 
+async function abrirConfigEmail() {
+    try {
+        const cfg = await api('/api/config/email');
+        const lbl = 'display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500';
+        const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem';
+        const html = `
+            <h3>Mensaje del email del cupón</h3>
+            <p style="color:#5b6b80;font-size:0.85rem;margin-bottom:0.75rem">
+                Podés usar estos comodines (se reemplazan solos): <br>
+                <code>{alumno}</code> <code>{nombre}</code> <code>{apellido}</code>
+                <code>{monto}</code> <code>{legajo}</code> <code>{curso}</code>
+            </p>
+            <label style="${lbl}">Asunto</label>
+            <input type="text" id="cfg-asunto" style="${inp}" value="${(cfg.asunto || '').replace(/"/g, '&quot;')}">
+            <label style="${lbl}">Mensaje</label>
+            <textarea id="cfg-mensaje" style="${inp};min-height:200px;font-family:inherit;resize:vertical">${cfg.mensaje || ''}</textarea>
+            <button class="btn btn-primary" style="width:100%" onclick="guardarConfigEmail()">Guardar mensaje</button>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function guardarConfigEmail() {
+    const asunto = document.getElementById('cfg-asunto').value.trim();
+    const mensaje = document.getElementById('cfg-mensaje').value.trim();
+    if (!asunto || !mensaje) return toast('Completá el asunto y el mensaje', 'error');
+    try {
+        const res = await api('/api/config/email', {
+            method: 'POST',
+            body: JSON.stringify({ asunto, mensaje }),
+        });
+        toast(res.mensaje);
+        cerrarModal();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 async function enviarCupon(e) {
     e.preventDefault();
     const alumnoId = document.getElementById('cupon-alumno').value;
