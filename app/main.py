@@ -41,6 +41,11 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.get("/login")
+def login_page():
+    return FileResponse(str(STATIC_DIR / "login.html"))
+
+
 @app.get("/")
 def root(request: Request):
     token = request.cookies.get("token")

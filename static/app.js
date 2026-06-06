@@ -519,14 +519,15 @@ async function cargarUsuario() {
         const user = await api('/api/auth/me');
         document.getElementById('user-nombre').textContent = user.nombre;
     } catch {
-        window.location.href = '/';
+        document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        window.location.href = '/login';
     }
 }
 
 async function cerrarSesion() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
     document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    window.location.href = '/';
+    window.location.href = '/login';
 }
 
 // --- INIT ---
