@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
 import openpyxl
 import io
@@ -30,7 +30,7 @@ def _alumno_con_saldo(a: Alumno) -> dict:
 
 @router.get("/", response_model=list[AlumnoConSaldo])
 def listar_alumnos(activo: bool | None = None, curso: str | None = None, db: Session = Depends(get_db)):
-    query = db.query(Alumno)
+    query = db.query(Alumno).options(joinedload(Alumno.saldo))
     if activo is not None:
         query = query.filter(Alumno.activo == activo)
     if curso:
@@ -41,7 +41,7 @@ def listar_alumnos(activo: bool | None = None, curso: str | None = None, db: Ses
 
 @router.get("/{alumno_id}", response_model=AlumnoConSaldo)
 def obtener_alumno(alumno_id: int, db: Session = Depends(get_db)):
-    alumno = db.get(Alumno, alumno_id)
+    alumno = db.query(Alumno).options(joinedload(Alumno.saldo)).filter(Alumno.id == alumno_id).first()
     if not alumno:
         raise HTTPException(404, "Alumno no encontrado")
     return _alumno_con_saldo(alumno)
