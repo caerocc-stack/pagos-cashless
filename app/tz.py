@@ -4,4 +4,4 @@ AR_TZ = timezone(timedelta(hours=-3))
 
 
 def ahora_ar():
-    return datetime.now(AR_TZ)
+    return datetime.now(AR_TZ).replace(tzinfo=None)
