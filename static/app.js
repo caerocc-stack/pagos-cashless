@@ -812,9 +812,12 @@ const buscadorTjDesact = crearBuscador({
 });
 
 // --- SESION ---
+let usuarioActual = { username: '', nombre: '' };
+
 async function cargarUsuario() {
     try {
         const user = await api('/api/auth/me');
+        usuarioActual = user;
         document.getElementById('user-nombre').textContent = user.nombre;
     } catch {
         document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
@@ -828,19 +831,53 @@ async function cerrarSesion() {
     window.location.href = '/login';
 }
 
-function abrirCambioPassword() {
+function abrirMiCuenta() {
+    const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem';
+    const lbl = 'display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500';
     const html = `
-        <h3>Cambiar contraseña</h3>
-        <p style="color:#5b6b80;font-size:0.85rem;margin-bottom:1rem">Por seguridad, cambiá la clave por defecto.</p>
-        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Contraseña actual</label>
-        <input type="password" id="cp-actual" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem">
-        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Contraseña nueva</label>
-        <input type="password" id="cp-nueva" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem">
-        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Repetir contraseña nueva</label>
-        <input type="password" id="cp-repetir" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:1rem">
-        <button class="btn btn-primary" style="width:100%" onclick="guardarPassword()">Guardar nueva contraseña</button>`;
+        <h3>Mi cuenta</h3>
+
+        <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1.25rem">
+            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Datos de la cuenta</p>
+            <label style="${lbl}">Nombre para mostrar</label>
+            <input type="text" id="mc-nombre" style="${inp}" value="${(usuarioActual.nombre || '').replace(/"/g, '&quot;')}">
+            <label style="${lbl}">Nombre de usuario (para iniciar sesión)</label>
+            <input type="text" id="mc-username" style="${inp}" value="${(usuarioActual.username || '').replace(/"/g, '&quot;')}" autocomplete="off">
+            <small style="color:#94a3b8">Con este usuario vas a entrar la próxima vez.</small>
+            <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="guardarCuenta()">Guardar datos</button>
+        </div>
+
+        <div style="background:#f7f9fc;border-radius:10px;padding:1rem">
+            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Cambiar contraseña</p>
+            <label style="${lbl}">Contraseña actual</label>
+            <input type="password" id="cp-actual" style="${inp}" autocomplete="off">
+            <label style="${lbl}">Contraseña nueva</label>
+            <input type="password" id="cp-nueva" style="${inp}" autocomplete="off">
+            <label style="${lbl}">Repetir contraseña nueva</label>
+            <input type="password" id="cp-repetir" style="${inp}" autocomplete="off">
+            <button class="btn btn-primary" style="width:100%" onclick="guardarPassword()">Cambiar contraseña</button>
+        </div>`;
     document.getElementById('modal-content').innerHTML = html;
     document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function guardarCuenta() {
+    const nombre = document.getElementById('mc-nombre').value.trim();
+    const username = document.getElementById('mc-username').value.trim();
+    if (!nombre) return toast('El nombre para mostrar no puede estar vacío', 'error');
+    if (!username || username.length < 3) return toast('El usuario debe tener al menos 3 caracteres', 'error');
+    try {
+        const res = await api('/api/auth/actualizar-cuenta', {
+            method: 'POST',
+            body: JSON.stringify({ username, nombre }),
+        });
+        usuarioActual = { username: res.username, nombre: res.nombre };
+        document.getElementById('user-nombre').textContent = res.nombre;
+        toast('Cuenta actualizada correctamente');
+        cerrarModal();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
 }
 
 async function guardarPassword() {

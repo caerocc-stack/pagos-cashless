@@ -55,6 +55,11 @@ class CambiarPasswordRequest(BaseModel):
     password_nueva: str
 
 
+class ActualizarCuentaRequest(BaseModel):
+    username: str | None = None
+    nombre: str | None = None
+
+
 @router.post("/login")
 def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _ip_cliente(request)
@@ -107,3 +112,38 @@ def cambiar_password(data: CambiarPasswordRequest, user=Depends(get_current_user
     usuario.password_hash = hash_password(data.password_nueva)
     db.commit()
     return {"ok": True, "mensaje": "Contraseña actualizada"}
+
+
+@router.post("/actualizar-cuenta")
+def actualizar_cuenta(data: ActualizarCuentaRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Actualiza el nombre de usuario (login) y/o el nombre para mostrar."""
+    usuario = db.query(Usuario).filter(Usuario.username == user["sub"]).first()
+    if not usuario:
+        raise HTTPException(404, "Usuario no encontrado")
+
+    nuevo_username = (data.username or "").strip()
+    nuevo_nombre = (data.nombre or "").strip()
+
+    if nuevo_username and nuevo_username != usuario.username:
+        if len(nuevo_username) < 3:
+            raise HTTPException(400, "El nombre de usuario debe tener al menos 3 caracteres")
+        existe = db.query(Usuario).filter(Usuario.username == nuevo_username).first()
+        if existe:
+            raise HTTPException(409, "Ese nombre de usuario ya está en uso")
+        usuario.username = nuevo_username
+
+    if nuevo_nombre:
+        usuario.nombre = nuevo_nombre
+
+    db.commit()
+
+    # Emitir un token nuevo para que la sesion siga valida con los datos actualizados
+    token = create_token(usuario.username, usuario.nombre)
+    response = JSONResponse({
+        "ok": True,
+        "username": usuario.username,
+        "nombre": usuario.nombre,
+        "mensaje": "Cuenta actualizada",
+    })
+    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200, secure=True)
+    return response
