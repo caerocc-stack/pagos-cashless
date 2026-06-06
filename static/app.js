@@ -305,7 +305,7 @@ async function verAlumno(id) {
         } else {
             html += '<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripcion</th></tr></thead><tbody>';
             html += movs.map(m => {
-                const fecha = new Date(m.created_at).toLocaleString('es-AR');
+                const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
                 const monto = Number(m.monto);
                 return `<tr>
                     <td>${fecha}</td>
@@ -395,7 +395,7 @@ async function cargarHistorial() {
     try {
         const movs = await api(`/api/operaciones/historial/${alumnoId}`);
         document.getElementById('body-historial').innerHTML = movs.map(m => {
-            const fecha = new Date(m.created_at).toLocaleString('es-AR');
+            const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
             const monto = Number(m.monto);
             return `<tr>
                 <td>${fecha}</td>
