@@ -4,16 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APAI - Pagos Cashless</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <header>
-        <h1>APAI Pagos Cashless</h1>
+        <div class="header-brand">
+            <img src="/static/logo.png" alt="APAI" class="header-logo">
+            <div class="header-titulo">
+                <span class="t1">APAI Pagos Cashless</span>
+                <span class="t2">Asociación de Padres y Alumnos del I.N.A.C</span>
+            </div>
+        </div>
         <nav>
             <button class="nav-btn active" data-section="cobrar">Cobrar</button>
             <button class="nav-btn" data-section="alumnos">Alumnos</button>
             <button class="nav-btn" data-section="operaciones">Operaciones</button>
             <button class="nav-btn" data-section="tarjetas">Tarjetas</button>
+            <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
             <button class="nav-btn" data-section="importar">Importar Excel</button>
         </nav>
         <div class="user-info">
@@ -261,6 +269,68 @@
             </div>
         </section>
 
+        <!-- REPORTES -->
+        <section id="sec-reportes" class="section">
+            <div class="section-titulo">Reportes y Estadísticas</div>
+
+            <div class="toolbar">
+                <label style="color:var(--gray-600);font-size:0.85rem;font-weight:600">Desde</label>
+                <input type="date" id="rep-desde">
+                <label style="color:var(--gray-600);font-size:0.85rem;font-weight:600">Hasta</label>
+                <input type="date" id="rep-hasta">
+                <button class="btn btn-primary" onclick="cargarReportes()">Aplicar</button>
+                <button class="btn" onclick="rangoRapido(7)">Últimos 7 días</button>
+                <button class="btn" onclick="rangoRapido(30)">30 días</button>
+                <button class="btn" onclick="rangoRapido(0)">Todo</button>
+            </div>
+
+            <div class="reportes-acciones">
+                <button class="btn btn-success" onclick="exportarReporte('movimientos')">⬇ Excel Movimientos</button>
+                <button class="btn btn-success" onclick="exportarReporte('alumnos')">⬇ Excel Alumnos</button>
+                <button class="btn btn-success" onclick="exportarReporte('por-curso')">⬇ Excel por Curso</button>
+                <button class="btn btn-red" onclick="exportarReportePDF()">⬇ PDF Reporte General</button>
+                <button class="btn btn-outline" onclick="descargarBackup()">💾 Backup completo</button>
+            </div>
+
+            <div class="kpi-grid" id="kpi-grid"></div>
+
+            <div class="reportes-charts">
+                <div class="chart-card">
+                    <h3>Consumo por curso</h3>
+                    <div class="chart-wrap"><canvas id="chart-curso"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>Distribución de operaciones</h3>
+                    <div class="chart-wrap"><canvas id="chart-ops"></canvas></div>
+                </div>
+            </div>
+
+            <div class="chart-card" style="margin-bottom:1.5rem">
+                <h3>Tendencia de consumo diario (últimos 30 días)</h3>
+                <div class="chart-wrap"><canvas id="chart-diario"></canvas></div>
+            </div>
+
+            <div class="card" style="margin-bottom:1.5rem">
+                <h3>Detalle por curso</h3>
+                <table>
+                    <thead>
+                        <tr><th>Curso</th><th>Total consumo</th><th>Operaciones</th><th>Alumnos que compraron</th><th>Promedio por alumno</th></tr>
+                    </thead>
+                    <tbody id="body-por-curso"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>Top 10 alumnos que más consumen</h3>
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>Apellido y Nombre</th><th>Curso</th><th>Legajo</th><th>Total consumo</th><th>Operaciones</th></tr>
+                    </thead>
+                    <tbody id="body-top-alumnos"></tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- IMPORTAR -->
         <section id="sec-importar" class="section">
             <div class="card" style="max-width:600px">
@@ -283,6 +353,10 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="/static/app.js"></script>
+    <script src="/static/reportes.js"></script>
 </body>
 </html>
