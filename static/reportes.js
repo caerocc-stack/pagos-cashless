@@ -262,7 +262,7 @@ function membretePDF(doc, subtitulo) {
         try { doc.addImage(logoDataURL, 'PNG', 14, 10, 22, 22); } catch (e) {}
     }
     doc.setFontSize(15); doc.setTextColor(21, 35, 59); doc.setFont(undefined, 'bold');
-    doc.text('APAI - Pagos Cashless', 40, 18);
+    doc.text('APAI Pay', 40, 18);
     doc.setFontSize(8.5); doc.setTextColor(120); doc.setFont(undefined, 'normal');
     doc.text('Asociación de Padres y Alumnos del I.N.A.C', 40, 24);
     doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(14, 33, 196, 33);
@@ -276,7 +276,7 @@ function pieDePagina(doc) {
     for (let i = 1; i <= paginas; i++) {
         doc.setPage(i);
         doc.setFontSize(7.5); doc.setTextColor(150);
-        doc.text(`APAI Pagos Cashless — Generado el ${new Date().toLocaleString('es-AR', { hour12: false })}`, 14, 290);
+        doc.text(`APAI Pay — Generado el ${new Date().toLocaleString('es-AR', { hour12: false })}`, 14, 290);
         doc.text(`Página ${i} de ${paginas}`, 180, 290);
     }
 }
@@ -334,7 +334,7 @@ async function compartirArchivoOFallback(doc, a, canal) {
     const blob = doc.output('blob');
     const nombre = `movimientos_${a.apellido}_${a.legajo}.pdf`;
     const file = new File([blob], nombre, { type: 'application/pdf' });
-    const texto = `Movimientos de ${a.nombre} ${a.apellido} (${a.curso}). Saldo actual: $${fmt(a.saldo)}. APAI Pagos Cashless.`;
+    const texto = `Movimientos de ${a.nombre} ${a.apellido} (${a.curso}). Saldo actual: $${fmt(a.saldo)}. APAI Pay.`;
 
     // Intento de compartir nativo con archivo adjunto (funciona en celulares)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {

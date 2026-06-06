@@ -19,7 +19,7 @@ finally:
     db.close()
 
 app = FastAPI(
-    title="APAI Pagos Cashless",
+    title="APAI Pay",
     description="Sistema de pagos cashless para el colegio — APAI",
     version="2.0.0",
 )
