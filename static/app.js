@@ -440,22 +440,58 @@ async function ejecutarTransferencia(e) {
     }
 }
 
-async function cargarHistorial() {
-    const alumnoId = document.getElementById('hist-alumno').value;
-    if (!alumnoId) return toast('Selecciona un alumno', 'error');
+// Render generico de movimientos (incluye datos del alumno)
+function renderMovimientos(movs) {
+    document.getElementById('body-historial').innerHTML = movs.map(m => {
+        const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
+        const monto = Number(m.monto);
+        const alumno = m.apellido ? `${m.apellido}, ${m.nombre}` : '';
+        return `<tr>
+            <td>${fecha}</td>
+            <td>${alumno}</td>
+            <td>${m.curso || ''}</td>
+            <td class="tipo-${m.tipo}">${m.tipo}</td>
+            <td style="color:${monto >= 0 ? '#16a34a' : '#a01e22'};font-weight:600">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
+            <td>${m.descripcion || ''}</td>
+            <td>${m.operador || ''}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+}
+
+// Por defecto: ultimos 10 movimientos del sistema
+async function cargarMovimientosGenerales() {
     try {
-        const movs = await api(`/api/operaciones/historial/${alumnoId}`);
-        document.getElementById('body-historial').innerHTML = movs.map(m => {
-            const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
-            const monto = Number(m.monto);
-            return `<tr>
-                <td>${fecha}</td>
-                <td class="tipo-${m.tipo}">${m.tipo}</td>
-                <td style="color:${monto >= 0 ? '#16a34a' : '#ef4444'}">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-                <td>${m.descripcion || ''}</td>
-                <td>${m.operador || ''}</td>
-            </tr>`;
-        }).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+        const movs = await api('/api/operaciones/recientes?limite=10');
+        document.getElementById('hist-indicador').textContent = 'Últimos 10 movimientos del sistema';
+        renderMovimientos(movs);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// Todos los movimientos del dia de hoy
+async function cargarHistorialDia() {
+    try {
+        const movs = await api('/api/operaciones/diario');
+        const hoy = new Date().toLocaleDateString('es-AR');
+        document.getElementById('hist-indicador').textContent =
+            `Movimientos del día ${hoy} — ${movs.length} operación(es)`;
+        renderMovimientos(movs);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// Historial completo de un alumno (todos sus movimientos historicos)
+async function cargarHistorialAlumno(alumno) {
+    try {
+        const movs = await api(`/api/operaciones/historial/${alumno.id}?limite=1000`);
+        const enriquecidos = movs.map(m => ({
+            ...m, apellido: alumno.apellido, nombre: alumno.nombre, curso: alumno.curso,
+        }));
+        document.getElementById('hist-indicador').textContent =
+            `Historial completo de ${alumno.apellido}, ${alumno.nombre} — ${movs.length} movimiento(s)`;
+        renderMovimientos(enriquecidos);
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -470,8 +506,8 @@ async function limpiarHistorial() {
     try {
         const res = await api(`/api/operaciones/historial/${alumnoId}`, { method: 'DELETE' });
         toast(res.mensaje);
-        document.getElementById('body-historial').innerHTML =
-            '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+        buscadorHist.limpiar();
+        cargarMovimientosGenerales();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -753,6 +789,8 @@ const buscadorHist = crearBuscador({
     dropId: 'drop-hist',
     wrapId: 'wrap-hist',
     mostrarSaldo: true,
+    onSelect: (alumno) => cargarHistorialAlumno(alumno),
+    onClear: () => cargarMovimientosGenerales(),
 });
 
 const buscadorTjAlumno = crearBuscador({
@@ -827,3 +865,4 @@ async function guardarPassword() {
 // --- INIT ---
 cargarUsuario();
 cargarAlumnos();
+cargarMovimientosGenerales();

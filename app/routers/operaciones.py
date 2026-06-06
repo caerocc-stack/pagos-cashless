@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
+from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.models.alumno import Alumno
 from app.models.tarjeta import Tarjeta
 from app.models.saldo import Saldo
 from app.models.movimiento import Movimiento
+from app.tz import ahora_ar
 from app.schemas.operaciones import (
     CobroRequest,
     RecargaRequest,
@@ -169,6 +171,54 @@ def reintegrar(data: ReintegroRequest, db: Session = Depends(get_db)):
         mensaje=f"Reintegro de ${data.monto} procesado para {alumno.apellido}, {alumno.nombre}",
         saldo_actual=saldo.monto,
     )
+
+
+def _mov_con_alumno(m: Movimiento, a: Alumno) -> dict:
+    return {
+        "id": m.id,
+        "alumno_id": m.alumno_id,
+        "tipo": m.tipo,
+        "monto": float(m.monto),
+        "descripcion": m.descripcion,
+        "operador": m.operador,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+        "apellido": a.apellido,
+        "nombre": a.nombre,
+        "curso": a.curso,
+        "legajo": a.legajo,
+    }
+
+
+@router.get("/recientes")
+def movimientos_recientes(limite: int = 10, db: Session = Depends(get_db)):
+    """Ultimos N movimientos de todo el sistema (con datos del alumno)."""
+    filas = (
+        db.query(Movimiento, Alumno)
+        .join(Alumno, Movimiento.alumno_id == Alumno.id)
+        .order_by(Movimiento.created_at.desc())
+        .limit(limite)
+        .all()
+    )
+    return [_mov_con_alumno(m, a) for m, a in filas]
+
+
+@router.get("/diario")
+def movimientos_dia(fecha: str | None = None, db: Session = Depends(get_db)):
+    """Todos los movimientos de un dia (por defecto hoy), con datos del alumno."""
+    if fecha:
+        base = datetime.strptime(fecha, "%Y-%m-%d")
+    else:
+        base = ahora_ar()
+    inicio = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin = inicio + timedelta(days=1)
+    filas = (
+        db.query(Movimiento, Alumno)
+        .join(Alumno, Movimiento.alumno_id == Alumno.id)
+        .filter(Movimiento.created_at >= inicio, Movimiento.created_at < fin)
+        .order_by(Movimiento.created_at.desc())
+        .all()
+    )
+    return [_mov_con_alumno(m, a) for m, a in filas]
 
 
 @router.get("/historial/{alumno_id}", response_model=list[MovimientoResponse])

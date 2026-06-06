@@ -44,10 +44,10 @@ body {
 header {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 60%, var(--navy-3) 100%);
     color: white;
-    padding: 0.75rem 1.75rem;
+    padding: 0.7rem 1.4rem;
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1.1rem;
     box-shadow: 0 4px 20px rgba(21,35,59,0.35);
     border-bottom: 3px solid var(--red);
     position: sticky;
@@ -82,17 +82,18 @@ header {
 
 header h1 { font-size: 1.2rem; white-space: nowrap; }
 
-nav { display: flex; gap: 0.35rem; flex: 1; flex-wrap: wrap; }
+nav { display: flex; gap: 0.25rem; flex: 1; flex-wrap: wrap; justify-content: center; }
 
 .nav-btn {
     background: transparent;
     color: #c3d2e6;
     border: none;
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 0.85rem;
     cursor: pointer;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 500;
+    white-space: nowrap;
     transition: all 0.18s;
 }
 .nav-btn:hover { color: white; background: rgba(255,255,255,0.12); }

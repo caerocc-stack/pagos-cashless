@@ -22,7 +22,7 @@
             <button class="nav-btn" data-section="operaciones">Operaciones</button>
             <button class="nav-btn" data-section="tarjetas">Tarjetas</button>
             <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
-            <button class="nav-btn" data-section="importar">Importar Excel</button>
+            <button class="nav-btn" data-section="importar">Importar</button>
         </nav>
         <div class="user-info">
             <span id="user-nombre"></span>
@@ -205,20 +205,21 @@
             </div>
 
             <div class="card" style="margin-top:1rem">
-                <h3>Historial de movimientos</h3>
+                <h3>Movimientos</h3>
                 <div class="toolbar">
                     <div class="buscador-alumno" id="wrap-hist" style="flex:1;min-width:250px">
-                        <input type="text" id="hist-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                        <input type="text" id="hist-buscar" placeholder="Escribí un alumno para ver su historial completo..." autocomplete="off">
                         <input type="hidden" id="hist-alumno">
                         <button type="button" class="buscador-clear">&times;</button>
                         <div class="buscador-dropdown" id="drop-hist"></div>
                     </div>
-                    <button class="btn" onclick="cargarHistorial()">Ver historial</button>
+                    <button class="btn btn-primary" onclick="cargarHistorialDia()">Historial del día</button>
                     <button class="btn btn-danger" onclick="limpiarHistorial()">Limpiar historial</button>
                 </div>
+                <div id="hist-indicador" style="font-size:0.88rem;color:var(--gray-600);margin-bottom:0.6rem;font-weight:600"></div>
                 <table id="tabla-historial">
                     <thead>
-                        <tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripcion</th><th>Operador</th></tr>
+                        <tr><th>Fecha</th><th>Alumno</th><th>Curso</th><th>Tipo</th><th>Monto</th><th>Descripción</th><th>Operador</th></tr>
                     </thead>
                     <tbody id="body-historial"></tbody>
                 </table>
