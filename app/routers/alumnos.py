@@ -111,8 +111,14 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(400, f"Faltan columnas en el Excel: {', '.join(faltantes)}")
 
     col_map = {nombre: idx for idx, nombre in enumerate(encabezados)}
+
+    # Cargar todos los legajos y DNIs existentes de una sola vez (rapido)
+    legajos_existentes = set(r[0] for r in db.query(Alumno.legajo).all())
+    dnis_existentes = set(r[0] for r in db.query(Alumno.dni).all())
+
     creados = 0
     errores = []
+    nuevos_alumnos = []
 
     for fila_num, fila in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         try:
@@ -126,22 +132,32 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
                 errores.append(f"Fila {fila_num}: datos incompletos")
                 continue
 
-            existe = db.query(Alumno).filter(
-                (Alumno.legajo == legajo) | (Alumno.dni == dni)
-            ).first()
-            if existe:
-                errores.append(f"Fila {fila_num}: alumno ya existe (legajo={legajo}, dni={dni})")
+            if legajo in legajos_existentes:
+                errores.append(f"Fila {fila_num}: legajo {legajo} ya existe")
+                continue
+            if dni in dnis_existentes:
+                errores.append(f"Fila {fila_num}: DNI {dni} ya existe")
                 continue
 
-            alumno = Alumno(legajo=legajo, dni=dni, nombre=nombre, apellido=apellido, curso=curso)
-            db.add(alumno)
-            db.flush()
-            db.add(Saldo(alumno_id=alumno.id))
+            nuevos_alumnos.append(Alumno(
+                legajo=legajo, dni=dni, nombre=nombre,
+                apellido=apellido, curso=curso,
+            ))
+            legajos_existentes.add(legajo)
+            dnis_existentes.add(dni)
             creados += 1
         except Exception as e:
             errores.append(f"Fila {fila_num}: {str(e)}")
 
-    db.commit()
+    # Insertar todos de una vez
+    if nuevos_alumnos:
+        db.add_all(nuevos_alumnos)
+        db.flush()
+        # Crear saldos en bloque
+        saldos = [Saldo(alumno_id=a.id) for a in nuevos_alumnos]
+        db.add_all(saldos)
+        db.commit()
+
     return {
         "creados": creados,
         "errores": errores,
