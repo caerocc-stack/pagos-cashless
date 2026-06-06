@@ -524,7 +524,8 @@ async function cargarUsuario() {
 }
 
 async function cerrarSesion() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
     window.location.href = '/';
 }
 

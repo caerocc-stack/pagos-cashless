@@ -30,14 +30,14 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_token(usuario.username, usuario.nombre)
     response = JSONResponse({"ok": True, "nombre": usuario.nombre, "token": token})
-    response.set_cookie("token", token, httponly=True, samesite="lax", max_age=43200)
+    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200)
     return response
 
 
 @router.post("/logout")
 def logout():
     response = JSONResponse({"ok": True})
-    response.delete_cookie("token")
+    response.delete_cookie("token", path="/", samesite="lax")
     return response
 
 
