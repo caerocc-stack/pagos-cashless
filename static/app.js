@@ -529,6 +529,7 @@ async function importarExcel(e) {
         const res = await fetch(API + '/api/alumnos/importar', {
             method: 'POST',
             body: formData,
+            credentials: 'same-origin',
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail);
