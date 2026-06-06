@@ -16,12 +16,22 @@ Proveedores soportados (se elige el que tenga sus variables cargadas):
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
 """
 import os
+import re
 import json
 import base64
 import smtplib
 import urllib.request
 import urllib.error
 from email.message import EmailMessage
+
+
+def _html_a_texto(html: str) -> str:
+    """Genera una version de texto plano simple a partir del HTML."""
+    texto = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    texto = re.sub(r"</p>", "\n\n", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"<[^>]+>", "", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip() or "Mensaje de APAI Pay"
 
 
 def email_configurado() -> bool:
@@ -59,6 +69,7 @@ def _enviar_mailjet(destino: str, asunto: str, cuerpo_html: str):
             "From": {"Email": from_email, "Name": from_name},
             "To": [{"Email": destino}],
             "Subject": asunto,
+            "TextPart": _html_a_texto(cuerpo_html),
             "HTMLPart": cuerpo_html,
         }]
     }
@@ -91,6 +102,7 @@ def _enviar_brevo(destino: str, asunto: str, cuerpo_html: str):
         "to": [{"email": destino}],
         "subject": asunto,
         "htmlContent": cuerpo_html,
+        "textContent": _html_a_texto(cuerpo_html),
     }
     req = urllib.request.Request(
         "https://api.brevo.com/v3/smtp/email",
