@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import String, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
+from app.tz import ahora_ar
 
 
 class Usuario(Base):
@@ -12,4 +13,4 @@ class Usuario(Base):
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

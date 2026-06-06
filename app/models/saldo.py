@@ -3,6 +3,7 @@ from decimal import Decimal
 from sqlalchemy import ForeignKey, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+from app.tz import ahora_ar
 
 
 class Saldo(Base):
@@ -10,6 +11,6 @@ class Saldo(Base):
 
     alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id"), primary_key=True)
     monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar, onupdate=ahora_ar)
 
     alumno: Mapped["Alumno"] = relationship(back_populates="saldo")
