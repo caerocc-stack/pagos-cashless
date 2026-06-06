@@ -28,6 +28,7 @@ function cerrarModal() {
 async function api(url, opts = {}) {
     const res = await fetch(API + url, {
         headers: { 'Content-Type': 'application/json', ...opts.headers },
+        credentials: 'same-origin',
         ...opts,
     });
     const data = await res.json();
