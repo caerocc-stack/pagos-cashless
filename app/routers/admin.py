@@ -46,7 +46,7 @@ def test_email(data: TestEmailRequest, user=Depends(get_current_user)):
     try:
         email_util.enviar_email(destino, "Prueba de configuración - APAI Pay", cuerpo)
     except Exception as e:
-        raise HTTPException(502, f"No se pudo enviar el email: {e}")
+        raise HTTPException(400, f"No se pudo enviar el email: {e}")
     return {"ok": True, "mensaje": f"Email de prueba enviado a {destino}"}
 
 

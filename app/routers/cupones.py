@@ -62,7 +62,7 @@ def enviar_cupon_recarga(data: CuponRequest, db: Session = Depends(get_db)):
     try:
         cupon = siro.generar_cupon(alumno, data.monto)
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(400, str(e))
 
     # 2) Enviar el cupón por email al padre
     if not email_util.email_configurado():
