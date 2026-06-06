@@ -36,10 +36,154 @@ async function api(url, opts = {}) {
     return data;
 }
 
+// =========================================================
+// --- BUSCADOR DE ALUMNOS (autocomplete reutilizable) ---
+// =========================================================
+
+const buscadores = {};
+
+function crearBuscador(config) {
+    // config: { inputId, hiddenId, dropId, wrapId, onSelect, mostrarSaldo }
+    const input = document.getElementById(config.inputId);
+    const hidden = document.getElementById(config.hiddenId);
+    const drop = document.getElementById(config.dropId);
+    const wrap = document.getElementById(config.wrapId);
+    const clearBtn = wrap.querySelector('.buscador-clear');
+    let indiceActivo = -1;
+
+    const estado = { alumnoId: null };
+    buscadores[config.hiddenId] = estado;
+
+    function filtrar(texto) {
+        if (!texto || texto.length < 1) return [];
+        const t = texto.toLowerCase();
+        return alumnosCache.filter(a =>
+            a.apellido.toLowerCase().includes(t) ||
+            a.nombre.toLowerCase().includes(t) ||
+            a.legajo.toLowerCase().includes(t) ||
+            a.dni.toLowerCase().includes(t)
+        ).slice(0, 15);
+    }
+
+    function renderDrop(lista) {
+        if (lista.length === 0) {
+            drop.innerHTML = '<div class="buscador-vacio">Sin resultados</div>';
+            drop.classList.add('visible');
+            return;
+        }
+        drop.innerHTML = lista.map((a, i) => {
+            const saldo = Number(a.saldo);
+            const saldoColor = saldo > 0 ? '#16a34a' : '#ef4444';
+            const saldoHtml = config.mostrarSaldo !== false
+                ? `<span class="buscador-saldo" style="color:${saldoColor}">$${saldo.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>`
+                : '';
+            return `<div class="buscador-item" data-index="${i}" data-id="${a.id}">
+                <div>
+                    <span class="buscador-nombre">${a.apellido}, ${a.nombre}</span>
+                    <span class="buscador-detalle"> - ${a.legajo} - ${a.curso}</span>
+                </div>
+                ${saldoHtml}
+            </div>`;
+        }).join('');
+        drop.classList.add('visible');
+        indiceActivo = -1;
+    }
+
+    function seleccionar(alumno) {
+        estado.alumnoId = alumno.id;
+        hidden.value = alumno.id;
+        input.value = `${alumno.apellido}, ${alumno.nombre} (${alumno.legajo})`;
+        drop.classList.remove('visible');
+        wrap.classList.add('seleccionado', 'tiene-valor');
+        if (config.onSelect) config.onSelect(alumno);
+    }
+
+    function limpiar() {
+        estado.alumnoId = null;
+        hidden.value = '';
+        input.value = '';
+        drop.classList.remove('visible');
+        wrap.classList.remove('seleccionado', 'tiene-valor');
+        indiceActivo = -1;
+        if (config.onClear) config.onClear();
+    }
+
+    input.addEventListener('input', function() {
+        if (wrap.classList.contains('seleccionado')) {
+            // El usuario esta editando despues de haber seleccionado -> limpiar seleccion
+            estado.alumnoId = null;
+            hidden.value = '';
+            wrap.classList.remove('seleccionado');
+            if (config.onClear) config.onClear();
+        }
+        const texto = this.value.trim();
+        if (texto.length >= 1) {
+            wrap.classList.add('tiene-valor');
+            const resultados = filtrar(texto);
+            renderDrop(resultados);
+        } else {
+            drop.classList.remove('visible');
+            wrap.classList.remove('tiene-valor');
+        }
+    });
+
+    input.addEventListener('keydown', function(e) {
+        const items = drop.querySelectorAll('.buscador-item');
+        if (!drop.classList.contains('visible') || items.length === 0) {
+            if (e.key === 'Enter') e.preventDefault();
+            return;
+        }
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            indiceActivo = Math.min(indiceActivo + 1, items.length - 1);
+            items.forEach((it, i) => it.classList.toggle('activo', i === indiceActivo));
+            items[indiceActivo].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            indiceActivo = Math.max(indiceActivo - 1, 0);
+            items.forEach((it, i) => it.classList.toggle('activo', i === indiceActivo));
+            items[indiceActivo].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (indiceActivo >= 0 && indiceActivo < items.length) {
+                const id = parseInt(items[indiceActivo].dataset.id);
+                const alumno = alumnosCache.find(a => a.id === id);
+                if (alumno) seleccionar(alumno);
+            }
+        } else if (e.key === 'Escape') {
+            drop.classList.remove('visible');
+        }
+    });
+
+    drop.addEventListener('click', function(e) {
+        const item = e.target.closest('.buscador-item');
+        if (!item) return;
+        const id = parseInt(item.dataset.id);
+        const alumno = alumnosCache.find(a => a.id === id);
+        if (alumno) seleccionar(alumno);
+    });
+
+    clearBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        limpiar();
+        input.focus();
+    });
+
+    // Cerrar dropdown al hacer click fuera
+    document.addEventListener('click', function(e) {
+        if (!wrap.contains(e.target)) {
+            drop.classList.remove('visible');
+        }
+    });
+
+    return { seleccionar, limpiar, estado };
+}
+
 // --- ALUMNOS ---
 async function cargarAlumnos() {
     alumnosCache = await api('/api/alumnos/');
-    poblarSelectsAlumnos();
     poblarFiltroCursos();
     filtrarAlumnos();
 }
@@ -49,19 +193,6 @@ function poblarFiltroCursos() {
     const sel = document.getElementById('filtro-curso');
     sel.innerHTML = '<option value="">Todos los cursos</option>' +
         cursos.map(c => `<option value="${c}">${c}</option>`).join('');
-}
-
-function poblarSelectsAlumnos() {
-    const ordenados = [...alumnosCache].sort((a, b) =>
-        (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre)
-    );
-    const opciones = ordenados.map(a =>
-        `<option value="${a.id}">${a.apellido}, ${a.nombre} (${a.legajo}) — $${Number(a.saldo).toLocaleString('es-AR')}</option>`
-    ).join('');
-    ['cobro-alumno-select', 'op-recarga-alumno', 'op-reintegro-alumno', 'hist-alumno', 'tj-alumno', 'tj-desact-alumno'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '<option value="">Seleccionar alumno...</option>' + opciones;
-    });
 }
 
 function filtrarAlumnos() {
@@ -196,11 +327,13 @@ async function verAlumno(id) {
 // --- OPERACIONES ---
 async function ejecutarRecarga(e) {
     e.preventDefault();
+    const alumnoId = document.getElementById('op-recarga-alumno').value;
+    if (!alumnoId) return toast('Selecciona un alumno', 'error');
     try {
         const res = await api('/api/operaciones/recarga', {
             method: 'POST',
             body: JSON.stringify({
-                alumno_id: parseInt(document.getElementById('op-recarga-alumno').value),
+                alumno_id: parseInt(alumnoId),
                 monto: parseFloat(document.getElementById('op-recarga-monto').value),
                 operador: document.getElementById('op-recarga-operador').value,
                 descripcion: document.getElementById('op-recarga-desc').value,
@@ -208,6 +341,7 @@ async function ejecutarRecarga(e) {
         });
         toast(res.mensaje + ' — Saldo: $' + Number(res.saldo_actual).toLocaleString('es-AR'));
         document.getElementById('op-recarga-monto').value = '';
+        buscadorRecarga.limpiar();
         cargarAlumnos();
     } catch (err) {
         toast(err.message, 'error');
@@ -216,17 +350,20 @@ async function ejecutarRecarga(e) {
 
 async function ejecutarReintegro(e) {
     e.preventDefault();
+    const alumnoId = document.getElementById('op-reintegro-alumno').value;
+    if (!alumnoId) return toast('Selecciona un alumno', 'error');
     try {
         const res = await api('/api/operaciones/reintegro', {
             method: 'POST',
             body: JSON.stringify({
-                alumno_id: parseInt(document.getElementById('op-reintegro-alumno').value),
+                alumno_id: parseInt(alumnoId),
                 monto: parseFloat(document.getElementById('op-reintegro-monto').value),
                 operador: document.getElementById('op-reintegro-operador').value,
             }),
         });
         toast(res.mensaje + ' — Saldo: $' + Number(res.saldo_actual).toLocaleString('es-AR'));
         document.getElementById('op-reintegro-monto').value = '';
+        buscadorReintegro.limpiar();
         cargarAlumnos();
     } catch (err) {
         toast(err.message, 'error');
@@ -276,16 +413,19 @@ async function cargarHistorial() {
 // --- TARJETAS ---
 async function emitirTarjeta(e) {
     e.preventDefault();
+    const alumnoId = document.getElementById('tj-alumno').value;
+    if (!alumnoId) return toast('Selecciona un alumno', 'error');
     try {
         await api('/api/tarjetas/emitir', {
             method: 'POST',
             body: JSON.stringify({
                 uid: document.getElementById('tj-uid').value,
-                alumno_id: parseInt(document.getElementById('tj-alumno').value),
+                alumno_id: parseInt(alumnoId),
             }),
         });
         toast('Tarjeta emitida correctamente');
         document.getElementById('tj-uid').value = '';
+        buscadorTjAlumno.limpiar();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -313,8 +453,7 @@ async function consultarTarjeta(e) {
     }
 }
 
-document.getElementById('tj-desact-alumno').addEventListener('change', async function() {
-    const alumnoId = this.value;
+async function cargarTarjetasDesactivar(alumnoId) {
     const div = document.getElementById('tj-lista-tarjetas');
     if (!alumnoId) { div.innerHTML = ''; return; }
     try {
@@ -333,14 +472,16 @@ document.getElementById('tj-desact-alumno').addEventListener('change', async fun
     } catch (err) {
         toast(err.message, 'error');
     }
-});
+}
 
 async function confirmarDesactivar(tarjetaId, uid) {
     if (!confirm(`Desactivar tarjeta ${uid}? El saldo del alumno no se pierde.`)) return;
     try {
         await api(`/api/tarjetas/${tarjetaId}/desactivar`, { method: 'PUT' });
         toast('Tarjeta desactivada');
-        document.getElementById('tj-desact-alumno').dispatchEvent(new Event('change'));
+        // Recargar tarjetas del alumno seleccionado
+        const alumnoId = document.getElementById('tj-desact-alumno').value;
+        if (alumnoId) cargarTarjetasDesactivar(alumnoId);
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -394,25 +535,22 @@ async function cobroBuscar() {
     }
 }
 
-async function cobroSeleccionarAlumno() {
-    const alumnoId = document.getElementById('cobro-alumno-select').value;
-    if (!alumnoId) { cobroOcultar(); return; }
-    const a = alumnosCache.find(x => x.id === parseInt(alumnoId));
-    if (!a) return;
+async function cobroSeleccionarAlumno(alumno) {
+    if (!alumno) { cobroOcultar(); return; }
     try {
-        const tarjetas = await api(`/api/tarjetas/alumno/${alumnoId}`);
+        const tarjetas = await api(`/api/tarjetas/alumno/${alumno.id}`);
         const activa = tarjetas.find(t => t.activa);
         const uid = activa ? activa.uid : null;
         if (!uid) {
             toast('Este alumno no tiene tarjeta activa. Emiti una desde la seccion Tarjetas.', 'error');
         }
         cobroMostrarAlumno({
-            alumno_id: a.id,
-            nombre: a.nombre,
-            apellido: a.apellido,
-            curso: a.curso,
-            legajo: a.legajo,
-            saldo: a.saldo,
+            alumno_id: alumno.id,
+            nombre: alumno.nombre,
+            apellido: alumno.apellido,
+            curso: alumno.curso,
+            legajo: alumno.legajo,
+            saldo: alumno.saldo,
         }, uid);
     } catch (err) {
         toast(err.message, 'error');
@@ -485,13 +623,11 @@ async function cobroEjecutar() {
 function cobroNuevo() {
     cobroOcultar();
     document.getElementById('cobro-uid').value = '';
-    document.getElementById('cobro-alumno-select').value = '';
+    buscadorCobro.limpiar();
     document.getElementById('cobro-uid').focus();
 }
 
-// Detecta entrada del lector RFID (HID teclado):
-// Los lectores escriben el UID muy rapido y terminan con Enter.
-// Si se reciben varios caracteres en menos de 100ms, es un escaneo.
+// Detecta entrada del lector RFID (HID teclado)
 let cobroUidBuffer = '';
 let cobroUidTimer = null;
 
@@ -499,7 +635,6 @@ document.getElementById('cobro-uid').addEventListener('input', function() {
     clearTimeout(cobroUidTimer);
     cobroUidBuffer = this.value.trim();
     cobroUidTimer = setTimeout(() => {
-        // Si hay contenido despues de 150ms sin mas input, buscar
         if (cobroUidBuffer.length >= 4) {
             cobroBuscar();
         }
@@ -512,6 +647,62 @@ document.getElementById('cobro-uid').addEventListener('keydown', function(e) {
         clearTimeout(cobroUidTimer);
         cobroBuscar();
     }
+});
+
+// =========================================================
+// --- INICIALIZAR BUSCADORES ---
+// =========================================================
+
+const buscadorCobro = crearBuscador({
+    inputId: 'cobro-alumno-buscar',
+    hiddenId: 'cobro-alumno-id',
+    dropId: 'drop-cobro-alumno',
+    wrapId: 'wrap-cobro-alumno',
+    mostrarSaldo: true,
+    onSelect: (alumno) => cobroSeleccionarAlumno(alumno),
+    onClear: () => cobroOcultar(),
+});
+
+const buscadorRecarga = crearBuscador({
+    inputId: 'op-recarga-buscar',
+    hiddenId: 'op-recarga-alumno',
+    dropId: 'drop-op-recarga',
+    wrapId: 'wrap-op-recarga',
+    mostrarSaldo: true,
+});
+
+const buscadorReintegro = crearBuscador({
+    inputId: 'op-reintegro-buscar',
+    hiddenId: 'op-reintegro-alumno',
+    dropId: 'drop-op-reintegro',
+    wrapId: 'wrap-op-reintegro',
+    mostrarSaldo: true,
+});
+
+const buscadorHist = crearBuscador({
+    inputId: 'hist-buscar',
+    hiddenId: 'hist-alumno',
+    dropId: 'drop-hist',
+    wrapId: 'wrap-hist',
+    mostrarSaldo: true,
+});
+
+const buscadorTjAlumno = crearBuscador({
+    inputId: 'tj-alumno-buscar',
+    hiddenId: 'tj-alumno',
+    dropId: 'drop-tj-alumno',
+    wrapId: 'wrap-tj-alumno',
+    mostrarSaldo: false,
+});
+
+const buscadorTjDesact = crearBuscador({
+    inputId: 'tj-desact-buscar',
+    hiddenId: 'tj-desact-alumno',
+    dropId: 'drop-tj-desact',
+    wrapId: 'wrap-tj-desact',
+    mostrarSaldo: false,
+    onSelect: (alumno) => cargarTarjetasDesactivar(alumno.id),
+    onClear: () => { document.getElementById('tj-lista-tarjetas').innerHTML = ''; },
 });
 
 // --- SESION ---

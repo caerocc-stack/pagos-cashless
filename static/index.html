@@ -35,9 +35,12 @@
                             <button class="btn btn-primary" onclick="cobroBuscar()">Buscar</button>
                         </div>
                         <div class="cobro-separador">o buscar por nombre</div>
-                        <select id="cobro-alumno-select" onchange="cobroSeleccionarAlumno()">
-                            <option value="">Seleccionar alumno...</option>
-                        </select>
+                        <div class="buscador-alumno" id="wrap-cobro-alumno">
+                            <input type="text" id="cobro-alumno-buscar" placeholder="Escribir apellido, nombre, legajo o DNI..." autocomplete="off">
+                            <input type="hidden" id="cobro-alumno-id">
+                            <button type="button" class="buscador-clear">&times;</button>
+                            <div class="buscador-dropdown" id="drop-cobro-alumno"></div>
+                        </div>
                     </div>
 
                     <div id="cobro-info" class="card cobro-card-info" style="display:none">
@@ -140,7 +143,12 @@
                     <h3>Recarga de saldo</h3>
                     <form onsubmit="ejecutarRecarga(event)">
                         <label>Alumno</label>
-                        <select id="op-recarga-alumno" required></select>
+                        <div class="buscador-alumno" id="wrap-op-recarga">
+                            <input type="text" id="op-recarga-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                            <input type="hidden" id="op-recarga-alumno">
+                            <button type="button" class="buscador-clear">&times;</button>
+                            <div class="buscador-dropdown" id="drop-op-recarga"></div>
+                        </div>
                         <label>Monto ($)</label>
                         <input type="number" id="op-recarga-monto" min="1000" step="0.01" required>
                         <small>Monto minimo: $1.000</small>
@@ -156,7 +164,12 @@
                     <h3>Reintegro en efectivo</h3>
                     <form onsubmit="ejecutarReintegro(event)">
                         <label>Alumno</label>
-                        <select id="op-reintegro-alumno" required></select>
+                        <div class="buscador-alumno" id="wrap-op-reintegro">
+                            <input type="text" id="op-reintegro-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                            <input type="hidden" id="op-reintegro-alumno">
+                            <button type="button" class="buscador-clear">&times;</button>
+                            <div class="buscador-dropdown" id="drop-op-reintegro"></div>
+                        </div>
                         <label>Monto ($)</label>
                         <input type="number" id="op-reintegro-monto" min="1" max="2500" step="0.01" required>
                         <small>Maximo: $2.500</small>
@@ -185,7 +198,12 @@
             <div class="card" style="margin-top:1rem">
                 <h3>Historial de movimientos</h3>
                 <div class="toolbar">
-                    <select id="hist-alumno"></select>
+                    <div class="buscador-alumno" id="wrap-hist" style="flex:1;min-width:250px">
+                        <input type="text" id="hist-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                        <input type="hidden" id="hist-alumno">
+                        <button type="button" class="buscador-clear">&times;</button>
+                        <div class="buscador-dropdown" id="drop-hist"></div>
+                    </div>
                     <button class="btn" onclick="cargarHistorial()">Ver historial</button>
                 </div>
                 <table id="tabla-historial">
@@ -206,7 +224,12 @@
                         <label>UID de la tarjeta</label>
                         <input type="text" id="tj-uid" required placeholder="Escanear o escribir UID">
                         <label>Alumno</label>
-                        <select id="tj-alumno" required></select>
+                        <div class="buscador-alumno" id="wrap-tj-alumno">
+                            <input type="text" id="tj-alumno-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                            <input type="hidden" id="tj-alumno">
+                            <button type="button" class="buscador-clear">&times;</button>
+                            <div class="buscador-dropdown" id="drop-tj-alumno"></div>
+                        </div>
                         <button type="submit" class="btn btn-primary">Emitir Tarjeta</button>
                     </form>
                 </div>
@@ -225,7 +248,12 @@
                     <h3>Desactivar tarjeta</h3>
                     <form onsubmit="desactivarTarjeta(event)">
                         <label>Buscar alumno</label>
-                        <select id="tj-desact-alumno" required></select>
+                        <div class="buscador-alumno" id="wrap-tj-desact">
+                            <input type="text" id="tj-desact-buscar" placeholder="Buscar alumno..." autocomplete="off">
+                            <input type="hidden" id="tj-desact-alumno">
+                            <button type="button" class="buscador-clear">&times;</button>
+                            <div class="buscador-dropdown" id="drop-tj-desact"></div>
+                        </div>
                         <div id="tj-lista-tarjetas"></div>
                     </form>
                 </div>
