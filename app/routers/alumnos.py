@@ -7,6 +7,8 @@ import io
 from app.database import get_db
 from app.models.alumno import Alumno
 from app.models.saldo import Saldo
+from app.models.tarjeta import Tarjeta
+from app.models.movimiento import Movimiento
 from app.schemas.alumno import AlumnoCreate, AlumnoUpdate, AlumnoResponse, AlumnoConSaldo
 
 router = APIRouter(prefix="/api/alumnos", tags=["Alumnos"])
@@ -73,6 +75,23 @@ def actualizar_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(
     db.commit()
     db.refresh(alumno)
     return alumno
+
+
+@router.delete("/{alumno_id}")
+def eliminar_alumno(alumno_id: int, db: Session = Depends(get_db)):
+    """Elimina un alumno y todos sus datos asociados (tarjetas, saldo, movimientos)."""
+    alumno = db.get(Alumno, alumno_id)
+    if not alumno:
+        raise HTTPException(404, "Alumno no encontrado")
+
+    # Borrar movimientos, tarjetas y saldo del alumno
+    db.query(Movimiento).filter(Movimiento.alumno_id == alumno_id).delete()
+    db.query(Tarjeta).filter(Tarjeta.alumno_id == alumno_id).delete()
+    db.query(Saldo).filter(Saldo.alumno_id == alumno_id).delete()
+    db.delete(alumno)
+    db.commit()
+
+    return {"ok": True, "mensaje": f"Alumno {alumno.apellido}, {alumno.nombre} eliminado"}
 
 
 @router.post("/importar")

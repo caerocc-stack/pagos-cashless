@@ -221,6 +221,7 @@ function renderAlumnos(lista) {
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
                 <button class="btn btn-sm" onclick="editarAlumno(${a.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarAlumno(${a.id}, '${a.apellido}, ${a.nombre}')">Eliminar</button>
             </td>
         </tr>`;
     }).join('');
@@ -274,6 +275,18 @@ async function guardarAlumno(e) {
             toast('Alumno creado');
         }
         cerrarFormAlumno();
+        cargarAlumnos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarAlumno(id, nombre) {
+    if (!confirm(`ATENCION: Vas a eliminar al alumno "${nombre}" y todos sus datos (tarjetas, saldo, movimientos).\n\nEsta accion no se puede deshacer. ¿Continuar?`)) return;
+    if (!confirm(`¿Estas SEGURO de eliminar a "${nombre}"?`)) return;
+    try {
+        await api(`/api/alumnos/${id}`, { method: 'DELETE' });
+        toast(`Alumno ${nombre} eliminado`);
         cargarAlumnos();
     } catch (err) {
         toast(err.message, 'error');
@@ -405,6 +418,22 @@ async function cargarHistorial() {
                 <td>${m.operador || ''}</td>
             </tr>`;
         }).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function limpiarHistorial() {
+    const alumnoId = document.getElementById('hist-alumno').value;
+    if (!alumnoId) return toast('Selecciona un alumno primero', 'error');
+    const alumno = alumnosCache.find(a => a.id === parseInt(alumnoId));
+    const nombre = alumno ? `${alumno.apellido}, ${alumno.nombre}` : 'este alumno';
+    if (!confirm(`Vas a eliminar TODOS los movimientos de "${nombre}".\n\nEsta accion no se puede deshacer. ¿Continuar?`)) return;
+    try {
+        const res = await api(`/api/operaciones/historial/${alumnoId}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        document.getElementById('body-historial').innerHTML =
+            '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
     } catch (err) {
         toast(err.message, 'error');
     }

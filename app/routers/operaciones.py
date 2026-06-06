@@ -184,3 +184,17 @@ def historial(alumno_id: int, limite: int = 50, db: Session = Depends(get_db)):
         .limit(limite)
         .all()
     )
+
+
+@router.delete("/historial/{alumno_id}")
+def limpiar_historial(alumno_id: int, db: Session = Depends(get_db)):
+    """Elimina todos los movimientos de un alumno."""
+    alumno = db.get(Alumno, alumno_id)
+    if not alumno:
+        raise HTTPException(404, "Alumno no encontrado")
+    cantidad = db.query(Movimiento).filter(Movimiento.alumno_id == alumno_id).delete()
+    db.commit()
+    return {
+        "ok": True,
+        "mensaje": f"{cantidad} movimientos eliminados de {alumno.apellido}, {alumno.nombre}",
+    }
