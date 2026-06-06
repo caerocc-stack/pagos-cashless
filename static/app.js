@@ -231,6 +231,7 @@ function renderAlumnos(lista) {
             <td>${a.apellido}</td>
             <td>${a.nombre}</td>
             <td>${a.curso}</td>
+            <td>${a.area || '-'}${a.cuota_excluir ? ' 🚫' : ''}</td>
             <td class="${clsSaldo}">$${saldo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
@@ -268,9 +269,10 @@ function mostrarFormAlumno() {
     document.getElementById('form-alumno').style.display = 'block';
     document.getElementById('form-alumno-titulo').textContent = 'Nuevo Alumno';
     document.getElementById('alumno-edit-id').value = '';
-    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-email'].forEach(id =>
+    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-email', 'al-area', 'al-cuota-personalizada'].forEach(id =>
         document.getElementById(id).value = ''
     );
+    document.getElementById('al-cuota-excluir').checked = false;
 }
 
 function cerrarFormAlumno() {
@@ -289,6 +291,9 @@ function editarAlumno(id) {
     document.getElementById('al-apellido').value = a.apellido;
     document.getElementById('al-curso').value = a.curso;
     document.getElementById('al-email').value = a.email || '';
+    document.getElementById('al-area').value = a.area || '';
+    document.getElementById('al-cuota-personalizada').value = a.cuota_personalizada || '';
+    document.getElementById('al-cuota-excluir').checked = !!a.cuota_excluir;
 }
 
 async function guardarAlumno(e) {
@@ -301,6 +306,9 @@ async function guardarAlumno(e) {
         apellido: document.getElementById('al-apellido').value,
         curso: document.getElementById('al-curso').value,
         email: document.getElementById('al-email').value || null,
+        area: document.getElementById('al-area').value || null,
+        cuota_excluir: document.getElementById('al-cuota-excluir').checked,
+        cuota_personalizada: document.getElementById('al-cuota-personalizada').value || null,
     };
     try {
         if (editId) {
@@ -337,7 +345,8 @@ async function verAlumno(id) {
 
         let html = `<h3>${a.apellido}, ${a.nombre}</h3>
             <p><strong>Legajo:</strong> ${a.legajo} | <strong>DNI:</strong> ${a.dni} | <strong>Curso:</strong> ${a.curso}</p>
-            <p><strong>Email:</strong> ${a.email || '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${a.codigo_siro || '-'}</p>
+            <p><strong>Área:</strong> ${a.area || '-'} | <strong>Email:</strong> ${a.email || '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${a.codigo_siro || '-'}</p>
+            <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:#a01e22">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
             <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
@@ -449,23 +458,31 @@ function poblarCursosCuota() {
 
 function actualizarCuotaInfo() {
     const curso = document.getElementById('cuota-curso').value;
-    const cant = alumnosCache.filter(a => (!curso || a.curso === curso) && a.email).length;
+    const area = document.getElementById('cuota-area').value;
+    const elegibles = alumnosCache.filter(a =>
+        (!curso || a.curso === curso) && (!area || a.area === area) && a.email && !a.cuota_excluir
+    ).length;
+    const excluidos = alumnosCache.filter(a =>
+        (!curso || a.curso === curso) && (!area || a.area === area) && a.cuota_excluir
+    ).length;
     const mes = MESES_ES[new Date().getMonth()];
+    const destino = area || 'todas las áreas';
     document.getElementById('cuota-info').innerHTML =
-        `Cuota de <strong>${mes}</strong> · ${cant} alumno(s) con email en ${curso || 'todos los cursos'}`;
+        `Cuota de <strong>${mes}</strong> · ${elegibles} con email${excluidos ? ` · ${excluidos} excluidos` : ''} en ${destino}`;
 }
 
 async function enviarCuotaMasiva() {
     const curso = document.getElementById('cuota-curso').value;
+    const area = document.getElementById('cuota-area').value;
     const monto = parseFloat(document.getElementById('cuota-monto').value);
     const div = document.getElementById('cupon-resultado');
     const mes = MESES_ES[new Date().getMonth()];
-    const dest = curso || 'TODOS los cursos';
-    if (!confirm(`Vas a enviar el cupón de la cuota de ${mes} ($${monto.toLocaleString('es-AR')}) a ${dest}. ¿Continuar?`)) return;
+    const dest = curso || area || 'TODAS las áreas';
+    if (!confirm(`Vas a enviar el cupón de la cuota de ${mes} ($${monto.toLocaleString('es-AR')}) a ${dest}. Los alumnos excluidos no lo reciben, y los que tengan monto personalizado reciben el suyo. ¿Continuar?`)) return;
     try {
         const res = await api('/api/cupones/cuota-masiva', {
             method: 'POST',
-            body: JSON.stringify({ curso: curso || null, monto }),
+            body: JSON.stringify({ curso: curso || null, area: area || null, monto }),
         });
         div.className = 'resultado';
         div.style.display = 'block';

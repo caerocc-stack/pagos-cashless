@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime
+from decimal import Decimal
+from sqlalchemy import String, Boolean, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.tz import ahora_ar
@@ -14,7 +15,10 @@ class Alumno(Base):
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     apellido: Mapped[str] = mapped_column(String(100), nullable=False)
     curso: Mapped[str] = mapped_column(String(20), nullable=False)
+    area: Mapped[str | None] = mapped_column(String(30))
     email: Mapped[str | None] = mapped_column(String(150))
+    cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
+    cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 

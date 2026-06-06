@@ -18,6 +18,13 @@ def _asegurar_columnas():
     """Migracion ligera e idempotente: agrega columnas nuevas sin perder datos."""
     migraciones = [
         "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
+        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS area VARCHAR(30)",
+        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS cuota_excluir BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS cuota_personalizada NUMERIC(12,2)",
+        # Clasificar el area automaticamente segun el curso (solo donde falta)
+        "UPDATE alumnos SET area='Ciclo Basico' WHERE area IS NULL AND curso ILIKE '%ciclo%'",
+        "UPDATE alumnos SET area='Avionica' WHERE area IS NULL AND curso ILIKE '%avionica%'",
+        "UPDATE alumnos SET area='Mecanica' WHERE area IS NULL AND curso ILIKE '%mecanica%'",
     ]
     for sql in migraciones:
         try:

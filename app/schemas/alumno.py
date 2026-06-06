@@ -9,14 +9,20 @@ class AlumnoCreate(BaseModel):
     nombre: str
     apellido: str
     curso: str
+    area: str | None = None
     email: str | None = None
+    cuota_excluir: bool = False
+    cuota_personalizada: Decimal | None = None
 
 
 class AlumnoUpdate(BaseModel):
     nombre: str | None = None
     apellido: str | None = None
     curso: str | None = None
+    area: str | None = None
     email: str | None = None
+    cuota_excluir: bool | None = None
+    cuota_personalizada: Decimal | None = None
     activo: bool | None = None
 
 
@@ -27,7 +33,10 @@ class AlumnoResponse(BaseModel):
     nombre: str
     apellido: str
     curso: str
+    area: str | None = None
     email: str | None = None
+    cuota_excluir: bool = False
+    cuota_personalizada: Decimal | None = None
     activo: bool
     created_at: datetime
 

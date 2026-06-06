@@ -121,7 +121,20 @@
                         <div><label>Nombre</label><input type="text" id="al-nombre" required></div>
                         <div><label>Apellido</label><input type="text" id="al-apellido" required></div>
                         <div><label>Curso</label><input type="text" id="al-curso" required></div>
+                        <div><label>Área</label>
+                            <select id="al-area">
+                                <option value="">(según curso)</option>
+                                <option value="Ciclo Basico">Ciclo Básico</option>
+                                <option value="Avionica">Aviónica</option>
+                                <option value="Mecanica">Mecánica</option>
+                            </select>
+                        </div>
                         <div><label>Email del padre/madre</label><input type="email" id="al-email" placeholder="opcional"></div>
+                        <div><label>Monto de cuota personalizado</label><input type="number" id="al-cuota-personalizada" placeholder="(deja vacío = cuota normal)"></div>
+                        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:1.5rem">
+                            <input type="checkbox" id="al-cuota-excluir" style="width:auto">
+                            <label for="al-cuota-excluir" style="margin:0">No enviarle cupón de cuota</label>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">Guardar</button>
@@ -138,6 +151,7 @@
                         <th data-campo="apellido" class="sortable sorted-asc" onclick="ordenarAlumnos('apellido')">Apellido</th>
                         <th data-campo="nombre" class="sortable" onclick="ordenarAlumnos('nombre')">Nombre</th>
                         <th data-campo="curso" class="sortable" onclick="ordenarAlumnos('curso')">Curso</th>
+                        <th data-campo="area" class="sortable" onclick="ordenarAlumnos('area')">Área</th>
                         <th data-campo="saldo" class="sortable" onclick="ordenarAlumnos('saldo')">Saldo</th>
                         <th>Acciones</th>
                     </tr>
@@ -217,7 +231,16 @@
                     <!-- CUOTA -->
                     <div id="cupon-cuota" class="ops-grid" style="align-items:end">
                         <div>
-                            <label>Curso a enviar</label>
+                            <label>Área a enviar</label>
+                            <select id="cuota-area" onchange="actualizarCuotaInfo()">
+                                <option value="">Todas las áreas</option>
+                                <option value="Ciclo Basico">Ciclo Básico</option>
+                                <option value="Avionica">Aviónica</option>
+                                <option value="Mecanica">Mecánica</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Curso (opcional)</label>
                             <select id="cuota-curso" onchange="actualizarCuotaInfo()"><option value="">Todos los cursos</option></select>
                         </div>
                         <div>

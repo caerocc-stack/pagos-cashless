@@ -14,6 +14,18 @@ from app.schemas.alumno import AlumnoCreate, AlumnoUpdate, AlumnoResponse, Alumn
 router = APIRouter(prefix="/api/alumnos", tags=["Alumnos"])
 
 
+def derivar_area(curso: str) -> str | None:
+    """Deduce el area a partir del nombre del curso."""
+    c = (curso or "").lower()
+    if "avionica" in c or "aviónica" in c:
+        return "Avionica"
+    if "mecanica" in c or "mecánica" in c:
+        return "Mecanica"
+    if "ciclo" in c or "basico" in c or "básico" in c:
+        return "Ciclo Basico"
+    return None
+
+
 def _alumno_con_saldo(a: Alumno) -> dict:
     return {
         "id": a.id,
@@ -22,7 +34,10 @@ def _alumno_con_saldo(a: Alumno) -> dict:
         "nombre": a.nombre,
         "apellido": a.apellido,
         "curso": a.curso,
+        "area": a.area or derivar_area(a.curso),
         "email": a.email,
+        "cuota_excluir": a.cuota_excluir,
+        "cuota_personalizada": a.cuota_personalizada,
         "activo": a.activo,
         "created_at": a.created_at,
         "saldo": a.saldo.monto if a.saldo else Decimal("0.00"),
@@ -57,6 +72,8 @@ def crear_alumno(data: AlumnoCreate, db: Session = Depends(get_db)):
         raise HTTPException(409, f"Ya existe un alumno con DNI {data.dni}")
 
     alumno = Alumno(**data.model_dump())
+    if not alumno.area:
+        alumno.area = derivar_area(alumno.curso)
     db.add(alumno)
     db.flush()
 
@@ -113,8 +130,9 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(400, f"Faltan columnas en el Excel: {', '.join(faltantes)}")
 
     col_map = {nombre: idx for idx, nombre in enumerate(encabezados)}
-    # La columna de email (Mail) es opcional
+    # Columnas opcionales
     col_mail = col_map.get("mail", col_map.get("email"))
+    col_area = col_map.get("area", col_map.get("área"))
 
     def _valor(fila, idx):
         if idx is None:
@@ -139,15 +157,23 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
             apellido = _valor(fila, col_map["apellido"])
             curso = _valor(fila, col_map["curso"])
             email = _valor(fila, col_mail) or None
+            area = _valor(fila, col_area) or derivar_area(curso)
 
             if not all([legajo, dni, nombre, apellido, curso]):
                 errores.append(f"Fila {fila_num}: datos incompletos")
                 continue
 
-            # Si el alumno ya existe: actualizar su email si el archivo lo trae
+            # Si el alumno ya existe: actualizar email y area si el archivo los trae
             if legajo in existentes_por_legajo:
+                ex = existentes_por_legajo[legajo]
+                cambio = False
                 if email:
-                    existentes_por_legajo[legajo].email = email
+                    ex.email = email
+                    cambio = True
+                if area and not ex.area:
+                    ex.area = area
+                    cambio = True
+                if cambio:
                     actualizados += 1
                 continue
             if dni in dnis_existentes:
@@ -156,7 +182,7 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
 
             nuevo = Alumno(
                 legajo=legajo, dni=dni, nombre=nombre,
-                apellido=apellido, curso=curso, email=email,
+                apellido=apellido, curso=curso, email=email, area=area,
             )
             nuevos_alumnos.append(nuevo)
             existentes_por_legajo[legajo] = nuevo

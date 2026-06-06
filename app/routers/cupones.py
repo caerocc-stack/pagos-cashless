@@ -18,6 +18,7 @@ class EnvioRequest(BaseModel):
 
 class CuotaMasivaRequest(BaseModel):
     curso: str | None = None
+    area: str | None = None
     monto: Decimal | None = None
 
 
@@ -115,19 +116,27 @@ def cuota_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
     if not email_util.email_configurado():
         raise HTTPException(400, "El envío de email no está configurado todavía.")
 
-    monto = _monto_de(db, "cuota", data.monto)
+    monto_general = _monto_de(db, "cuota", data.monto)
     query = db.query(Alumno).filter(Alumno.activo == True)
     if data.curso:
         query = query.filter(Alumno.curso == data.curso)
+    if data.area:
+        query = query.filter(Alumno.area == data.area)
     alumnos = query.order_by(Alumno.apellido, Alumno.nombre).all()
 
     enviados = 0
     sin_email = 0
+    excluidos = 0
     errores = []
     for a in alumnos:
+        if a.cuota_excluir:
+            excluidos += 1
+            continue
         if not a.email:
             sin_email += 1
             continue
+        # Monto personalizado del alumno si tiene; si no, el general
+        monto = a.cuota_personalizada if a.cuota_personalizada and a.cuota_personalizada > 0 else monto_general
         try:
             _generar_y_enviar(db, "cuota", a, monto)
             enviados += 1
@@ -136,9 +145,13 @@ def cuota_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
 
     return {
         "ok": True,
-        "mensaje": f"Cuota de {config_util.mes_actual()}: {enviados} enviados, {sin_email} sin email, {len(errores)} con error",
+        "mensaje": (
+            f"Cuota de {config_util.mes_actual()}: {enviados} enviados, "
+            f"{sin_email} sin email, {excluidos} excluidos, {len(errores)} con error"
+        ),
         "enviados": enviados,
         "sin_email": sin_email,
+        "excluidos": excluidos,
         "errores": errores[:30],
     }
 
