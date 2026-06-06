@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL").replace(
-    "postgresql://", "postgresql+psycopg://"
-)
+_raw_url = os.getenv("DATABASE_URL", "")
+if not _raw_url:
+    raise RuntimeError("Falta la variable de entorno DATABASE_URL")
+DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+psycopg://")
 
 engine = create_engine(
     DATABASE_URL,
