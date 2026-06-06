@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
+from sqlalchemy import text
 
 from app.database import engine, Base, SessionLocal
 from app.auth import verify_token, crear_usuario_inicial
@@ -10,6 +11,22 @@ from app.routers import alumnos, tarjetas, operaciones, reportes, admin
 from app.routers import auth as auth_router
 
 Base.metadata.create_all(bind=engine)
+
+
+def _asegurar_columnas():
+    """Migracion ligera e idempotente: agrega columnas nuevas sin perder datos."""
+    migraciones = [
+        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
+    ]
+    for sql in migraciones:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+        except Exception as e:
+            print("Aviso de migracion:", e)
+
+
+_asegurar_columnas()
 
 # Crear usuario admin inicial si no existe
 db = SessionLocal()

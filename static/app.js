@@ -267,7 +267,7 @@ function mostrarFormAlumno() {
     document.getElementById('form-alumno').style.display = 'block';
     document.getElementById('form-alumno-titulo').textContent = 'Nuevo Alumno';
     document.getElementById('alumno-edit-id').value = '';
-    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso'].forEach(id =>
+    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-email'].forEach(id =>
         document.getElementById(id).value = ''
     );
 }
@@ -287,6 +287,7 @@ function editarAlumno(id) {
     document.getElementById('al-nombre').value = a.nombre;
     document.getElementById('al-apellido').value = a.apellido;
     document.getElementById('al-curso').value = a.curso;
+    document.getElementById('al-email').value = a.email || '';
 }
 
 async function guardarAlumno(e) {
@@ -298,6 +299,7 @@ async function guardarAlumno(e) {
         nombre: document.getElementById('al-nombre').value,
         apellido: document.getElementById('al-apellido').value,
         curso: document.getElementById('al-curso').value,
+        email: document.getElementById('al-email').value || null,
     };
     try {
         if (editId) {
@@ -334,6 +336,7 @@ async function verAlumno(id) {
 
         let html = `<h3>${a.apellido}, ${a.nombre}</h3>
             <p><strong>Legajo:</strong> ${a.legajo} | <strong>DNI:</strong> ${a.dni} | <strong>Curso:</strong> ${a.curso}</p>
+            <p><strong>Email:</strong> ${a.email || '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${a.codigo_siro || '-'}</p>
             <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
@@ -612,9 +615,10 @@ async function importarExcel(e) {
         div.style.display = 'block';
         div.innerHTML = `
             <p><strong>Alumnos creados:</strong> ${data.creados}</p>
-            ${data.errores.length > 0 ? `<p><strong>Errores (${data.errores.length}):</strong></p><ul>${data.errores.map(e => `<li>${e}</li>`).join('')}</ul>` : ''}
+            <p><strong>Emails actualizados:</strong> ${data.actualizados || 0}</p>
+            ${data.errores.length > 0 ? `<p><strong>Avisos (${data.errores.length}):</strong></p><ul>${data.errores.slice(0, 30).map(e => `<li>${e}</li>`).join('')}</ul>` : ''}
         `;
-        toast(`Importacion completa: ${data.creados} alumnos creados`);
+        toast(`Importación: ${data.creados} creados, ${data.actualizados || 0} emails actualizados`);
         cargarAlumnos();
     } catch (err) {
         toast(err.message, 'error');

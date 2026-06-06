@@ -14,8 +14,15 @@ class Alumno(Base):
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     apellido: Mapped[str] = mapped_column(String(100), nullable=False)
     curso: Mapped[str] = mapped_column(String(20), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(150))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+
+    @property
+    def codigo_siro(self) -> str:
+        """Codigo de cliente SIRO: ultimos 5 digitos del legajo, completado a 10 con ceros."""
+        solo_digitos = "".join(c for c in str(self.legajo) if c.isdigit())
+        return solo_digitos[-5:].zfill(10)
 
     tarjetas: Mapped[list["Tarjeta"]] = relationship(back_populates="alumno")
     saldo: Mapped["Saldo"] = relationship(back_populates="alumno", uselist=False)

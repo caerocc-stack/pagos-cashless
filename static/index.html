@@ -121,6 +121,7 @@
                         <div><label>Nombre</label><input type="text" id="al-nombre" required></div>
                         <div><label>Apellido</label><input type="text" id="al-apellido" required></div>
                         <div><label>Curso</label><input type="text" id="al-curso" required></div>
+                        <div><label>Email del padre/madre</label><input type="email" id="al-email" placeholder="opcional"></div>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">Guardar</button>
@@ -337,7 +338,8 @@
         <section id="sec-importar" class="section">
             <div class="card" style="max-width:600px">
                 <h3>Importar alumnos desde Excel</h3>
-                <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong></p>
+                <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong> y opcionalmente <strong>Mail</strong>.</p>
+                <p style="color:#5b6b80;font-size:0.85rem">Si un alumno ya existe, se actualiza su email desde la columna Mail (no se duplica).</p>
                 <form onsubmit="importarExcel(event)">
                     <input type="file" id="archivo-excel" accept=".xlsx,.xls" required>
                     <button type="submit" class="btn btn-primary">Importar</button>

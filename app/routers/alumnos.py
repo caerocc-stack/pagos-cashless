@@ -22,9 +22,11 @@ def _alumno_con_saldo(a: Alumno) -> dict:
         "nombre": a.nombre,
         "apellido": a.apellido,
         "curso": a.curso,
+        "email": a.email,
         "activo": a.activo,
         "created_at": a.created_at,
         "saldo": a.saldo.monto if a.saldo else Decimal("0.00"),
+        "codigo_siro": a.codigo_siro,
     }
 
 
@@ -111,55 +113,70 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(400, f"Faltan columnas en el Excel: {', '.join(faltantes)}")
 
     col_map = {nombre: idx for idx, nombre in enumerate(encabezados)}
+    # La columna de email (Mail) es opcional
+    col_mail = col_map.get("mail", col_map.get("email"))
 
-    # Cargar todos los legajos y DNIs existentes de una sola vez (rapido)
-    legajos_existentes = set(r[0] for r in db.query(Alumno.legajo).all())
-    dnis_existentes = set(r[0] for r in db.query(Alumno.dni).all())
+    def _valor(fila, idx):
+        if idx is None:
+            return ""
+        v = fila[idx]
+        return "" if v is None else str(v).strip()
+
+    # Cargar alumnos existentes (por legajo y por dni) para detectar duplicados y actualizar email
+    existentes_por_legajo = {a.legajo: a for a in db.query(Alumno).all()}
+    dnis_existentes = {a.dni for a in existentes_por_legajo.values()}
 
     creados = 0
+    actualizados = 0
     errores = []
     nuevos_alumnos = []
 
     for fila_num, fila in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         try:
-            legajo = str(fila[col_map["legajo"]]).strip()
-            dni = str(fila[col_map["dni"]]).strip()
-            nombre = str(fila[col_map["nombre"]]).strip()
-            apellido = str(fila[col_map["apellido"]]).strip()
-            curso = str(fila[col_map["curso"]]).strip()
+            legajo = _valor(fila, col_map["legajo"])
+            dni = _valor(fila, col_map["dni"])
+            nombre = _valor(fila, col_map["nombre"])
+            apellido = _valor(fila, col_map["apellido"])
+            curso = _valor(fila, col_map["curso"])
+            email = _valor(fila, col_mail) or None
 
             if not all([legajo, dni, nombre, apellido, curso]):
                 errores.append(f"Fila {fila_num}: datos incompletos")
                 continue
 
-            if legajo in legajos_existentes:
-                errores.append(f"Fila {fila_num}: legajo {legajo} ya existe")
+            # Si el alumno ya existe: actualizar su email si el archivo lo trae
+            if legajo in existentes_por_legajo:
+                if email:
+                    existentes_por_legajo[legajo].email = email
+                    actualizados += 1
                 continue
             if dni in dnis_existentes:
                 errores.append(f"Fila {fila_num}: DNI {dni} ya existe")
                 continue
 
-            nuevos_alumnos.append(Alumno(
+            nuevo = Alumno(
                 legajo=legajo, dni=dni, nombre=nombre,
-                apellido=apellido, curso=curso,
-            ))
-            legajos_existentes.add(legajo)
+                apellido=apellido, curso=curso, email=email,
+            )
+            nuevos_alumnos.append(nuevo)
+            existentes_por_legajo[legajo] = nuevo
             dnis_existentes.add(dni)
             creados += 1
         except Exception as e:
             errores.append(f"Fila {fila_num}: {str(e)}")
 
-    # Insertar todos de una vez
+    # Insertar nuevos de una vez
     if nuevos_alumnos:
         db.add_all(nuevos_alumnos)
         db.flush()
-        # Crear saldos en bloque
         saldos = [Saldo(alumno_id=a.id) for a in nuevos_alumnos]
         db.add_all(saldos)
-        db.commit()
+
+    db.commit()
 
     return {
         "creados": creados,
+        "actualizados": actualizados,
         "errores": errores,
         "total_procesadas": fila_num - 1 if 'fila_num' in dir() else 0,
     }

@@ -9,12 +9,14 @@ class AlumnoCreate(BaseModel):
     nombre: str
     apellido: str
     curso: str
+    email: str | None = None
 
 
 class AlumnoUpdate(BaseModel):
     nombre: str | None = None
     apellido: str | None = None
     curso: str | None = None
+    email: str | None = None
     activo: bool | None = None
 
 
@@ -25,6 +27,7 @@ class AlumnoResponse(BaseModel):
     nombre: str
     apellido: str
     curso: str
+    email: str | None = None
     activo: bool
     created_at: datetime
 
@@ -33,3 +36,4 @@ class AlumnoResponse(BaseModel):
 
 class AlumnoConSaldo(AlumnoResponse):
     saldo: Decimal = Decimal("0.00")
+    codigo_siro: str = ""
