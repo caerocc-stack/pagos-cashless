@@ -1,13 +1,48 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.auth import verify_password, create_token, hash_password, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticacion"])
+
+# --- Proteccion anti fuerza bruta (en memoria) ---
+MAX_INTENTOS = 5
+BLOQUEO_MINUTOS = 10
+_intentos_fallidos: dict[str, list] = {}  # ip -> [datetime, datetime, ...]
+
+
+def _ip_cliente(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "desconocida"
+
+
+def _esta_bloqueado(ip: str) -> int:
+    """Devuelve segundos restantes de bloqueo, o 0 si no esta bloqueado."""
+    ahora = datetime.utcnow()
+    intentos = _intentos_fallidos.get(ip, [])
+    # Filtrar intentos dentro de la ventana de bloqueo
+    recientes = [t for t in intentos if ahora - t < timedelta(minutes=BLOQUEO_MINUTOS)]
+    _intentos_fallidos[ip] = recientes
+    if len(recientes) >= MAX_INTENTOS:
+        mas_viejo = min(recientes)
+        restante = timedelta(minutes=BLOQUEO_MINUTOS) - (ahora - mas_viejo)
+        return max(1, int(restante.total_seconds()))
+    return 0
+
+
+def _registrar_fallo(ip: str):
+    _intentos_fallidos.setdefault(ip, []).append(datetime.utcnow())
+
+
+def _limpiar_intentos(ip: str):
+    _intentos_fallidos.pop(ip, None)
 
 
 class LoginRequest(BaseModel):
@@ -21,16 +56,32 @@ class CambiarPasswordRequest(BaseModel):
 
 
 @router.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = _ip_cliente(request)
+
+    bloqueo = _esta_bloqueado(ip)
+    if bloqueo:
+        minutos = (bloqueo + 59) // 60
+        raise HTTPException(
+            429,
+            f"Demasiados intentos fallidos. Espera {minutos} minuto(s) e intenta de nuevo.",
+        )
+
     usuario = db.query(Usuario).filter(Usuario.username == data.username).first()
     if not usuario or not verify_password(data.password, usuario.password_hash):
-        raise HTTPException(401, "Usuario o contraseña incorrectos")
+        _registrar_fallo(ip)
+        restantes = MAX_INTENTOS - len(_intentos_fallidos.get(ip, []))
+        msg = "Usuario o contraseña incorrectos"
+        if 0 < restantes <= 2:
+            msg += f". Te quedan {restantes} intento(s) antes del bloqueo."
+        raise HTTPException(401, msg)
     if not usuario.activo:
         raise HTTPException(403, "Usuario desactivado")
 
+    _limpiar_intentos(ip)
     token = create_token(usuario.username, usuario.nombre)
     response = JSONResponse({"ok": True, "nombre": usuario.nombre, "token": token})
-    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200)
+    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200, secure=True)
     return response
 
 

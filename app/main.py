@@ -2,11 +2,11 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.database import engine, Base, SessionLocal
 from app.auth import verify_token, crear_usuario_inicial
-from app.routers import alumnos, tarjetas, operaciones
+from app.routers import alumnos, tarjetas, operaciones, reportes, admin
 from app.routers import auth as auth_router
 
 Base.metadata.create_all(bind=engine)
@@ -21,7 +21,7 @@ finally:
 app = FastAPI(
     title="APAI Pagos Cashless",
     description="Sistema de pagos cashless para el colegio — APAI",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -32,13 +32,32 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+
+@app.middleware("http")
+async def headers_seguridad(request: Request, call_next):
+    """Agrega encabezados de seguridad a todas las respuestas."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
+
+
 app.include_router(auth_router.router)
 app.include_router(alumnos.router)
 app.include_router(tarjetas.router)
 app.include_router(operaciones.router)
+app.include_router(reportes.router)
+app.include_router(admin.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(str(STATIC_DIR / "logo.png"))
 
 
 @app.get("/login")
