@@ -204,6 +204,19 @@ function filtrarAlumnos() {
         const matchCurso = !curso || a.curso === curso;
         return matchBusq && matchCurso;
     });
+    // Ordenar
+    const campo = ordenActual.campo;
+    const dir = ordenActual.asc ? 1 : -1;
+    filtrados.sort((a, b) => {
+        let va = a[campo];
+        let vb = b[campo];
+        if (campo === 'saldo') {
+            return (Number(va) - Number(vb)) * dir;
+        }
+        va = String(va).toLowerCase();
+        vb = String(vb).toLowerCase();
+        return va.localeCompare(vb) * dir;
+    });
     renderAlumnos(filtrados);
 }
 
@@ -229,6 +242,26 @@ function renderAlumnos(lista) {
 
 document.getElementById('buscar-alumno').addEventListener('input', filtrarAlumnos);
 document.getElementById('filtro-curso').addEventListener('change', filtrarAlumnos);
+
+// --- ORDENAR TABLA ALUMNOS ---
+let ordenActual = { campo: 'apellido', asc: true };
+
+function ordenarAlumnos(campo) {
+    if (ordenActual.campo === campo) {
+        ordenActual.asc = !ordenActual.asc;
+    } else {
+        ordenActual.campo = campo;
+        ordenActual.asc = true;
+    }
+    // Actualizar indicadores en headers
+    document.querySelectorAll('#tabla-alumnos th[data-campo]').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        if (th.dataset.campo === campo) {
+            th.classList.add(ordenActual.asc ? 'sorted-asc' : 'sorted-desc');
+        }
+    });
+    filtrarAlumnos();
+}
 
 function mostrarFormAlumno() {
     document.getElementById('form-alumno').style.display = 'block';

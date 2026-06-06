@@ -123,12 +123,12 @@
             <table id="tabla-alumnos">
                 <thead>
                     <tr>
-                        <th>Legajo</th>
-                        <th>DNI</th>
-                        <th>Apellido</th>
-                        <th>Nombre</th>
-                        <th>Curso</th>
-                        <th>Saldo</th>
+                        <th data-campo="legajo" class="sortable" onclick="ordenarAlumnos('legajo')">Legajo</th>
+                        <th data-campo="dni" class="sortable" onclick="ordenarAlumnos('dni')">DNI</th>
+                        <th data-campo="apellido" class="sortable sorted-asc" onclick="ordenarAlumnos('apellido')">Apellido</th>
+                        <th data-campo="nombre" class="sortable" onclick="ordenarAlumnos('nombre')">Nombre</th>
+                        <th data-campo="curso" class="sortable" onclick="ordenarAlumnos('curso')">Curso</th>
+                        <th data-campo="saldo" class="sortable" onclick="ordenarAlumnos('saldo')">Saldo</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>

@@ -117,6 +117,41 @@ th {
     border-bottom: 2px solid #e2e8f0;
 }
 
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 1.5rem;
+    transition: color 0.2s;
+}
+
+th.sortable:hover {
+    color: #1a1a2e;
+    background: #f1f5f9;
+}
+
+th.sortable::after {
+    content: '\2195';
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    opacity: 0.3;
+}
+
+th.sortable.sorted-asc::after {
+    content: '\25B2';
+    opacity: 1;
+    color: #3b82f6;
+}
+
+th.sortable.sorted-desc::after {
+    content: '\25BC';
+    opacity: 1;
+    color: #3b82f6;
+}
+
 td {
     padding: 0.65rem 1rem;
     border-bottom: 1px solid #f1f5f9;
