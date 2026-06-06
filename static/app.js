@@ -892,7 +892,7 @@ function abrirMiCuenta() {
             <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="guardarCuenta()">Guardar datos</button>
         </div>
 
-        <div style="background:#f7f9fc;border-radius:10px;padding:1rem">
+        <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1.25rem">
             <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Cambiar contraseña</p>
             <label style="${lbl}">Contraseña actual</label>
             <input type="password" id="cp-actual" style="${inp}" autocomplete="off">
@@ -901,9 +901,29 @@ function abrirMiCuenta() {
             <label style="${lbl}">Repetir contraseña nueva</label>
             <input type="password" id="cp-repetir" style="${inp}" autocomplete="off">
             <button class="btn btn-primary" style="width:100%" onclick="guardarPassword()">Cambiar contraseña</button>
+        </div>
+
+        <div style="background:#f7f9fc;border-radius:10px;padding:1rem">
+            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Probar envío de email</p>
+            <label style="${lbl}">Enviar un email de prueba a</label>
+            <input type="email" id="te-destino" style="${inp}" placeholder="tucorreo@ejemplo.com" autocomplete="off">
+            <button class="btn btn-outline" style="width:100%" onclick="probarEmail()">Enviar email de prueba</button>
         </div>`;
     document.getElementById('modal-content').innerHTML = html;
     document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function probarEmail() {
+    const destino = document.getElementById('te-destino').value.trim();
+    try {
+        const res = await api('/api/admin/test-email', {
+            method: 'POST',
+            body: JSON.stringify({ destino: destino || null }),
+        });
+        toast(res.mensaje);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
 }
 
 async function guardarCuenta() {
