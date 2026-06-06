@@ -790,6 +790,40 @@ async function cerrarSesion() {
     window.location.href = '/login';
 }
 
+function abrirCambioPassword() {
+    const html = `
+        <h3>Cambiar contraseña</h3>
+        <p style="color:#5b6b80;font-size:0.85rem;margin-bottom:1rem">Por seguridad, cambiá la clave por defecto.</p>
+        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Contraseña actual</label>
+        <input type="password" id="cp-actual" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem">
+        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Contraseña nueva</label>
+        <input type="password" id="cp-nueva" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem">
+        <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500">Repetir contraseña nueva</label>
+        <input type="password" id="cp-repetir" style="width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:1rem">
+        <button class="btn btn-primary" style="width:100%" onclick="guardarPassword()">Guardar nueva contraseña</button>`;
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function guardarPassword() {
+    const actual = document.getElementById('cp-actual').value;
+    const nueva = document.getElementById('cp-nueva').value;
+    const repetir = document.getElementById('cp-repetir').value;
+    if (!actual || !nueva) return toast('Completá todos los campos', 'error');
+    if (nueva.length < 6) return toast('La nueva clave debe tener al menos 6 caracteres', 'error');
+    if (nueva !== repetir) return toast('Las contraseñas nuevas no coinciden', 'error');
+    try {
+        await api('/api/auth/cambiar-password', {
+            method: 'POST',
+            body: JSON.stringify({ password_actual: actual, password_nueva: nueva }),
+        });
+        toast('Contraseña actualizada correctamente');
+        cerrarModal();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- INIT ---
 cargarUsuario();
 cargarAlumnos();
