@@ -185,6 +185,7 @@ function crearBuscador(config) {
 async function cargarAlumnos() {
     alumnosCache = await api('/api/alumnos/');
     poblarFiltroCursos();
+    poblarCursosCuota();
     filtrarAlumnos();
 }
 
@@ -424,57 +425,71 @@ async function ejecutarReintegro(e) {
     }
 }
 
-async function abrirConfigEmail() {
-    try {
-        const cfg = await api('/api/config/email');
-        const lbl = 'display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500';
-        const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem';
-        const html = `
-            <h3>Mensaje del email del cupón</h3>
-            <p style="color:#5b6b80;font-size:0.85rem;margin-bottom:0.75rem">
-                Podés usar estos comodines (se reemplazan solos): <br>
-                <code>{alumno}</code> <code>{nombre}</code> <code>{apellido}</code>
-                <code>{monto}</code> <code>{legajo}</code> <code>{curso}</code>
-            </p>
-            <label style="${lbl}">Asunto</label>
-            <input type="text" id="cfg-asunto" style="${inp}" value="${(cfg.asunto || '').replace(/"/g, '&quot;')}">
-            <label style="${lbl}">Mensaje</label>
-            <textarea id="cfg-mensaje" style="${inp};min-height:200px;font-family:inherit;resize:vertical">${cfg.mensaje || ''}</textarea>
-            <button class="btn btn-primary" style="width:100%" onclick="guardarConfigEmail()">Guardar mensaje</button>`;
-        document.getElementById('modal-content').innerHTML = html;
-        document.getElementById('modal-overlay').style.display = 'flex';
-    } catch (err) {
-        toast(err.message, 'error');
-    }
+const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+let cuponTipoActual = 'cuota';
+
+function cuponTab(tipo) {
+    cuponTipoActual = tipo;
+    document.getElementById('cupon-cuota').style.display = tipo === 'cuota' ? 'grid' : 'none';
+    document.getElementById('cupon-recarga').style.display = tipo === 'recarga' ? 'grid' : 'none';
+    document.getElementById('tab-cuota').className = 'btn btn-sm' + (tipo === 'cuota' ? ' btn-primary' : '');
+    document.getElementById('tab-recarga').className = 'btn btn-sm' + (tipo === 'recarga' ? ' btn-primary' : '');
 }
 
-async function guardarConfigEmail() {
-    const asunto = document.getElementById('cfg-asunto').value.trim();
-    const mensaje = document.getElementById('cfg-mensaje').value.trim();
-    if (!asunto || !mensaje) return toast('Completá el asunto y el mensaje', 'error');
+function poblarCursosCuota() {
+    const cursos = [...new Set(alumnosCache.map(a => a.curso))].sort();
+    const sel = document.getElementById('cuota-curso');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Todos los cursos</option>' +
+        cursos.map(c => `<option value="${c}">${c}</option>`).join('');
+    actualizarCuotaInfo();
+}
+
+function actualizarCuotaInfo() {
+    const curso = document.getElementById('cuota-curso').value;
+    const cant = alumnosCache.filter(a => (!curso || a.curso === curso) && a.email).length;
+    const mes = MESES_ES[new Date().getMonth()];
+    document.getElementById('cuota-info').innerHTML =
+        `Cuota de <strong>${mes}</strong> · ${cant} alumno(s) con email en ${curso || 'todos los cursos'}`;
+}
+
+async function enviarCuotaMasiva() {
+    const curso = document.getElementById('cuota-curso').value;
+    const monto = parseFloat(document.getElementById('cuota-monto').value);
+    const div = document.getElementById('cupon-resultado');
+    const mes = MESES_ES[new Date().getMonth()];
+    const dest = curso || 'TODOS los cursos';
+    if (!confirm(`Vas a enviar el cupón de la cuota de ${mes} ($${monto.toLocaleString('es-AR')}) a ${dest}. ¿Continuar?`)) return;
     try {
-        const res = await api('/api/config/email', {
+        const res = await api('/api/cupones/cuota-masiva', {
             method: 'POST',
-            body: JSON.stringify({ asunto, mensaje }),
+            body: JSON.stringify({ curso: curso || null, monto }),
         });
+        div.className = 'resultado';
+        div.style.display = 'block';
+        div.innerHTML = `<strong>${res.mensaje}</strong>` +
+            (res.errores && res.errores.length ? `<br><small>${res.errores.join('<br>')}</small>` : '');
         toast(res.mensaje);
-        cerrarModal();
     } catch (err) {
+        div.className = 'resultado error';
+        div.style.display = 'block';
+        div.textContent = err.message;
         toast(err.message, 'error');
     }
 }
 
-async function enviarCupon(e) {
-    e.preventDefault();
+async function enviarRecarga() {
     const alumnoId = document.getElementById('cupon-alumno').value;
     const monto = parseFloat(document.getElementById('cupon-monto').value);
     const div = document.getElementById('cupon-resultado');
     if (!alumnoId) return toast('Seleccioná un alumno', 'error');
     if (!monto || monto <= 0) return toast('Ingresá un monto válido', 'error');
     try {
-        const res = await api('/api/cupones/recarga', {
+        const res = await api('/api/cupones/enviar', {
             method: 'POST',
-            body: JSON.stringify({ alumno_id: parseInt(alumnoId), monto }),
+            body: JSON.stringify({ tipo: 'recarga', alumno_id: parseInt(alumnoId), monto }),
         });
         div.className = 'resultado';
         div.style.display = 'block';
@@ -485,6 +500,82 @@ async function enviarCupon(e) {
         div.className = 'resultado error';
         div.style.display = 'block';
         div.textContent = err.message;
+        toast(err.message, 'error');
+    }
+}
+
+async function vistaPreviaEmail() {
+    const monto = cuponTipoActual === 'cuota'
+        ? parseFloat(document.getElementById('cuota-monto').value)
+        : parseFloat(document.getElementById('cupon-monto').value) || null;
+    try {
+        const res = await api('/api/cupones/preview', {
+            method: 'POST',
+            body: JSON.stringify({ tipo: cuponTipoActual, monto }),
+        });
+        const html = `
+            <h3>Vista previa del email</h3>
+            <p style="color:#5b6b80;font-size:0.85rem"><strong>Asunto:</strong> ${res.asunto}</p>
+            <div style="border:1px solid #e2e8f0;border-radius:8px;padding:0.5rem;background:#f7f9fc">${res.html}</div>
+            <p style="color:#94a3b8;font-size:0.8rem;margin-top:0.5rem">Datos de ejemplo. El cupón de pago real se adjunta cuando SIRO esté conectado.</p>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function abrirPlantillas() {
+    try {
+        const cfg = await api('/api/config/plantillas');
+        const lbl = 'display:block;margin:0.6rem 0 0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:600';
+        const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px';
+        const esc = s => (s || '').replace(/"/g, '&quot;');
+        const html = `
+            <h3>Plantillas de email</h3>
+            <p style="color:#5b6b80;font-size:0.83rem;margin-bottom:0.5rem">
+                Comodines: <code>{alumno}</code> <code>{nombre}</code> <code>{apellido}</code>
+                <code>{monto}</code> <code>{legajo}</code> <code>{curso}</code>
+                <code>{mes}</code> <code>{anio}</code>
+            </p>
+            <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                <p style="font-weight:600;color:#a01e22">Cuota mensual</p>
+                <label style="${lbl}">Monto de la cuota ($)</label>
+                <input type="number" id="pl-cuota-monto" style="${inp}" value="${esc(cfg.cuota_monto)}">
+                <label style="${lbl}">Asunto</label>
+                <input type="text" id="pl-cuota-asunto" style="${inp}" value="${esc(cfg.cuota_asunto)}">
+                <label style="${lbl}">Mensaje</label>
+                <textarea id="pl-cuota-mensaje" style="${inp};min-height:150px;font-family:inherit;resize:vertical">${cfg.cuota_mensaje || ''}</textarea>
+            </div>
+            <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                <p style="font-weight:600;color:#a01e22">Recarga ApaiCard</p>
+                <label style="${lbl}">Asunto</label>
+                <input type="text" id="pl-recarga-asunto" style="${inp}" value="${esc(cfg.recarga_asunto)}">
+                <label style="${lbl}">Mensaje</label>
+                <textarea id="pl-recarga-mensaje" style="${inp};min-height:150px;font-family:inherit;resize:vertical">${cfg.recarga_mensaje || ''}</textarea>
+            </div>
+            <button class="btn btn-primary" style="width:100%" onclick="guardarPlantillas()">Guardar plantillas</button>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function guardarPlantillas() {
+    const body = {
+        cuota_monto: document.getElementById('pl-cuota-monto').value,
+        cuota_asunto: document.getElementById('pl-cuota-asunto').value,
+        cuota_mensaje: document.getElementById('pl-cuota-mensaje').value,
+        recarga_asunto: document.getElementById('pl-recarga-asunto').value,
+        recarga_mensaje: document.getElementById('pl-recarga-mensaje').value,
+    };
+    try {
+        const res = await api('/api/config/plantillas', { method: 'POST', body: JSON.stringify(body) });
+        toast(res.mensaje);
+        document.getElementById('cuota-monto').value = body.cuota_monto;
+        cerrarModal();
+    } catch (err) {
         toast(err.message, 'error');
     }
 }

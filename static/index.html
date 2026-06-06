@@ -204,24 +204,54 @@
                     </form>
                 </div>
 
-                <div class="card">
-                    <h3>Enviar cupón de recarga (SIRO)</h3>
-                    <form onsubmit="enviarCupon(event)">
-                        <label>Alumno</label>
-                        <div class="buscador-alumno" id="wrap-cupon">
-                            <input type="text" id="cupon-buscar" placeholder="Buscar por legajo, nombre o DNI..." autocomplete="off">
-                            <input type="hidden" id="cupon-alumno">
-                            <button type="button" class="buscador-clear">&times;</button>
-                            <div class="buscador-dropdown" id="drop-cupon"></div>
+                <div class="card" style="grid-column:1/-1">
+                    <h3>Cupones APAI Pay (cuota y recarga)</h3>
+                    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+                        <button type="button" class="btn btn-primary btn-sm" id="tab-cuota" onclick="cuponTab('cuota')">Cuota del mes</button>
+                        <button type="button" class="btn btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga ApaiCard</button>
+                        <span style="flex:1"></span>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaEmail()">👁 Vista previa</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()">✎ Editar plantillas</button>
+                    </div>
+
+                    <!-- CUOTA -->
+                    <div id="cupon-cuota" class="ops-grid" style="align-items:end">
+                        <div>
+                            <label>Curso a enviar</label>
+                            <select id="cuota-curso" onchange="actualizarCuotaInfo()"><option value="">Todos los cursos</option></select>
                         </div>
-                        <div id="cupon-info" style="font-size:0.85rem;color:#5b6b80;margin-top:0.5rem"></div>
-                        <label>Monto a recargar ($)</label>
-                        <input type="number" id="cupon-monto" min="1" step="0.01" required>
-                        <small>El padre recibe el cupón por email para pagar.</small>
-                        <button type="submit" class="btn btn-red">Generar y enviar cupón</button>
-                    </form>
-                    <button class="btn btn-outline btn-sm" style="margin-top:0.6rem" onclick="abrirConfigEmail()">✎ Editar mensaje del email</button>
-                    <div id="cupon-resultado" class="resultado" style="display:none"></div>
+                        <div>
+                            <label>Monto de la cuota ($)</label>
+                            <input type="number" id="cuota-monto" min="1" step="0.01" value="45000">
+                        </div>
+                        <div>
+                            <div id="cuota-info" style="font-size:0.85rem;color:#5b6b80;margin-bottom:0.5rem"></div>
+                            <button type="button" class="btn btn-red" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
+                        </div>
+                    </div>
+
+                    <!-- RECARGA -->
+                    <div id="cupon-recarga" class="ops-grid" style="display:none;align-items:end">
+                        <div>
+                            <label>Alumno</label>
+                            <div class="buscador-alumno" id="wrap-cupon">
+                                <input type="text" id="cupon-buscar" placeholder="Buscar por legajo, nombre o DNI..." autocomplete="off">
+                                <input type="hidden" id="cupon-alumno">
+                                <button type="button" class="buscador-clear">&times;</button>
+                                <div class="buscador-dropdown" id="drop-cupon"></div>
+                            </div>
+                            <div id="cupon-info" style="font-size:0.85rem;color:#5b6b80;margin-top:0.4rem"></div>
+                        </div>
+                        <div>
+                            <label>Monto a recargar ($)</label>
+                            <input type="number" id="cupon-monto" min="1" step="0.01">
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-red" style="width:100%" onclick="enviarRecarga()">Generar y enviar recarga</button>
+                        </div>
+                    </div>
+
+                    <div id="cupon-resultado" class="resultado" style="display:none;margin-top:1rem"></div>
                 </div>
             </div>
 
