@@ -96,7 +96,12 @@ nav { display: flex; gap: 0.25rem; flex: 1; flex-wrap: wrap; justify-content: ce
     white-space: nowrap;
     transition: all 0.18s;
 }
-.nav-btn:hover { color: white; background: rgba(255,255,255,0.12); }
+.nav-btn:hover {
+    color: white;
+    background: rgba(255,255,255,0.14);
+    box-shadow: 0 0 14px rgba(91,155,213,0.45);
+    filter: brightness(1.1);
+}
 .nav-btn.active {
     color: white;
     background: var(--red);
@@ -181,11 +186,18 @@ main { padding: 1.75rem 2rem; max-width: 1440px; margin: 0 auto; }
     color: var(--gray-800);
     transition: all 0.18s;
 }
-.btn:hover { background: var(--gray-50); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn:hover {
+    background: var(--gray-50);
+    transform: translateY(-1px);
+    filter: brightness(1.08);
+    box-shadow: 0 4px 16px rgba(21,35,59,0.22);
+}
+.btn:active { transform: translateY(0); filter: brightness(0.97); }
 .btn-primary { background: var(--sky); color: white; border-color: var(--sky); }
 .btn-primary:hover { background: var(--navy-2); border-color: var(--navy-2); }
 .btn-red { background: var(--red); color: white; border-color: var(--red); }
-.btn-red:hover { background: var(--red-dark); border-color: var(--red-dark); }
+.btn-red:hover { background: var(--red-dark); border-color: var(--red-dark); box-shadow: 0 4px 18px rgba(160,30,34,0.45); }
+.btn-cerrar-modal { margin-top: 1.25rem; }
 .btn-warning { background: var(--amber); color: white; border-color: var(--amber); }
 .btn-warning:hover { background: #b45309; }
 .btn-success { background: var(--green); color: white; border-color: var(--green); }
@@ -458,7 +470,8 @@ tbody tr:hover td { background: var(--sky-light); }
 .cobro-rapido { flex: 1; min-width: 60px; background: var(--gray-100); border: 2px solid var(--gray-200); font-weight: 600; font-size: 1rem; padding: 0.6rem; }
 .cobro-rapido:hover { border-color: var(--sky); background: var(--sky-light); color: var(--sky); }
 .btn-cobrar { margin-top: 1.5rem; width: 100%; padding: 1rem; font-size: 1.3rem; font-weight: 700; background: var(--green); color: white; border: none; border-radius: 10px; cursor: pointer; transition: background 0.2s; }
-.btn-cobrar:hover { background: var(--green-dark); }
+.btn-cobrar { transition: all 0.2s; }
+.btn-cobrar:hover { background: var(--green-dark); filter: brightness(1.08); box-shadow: 0 6px 22px rgba(22,163,74,0.45); }
 .cobro-card-resultado { text-align: center; border-left: 4px solid var(--green); }
 .cobro-ok-icon { display: inline-flex; align-items: center; justify-content: center; width: 60px; height: 60px; border-radius: 50%; background: #dcfce7; color: var(--green); font-size: 1.3rem; font-weight: 800; margin-bottom: 1rem; }
 #cobro-resultado-msg { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
