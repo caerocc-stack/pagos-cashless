@@ -130,10 +130,24 @@
                 linear-gradient(to bottom, #75aadb 0%, #75aadb 33.3%, #ffffff 33.3%, #ffffff 66.6%, #75aadb 66.6%, #75aadb 100%);
             filter: blur(26px);
         }
+        /* Leyenda institucional durante la animacion */
+        #anim-leyenda {
+            position: fixed; left: 0; right: 0; bottom: 7%;
+            text-align: center;
+            z-index: 70; opacity: 0;
+            font-family: Georgia, 'Segoe UI', serif;
+            font-weight: 700;
+            font-size: clamp(1.1rem, 3.2vw, 2.3rem);
+            color: #15233b;
+            letter-spacing: 0.04em;
+            text-shadow: 0 1px 10px rgba(255,255,255,0.75);
+            padding: 0 1rem;
+        }
     </style>
 </head>
 <body>
     <div id="flag-bg"></div>
+    <div id="anim-leyenda">Asociación de Padres y Alumnos del I.N.A.C</div>
     <div class="login-card">
         <div class="login-logo-wrap" id="anim-wrap">
             <img id="anim-motor" src="/static/motor.png" alt="APAI">
@@ -181,14 +195,18 @@
 
             const tl = gsap.timeline();
             // 1) Primero se centra en la pantalla (sin girar)
-            tl.to(wrap, { left: centroX, top: centroY, duration: 0.7, ease: 'power2.inOut' });
+            tl.to(wrap, { left: centroX, top: centroY, duration: 0.7, ease: 'power2.inOut' }, 0);
+            // Aparece la leyenda institucional abajo
+            tl.to('#anim-leyenda', { opacity: 1, duration: 0.5 }, 0.35);
             // 2) Recien centrado, la helice empieza a girar acelerando
-            tl.to('#anim-helice', { rotation: 360 * 34, duration: 3.6, ease: 'power2.in' }, '>');
-            // 3) Mientras gira, crece hasta el 75% y entra al sistema (sin quedar congelado)
-            tl.to(wrap, {
-                scale: escala, duration: 1.6, ease: 'power2.inOut',
+            tl.to('#anim-helice', { rotation: 360 * 34, duration: 3.8, ease: 'power2.in' }, 0.7);
+            // 3) Mientras gira, crece hasta el 75%
+            tl.to(wrap, { scale: escala, duration: 1.6, ease: 'power2.inOut' }, 0.95);
+            // 4) Hélice + leyenda se desvanecen (sigue girando) y entra al sistema
+            tl.to(['#anim-wrap', '#anim-leyenda', '#flag-bg'], {
+                opacity: 0, duration: 0.6, ease: 'power2.in',
                 onComplete: () => { window.location.href = '/'; },
-            }, '<0.25');
+            }, 2.7);
         }
 
         async function login(e) {
