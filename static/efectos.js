@@ -33,11 +33,14 @@
         if (!window.gsap) return;
         const sec = document.querySelector('.section.active');
         if (!sec) return;
-        const items = sec.querySelectorAll('.card, .kpi-card, .chart-card, .cobro-card-tarjeta');
+        // Solo animar elementos VISIBLES (no los formularios ocultos con display:none)
+        const items = Array.from(sec.querySelectorAll('.card, .kpi-card, .chart-card'))
+            .filter(el => el.offsetParent !== null);
         if (!items.length) return;
+        // clearProps solo de lo animado (no tocar 'display' ni otros estilos)
         window.gsap.from(items, {
             opacity: 0, y: 18, duration: 0.4, stagger: 0.05,
-            ease: 'power2.out', clearProps: 'all',
+            ease: 'power2.out', clearProps: 'opacity,transform',
         });
     }
 
