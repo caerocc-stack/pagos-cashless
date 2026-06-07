@@ -24,20 +24,25 @@
     --gray-400: #94a3b8;
     --gray-600: #5b6b80;
     --gray-800: #1e293b;
-    --shadow-sm: 0 1px 3px rgba(21,35,59,0.08);
-    --shadow: 0 4px 14px rgba(21,35,59,0.10);
-    --shadow-lg: 0 12px 32px rgba(21,35,59,0.16);
-    --radius: 12px;
+    --shadow-sm: 0 1px 2px rgba(21,35,59,0.06), 0 1px 3px rgba(21,35,59,0.05);
+    --shadow: 0 2px 8px rgba(21,35,59,0.06), 0 8px 24px rgba(21,35,59,0.08);
+    --shadow-lg: 0 10px 30px rgba(21,35,59,0.12), 0 20px 50px rgba(21,35,59,0.14);
+    --radius: 14px;
+    --radius-sm: 10px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: linear-gradient(160deg, var(--sky-bg) 0%, #f0f5fa 40%, #f7f9fc 100%);
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(160deg, #e8f0f8 0%, #eef3f9 45%, #f6f9fc 100%);
     background-attachment: fixed;
     color: var(--gray-800);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.01em;
 }
 
 /* ---------------- HEADER ---------------- */
@@ -568,3 +573,62 @@ tbody tr:hover td { background: var(--sky-light); }
     header { flex-wrap: wrap; gap: 0.75rem; }
     .header-titulo .t1 { font-size: 1rem; }
 }
+
+/* ===================================================================
+   PULIDO PROFESIONAL (refinamientos finales)
+   =================================================================== */
+.header-titulo .t1 { font-weight: 800; letter-spacing: -0.01em; }
+.header-titulo .t2 { letter-spacing: 0.14em; }
+.nav-btn { font-weight: 600; }
+.btn-logout { font-weight: 600; }
+
+main { padding: 2rem; }
+
+.section-titulo { font-weight: 800; letter-spacing: -0.02em; font-size: 1.55rem; }
+
+/* Tarjetas con profundidad y borde sutil */
+.card {
+    border: 1px solid rgba(21,35,59,0.06);
+    transition: box-shadow .25s ease, transform .25s ease;
+}
+.card h3 { font-weight: 700; letter-spacing: -0.01em; }
+
+/* Botones con degradé y mejor tipografia */
+.btn { font-weight: 600; border-radius: 10px; letter-spacing: 0; }
+.btn-primary {
+    background: linear-gradient(135deg, #4a8fd0 0%, #28406a 100%);
+    border: none; color: #fff;
+}
+.btn-primary:hover { background: linear-gradient(135deg, #3d7fc4 0%, #1f3354 100%); }
+.btn-red { background: linear-gradient(135deg, #b3262b 0%, #7d1619 100%); border: none; }
+.btn-success { background: linear-gradient(135deg, #1eb45c 0%, #15803d 100%); border: none; }
+.btn-warning { background: linear-gradient(135deg, #e8920c 0%, #b45309 100%); border: none; }
+.btn-outline { font-weight: 600; }
+.btn-cobrar {
+    background: linear-gradient(135deg, #1eb45c 0%, #15803d 100%);
+    letter-spacing: 0.08em; border-radius: 12px;
+}
+
+/* Tablas mas finas y legibles */
+th { font-weight: 700; letter-spacing: 0.07em; font-size: 0.72rem; }
+td { font-size: 0.88rem; }
+tbody tr { transition: background .15s ease; }
+
+/* KPIs */
+.kpi-card { border-radius: 14px; border: 1px solid rgba(21,35,59,0.05); }
+.kpi-valor { font-weight: 800; letter-spacing: -0.02em; }
+.kpi-label { letter-spacing: 0.06em; }
+
+/* Inputs y selects mas redondeados y consistentes */
+.card input, .card select, .toolbar input, .toolbar select,
+.buscador-alumno input[type="text"], .mc-inp {
+    border-radius: 10px;
+}
+
+/* Modal y chips */
+.modal { border-radius: 18px; box-shadow: var(--shadow-lg); }
+.modal h3 { font-weight: 800; letter-spacing: -0.01em; }
+.chip { font-weight: 600; }
+
+/* Toast mas premium */
+.toast { border-radius: 12px; font-weight: 600; box-shadow: 0 12px 32px rgba(21,35,59,0.28); }
