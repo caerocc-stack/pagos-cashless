@@ -242,7 +242,7 @@ function renderAlumnos(lista) {
             <td>${escapeHtml(a.apellido)}</td>
             <td>${escapeHtml(a.nombre)}</td>
             <td>${escapeHtml(a.curso)}</td>
-            <td>${escapeHtml(a.area || '-')}${a.cuota_excluir ? ' 🚫' : ''}</td>
+            <td>${escapeHtml(a.area || '-')}${a.cuota_excluir ? ' <span title="Excluido de la cuota">🚫</span>' : (a.cuota_personalizada ? ' <span title="Paga un monto de cuota distinto">💲</span>' : '')}</td>
             <td class="${clsSaldo}">$${saldo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
@@ -350,6 +350,32 @@ async function eliminarAlumno(id) {
     }
 }
 
+async function eliminarPadronCompleto() {
+    if (!confirm('⚠️ ATENCIÓN: vas a eliminar TODO el padrón de alumnos y TODOS sus datos (tarjetas, saldos y movimientos).\n\nEsta acción NO se puede deshacer. ¿Continuar?')) return;
+    const r = prompt('Para confirmar, escribí exactamente: ELIMINAR TODO');
+    if (r !== 'ELIMINAR TODO') return toast('Cancelado (texto no coincide)', 'error');
+    try {
+        const res = await api('/api/alumnos/eliminar-todos', { method: 'DELETE' });
+        toast(res.mensaje);
+        cargarAlumnos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarMovimientosAlumno(id) {
+    const a = alumnosCache.find(x => x.id === id);
+    const nombre = a ? `${a.apellido}, ${a.nombre}` : 'este alumno';
+    if (!confirm(`Vas a eliminar TODOS los movimientos de "${nombre}". El saldo actual no cambia.\n\nEsta acción no se puede deshacer. ¿Continuar?`)) return;
+    try {
+        const res = await api(`/api/operaciones/historial/${id}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        verAlumno(id);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 async function verAlumno(id) {
     try {
         const a = await api(`/api/alumnos/${id}`);
@@ -365,6 +391,7 @@ async function verAlumno(id) {
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
                 <button class="btn btn-success btn-sm" onclick="compartirWhatsAppAlumno(${a.id})">Compartir WhatsApp</button>
                 <button class="btn btn-outline btn-sm" onclick="compartirEmailAlumno(${a.id})">Enviar por Email</button>
+                <button class="btn btn-danger btn-sm" onclick="eliminarMovimientosAlumno(${a.id})">🗑 Eliminar movimientos</button>
             </div>`;
 
         html += '<h4>Tarjetas</h4>';
@@ -412,7 +439,6 @@ async function ejecutarRecarga(e) {
             body: JSON.stringify({
                 alumno_id: parseInt(alumnoId),
                 monto: parseFloat(document.getElementById('op-recarga-monto').value),
-                operador: document.getElementById('op-recarga-operador').value,
                 descripcion: document.getElementById('op-recarga-desc').value,
             }),
         });
@@ -435,7 +461,6 @@ async function ejecutarReintegro(e) {
             body: JSON.stringify({
                 alumno_id: parseInt(alumnoId),
                 monto: parseFloat(document.getElementById('op-reintegro-monto').value),
-                operador: document.getElementById('op-reintegro-operador').value,
             }),
         });
         toast(res.mensaje + ' — Saldo: $' + Number(res.saldo_actual).toLocaleString('es-AR'));
@@ -453,20 +478,50 @@ const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
 let cuponTipoActual = 'cuota';
 
 function cuponTab(tipo) {
-    cuponTipoActual = tipo;
+    cuponTipoActual = tipo === 'cuota' ? 'cuota' : 'recarga';
     document.getElementById('cupon-cuota').style.display = tipo === 'cuota' ? 'grid' : 'none';
     document.getElementById('cupon-recarga').style.display = tipo === 'recarga' ? 'grid' : 'none';
+    document.getElementById('cupon-recargalote').style.display = tipo === 'recargalote' ? 'grid' : 'none';
     document.getElementById('tab-cuota').className = 'btn btn-sm' + (tipo === 'cuota' ? ' btn-primary' : '');
     document.getElementById('tab-recarga').className = 'btn btn-sm' + (tipo === 'recarga' ? ' btn-primary' : '');
+    document.getElementById('tab-recargalote').className = 'btn btn-sm' + (tipo === 'recargalote' ? ' btn-primary' : '');
 }
 
 function poblarCursosCuota() {
     const cursos = [...new Set(alumnosCache.map(a => a.curso))].sort();
+    const opts = '<option value="">Todos los cursos</option>' +
+        cursos.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
     const sel = document.getElementById('cuota-curso');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">Todos los cursos</option>' +
-        cursos.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (sel) sel.innerHTML = opts;
+    const sel2 = document.getElementById('rlote-curso');
+    if (sel2) sel2.innerHTML = opts;
     actualizarCuotaInfo();
+}
+
+async function enviarRecargaLote() {
+    const curso = document.getElementById('rlote-curso').value;
+    const area = document.getElementById('rlote-area').value;
+    const monto = parseFloat(document.getElementById('rlote-monto').value);
+    const div = document.getElementById('cupon-resultado');
+    if (!monto || monto <= 0) return toast('Ingresá el monto a recargar', 'error');
+    const dest = curso || area || 'TODAS las áreas';
+    if (!confirm(`Vas a enviar un cupón de recarga de $${monto.toLocaleString('es-AR')} a ${dest}. ¿Continuar?`)) return;
+    try {
+        const res = await api('/api/cupones/recarga-masiva', {
+            method: 'POST',
+            body: JSON.stringify({ curso: curso || null, area: area || null, monto }),
+        });
+        div.className = 'resultado';
+        div.style.display = 'block';
+        div.innerHTML = `<strong>${res.mensaje}</strong>` +
+            (res.errores && res.errores.length ? `<br><small>${res.errores.join('<br>')}</small>` : '');
+        toast(res.mensaje);
+    } catch (err) {
+        div.className = 'resultado error';
+        div.style.display = 'block';
+        div.textContent = err.message;
+        toast(err.message, 'error');
+    }
 }
 
 function actualizarCuotaInfo() {
@@ -619,7 +674,6 @@ async function ejecutarTransferencia(e) {
                 uid_origen: document.getElementById('op-transf-origen').value,
                 uid_destino: document.getElementById('op-transf-destino').value,
                 monto: parseFloat(document.getElementById('op-transf-monto').value),
-                operador: document.getElementById('op-transf-operador').value,
             }),
         });
         toast(res.mensaje);
@@ -865,6 +919,7 @@ function cobroMostrarAlumno(info, uid) {
     document.getElementById('cobro-alumno-id-actual').value = info.alumno_id;
     document.getElementById('cobro-monto').value = '';
     document.getElementById('cobro-desc').value = '';
+    limpiarConceptos();
     document.getElementById('cobro-form-monto').style.display = 'block';
     document.getElementById('cobro-resultado').style.display = 'none';
     document.getElementById('cobro-monto').focus();
@@ -882,14 +937,30 @@ function cobroMontoRapido(monto) {
     document.getElementById('cobro-monto').focus();
 }
 
+// --- Conceptos (etiquetas multiseleccion) ---
+function toggleConcepto(btn) {
+    btn.classList.toggle('chip-activo');
+}
+function conceptosSeleccionados() {
+    return Array.from(document.querySelectorAll('#cobro-conceptos .chip-activo'))
+        .map(b => b.dataset.concepto);
+}
+function limpiarConceptos() {
+    document.querySelectorAll('#cobro-conceptos .chip-activo').forEach(b => b.classList.remove('chip-activo'));
+}
+
 async function cobroEjecutar() {
     const uid = document.getElementById('cobro-uid-actual').value;
     const monto = parseFloat(document.getElementById('cobro-monto').value);
-    const desc = document.getElementById('cobro-desc').value;
-    const operador = document.getElementById('cobro-operador').value;
+    const descLibre = document.getElementById('cobro-desc').value.trim();
+    const conceptos = conceptosSeleccionados();
 
-    if (!monto || monto <= 0) return toast('Ingresa un monto valido', 'error');
-    if (!operador) return toast('Ingresa el nombre del operador', 'error');
+    if (!monto || monto <= 0) return toast('Ingresá un monto válido', 'error');
+
+    // Descripcion = conceptos elegidos + texto libre
+    let desc = conceptos.join(' + ');
+    if (descLibre) desc = desc ? `${desc} - ${descLibre}` : descLibre;
+    if (!desc) desc = 'Consumo';
 
     if (!uid) {
         toast('Este alumno no tiene tarjeta asociada. Usa la seccion Tarjetas para emitir una.', 'error');
@@ -899,7 +970,7 @@ async function cobroEjecutar() {
     try {
         const res = await api('/api/operaciones/cobro', {
             method: 'POST',
-            body: JSON.stringify({ uid, monto, descripcion: desc, operador }),
+            body: JSON.stringify({ uid, monto, descripcion: desc }),
         });
 
         document.getElementById('cobro-form-monto').style.display = 'none';
@@ -1038,36 +1109,42 @@ async function cerrarSesion() {
 }
 
 function abrirMiCuenta() {
-    const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.75rem';
-    const lbl = 'display:block;margin-bottom:0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:500';
+    const u = usuarioActual || {};
+    const inicial = ((u.nombre || u.username || 'U').trim().charAt(0) || 'U').toUpperCase();
     const html = `
-        <h3>Mi cuenta</h3>
+        <div class="mc-banner">
+            <div class="mc-avatar">${escapeHtml(inicial)}</div>
+            <div>
+                <div class="mc-nombre">${escapeHtml(u.nombre || '')}</div>
+                <div class="mc-user">@${escapeHtml(u.username || '')}</div>
+            </div>
+        </div>
 
-        <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1.25rem">
-            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Datos de la cuenta</p>
-            <label style="${lbl}">Nombre para mostrar</label>
-            <input type="text" id="mc-nombre" style="${inp}" value="${(usuarioActual.nombre || '').replace(/"/g, '&quot;')}">
-            <label style="${lbl}">Nombre de usuario (para iniciar sesión)</label>
-            <input type="text" id="mc-username" style="${inp}" value="${(usuarioActual.username || '').replace(/"/g, '&quot;')}" autocomplete="off">
+        <div class="mc-card">
+            <div class="mc-card-tit">👤 Datos de la cuenta</div>
+            <label class="mc-lbl">Nombre para mostrar</label>
+            <input type="text" id="mc-nombre" class="mc-inp" value="${escapeHtml(u.nombre || '')}">
+            <label class="mc-lbl">Nombre de usuario (para iniciar sesión)</label>
+            <input type="text" id="mc-username" class="mc-inp" value="${escapeHtml(u.username || '')}" autocomplete="off">
             <small style="color:#94a3b8">Con este usuario vas a entrar la próxima vez.</small>
-            <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="guardarCuenta()">Guardar datos</button>
+            <button class="btn btn-primary btn-3d" style="width:100%;margin-top:0.75rem" onclick="guardarCuenta()">Guardar datos</button>
         </div>
 
-        <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1.25rem">
-            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Cambiar contraseña</p>
-            <label style="${lbl}">Contraseña actual</label>
-            <input type="password" id="cp-actual" style="${inp}" autocomplete="off">
-            <label style="${lbl}">Contraseña nueva</label>
-            <input type="password" id="cp-nueva" style="${inp}" autocomplete="off">
-            <label style="${lbl}">Repetir contraseña nueva</label>
-            <input type="password" id="cp-repetir" style="${inp}" autocomplete="off">
-            <button class="btn btn-primary" style="width:100%" onclick="guardarPassword()">Cambiar contraseña</button>
+        <div class="mc-card">
+            <div class="mc-card-tit">🔒 Cambiar contraseña</div>
+            <label class="mc-lbl">Contraseña actual</label>
+            <input type="password" id="cp-actual" class="mc-inp" autocomplete="off">
+            <label class="mc-lbl">Contraseña nueva</label>
+            <input type="password" id="cp-nueva" class="mc-inp" autocomplete="off">
+            <label class="mc-lbl">Repetir contraseña nueva</label>
+            <input type="password" id="cp-repetir" class="mc-inp" autocomplete="off">
+            <button class="btn btn-primary btn-3d" style="width:100%" onclick="guardarPassword()">Cambiar contraseña</button>
         </div>
 
-        <div style="background:#f7f9fc;border-radius:10px;padding:1rem">
-            <p style="font-weight:600;color:#15233b;margin-bottom:0.75rem">Probar envío de email</p>
-            <label style="${lbl}">Enviar un email de prueba a</label>
-            <input type="email" id="te-destino" style="${inp}" placeholder="tucorreo@ejemplo.com" autocomplete="off">
+        <div class="mc-card">
+            <div class="mc-card-tit">📧 Probar envío de email</div>
+            <label class="mc-lbl">Enviar un email de prueba a</label>
+            <input type="email" id="te-destino" class="mc-inp" placeholder="tucorreo@ejemplo.com" autocomplete="off">
             <button class="btn btn-outline" style="width:100%" onclick="probarEmail()">Enviar email de prueba</button>
         </div>`;
     document.getElementById('modal-content').innerHTML = html;

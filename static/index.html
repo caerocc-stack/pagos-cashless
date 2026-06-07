@@ -84,13 +84,18 @@
                         <label>Monto ($)</label>
                         <input type="number" id="cobro-monto" min="1" step="0.01" placeholder="0.00" required>
 
-                        <label>Descripcion (opcional)</label>
-                        <input type="text" id="cobro-desc" placeholder="Ej: Fotocopias x10">
+                        <label>Conceptos (podés elegir varios)</label>
+                        <div class="concept-chips" id="cobro-conceptos">
+                            <button type="button" class="chip" data-concepto="Fotocopias" onclick="toggleConcepto(this)">Fotocopias</button>
+                            <button type="button" class="chip" data-concepto="Libro Matemática" onclick="toggleConcepto(this)">Libro Matemática</button>
+                            <button type="button" class="chip" data-concepto="Libro Inglés" onclick="toggleConcepto(this)">Libro Inglés</button>
+                            <button type="button" class="chip" data-concepto="Materiales Taller" onclick="toggleConcepto(this)">Materiales Taller</button>
+                        </div>
 
-                        <label>Operador</label>
-                        <input type="text" id="cobro-operador" required>
+                        <label>Descripción adicional (opcional)</label>
+                        <input type="text" id="cobro-desc" placeholder="Detalle libre...">
 
-                        <button class="btn btn-cobrar" onclick="cobroEjecutar()">COBRAR</button>
+                        <button class="btn btn-cobrar btn-3d" onclick="cobroEjecutar()">COBRAR</button>
                     </div>
 
                     <div id="cobro-resultado" class="card cobro-card-resultado" style="display:none">
@@ -108,7 +113,13 @@
             <div class="toolbar">
                 <input type="text" id="buscar-alumno" placeholder="Buscar por nombre, apellido, legajo o DNI...">
                 <select id="filtro-curso"><option value="">Todos los cursos</option></select>
-                <button class="btn btn-primary" onclick="mostrarFormAlumno()">+ Nuevo Alumno</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormAlumno()">+ Nuevo Alumno</button>
+                <span style="flex:1"></span>
+                <button class="btn btn-red" onclick="eliminarPadronCompleto()">🗑 Eliminar padrón completo</button>
+            </div>
+            <div style="font-size:0.8rem;color:var(--gray-600);margin-bottom:0.75rem">
+                <span style="font-weight:600">Referencias:</span>
+                🚫 = excluido de la cuota &nbsp;·&nbsp; 💲 = paga un monto de cuota distinto
             </div>
 
             <div id="form-alumno" class="card form-card" style="display:none">
@@ -176,11 +187,9 @@
                         <label>Monto ($)</label>
                         <input type="number" id="op-recarga-monto" min="1000" step="0.01" required>
                         <small>Monto minimo: $1.000</small>
-                        <label>Operador</label>
-                        <input type="text" id="op-recarga-operador" required>
                         <label>Descripcion</label>
                         <input type="text" id="op-recarga-desc" value="Recarga por transferencia">
-                        <button type="submit" class="btn btn-primary">Acreditar Recarga</button>
+                        <button type="submit" class="btn btn-primary btn-3d">Acreditar Recarga</button>
                     </form>
                 </div>
 
@@ -197,9 +206,7 @@
                         <label>Monto ($)</label>
                         <input type="number" id="op-reintegro-monto" min="1" max="2500" step="0.01" required>
                         <small>Maximo: $2.500</small>
-                        <label>Operador</label>
-                        <input type="text" id="op-reintegro-operador" required>
-                        <button type="submit" class="btn btn-warning">Procesar Reintegro</button>
+                        <button type="submit" class="btn btn-warning btn-3d">Procesar Reintegro</button>
                     </form>
                 </div>
 
@@ -212,9 +219,7 @@
                         <input type="text" id="op-transf-destino" required>
                         <label>Monto ($)</label>
                         <input type="number" id="op-transf-monto" min="1" step="0.01" required>
-                        <label>Operador</label>
-                        <input type="text" id="op-transf-operador" required>
-                        <button type="submit" class="btn btn-primary">Transferir</button>
+                        <button type="submit" class="btn btn-primary btn-3d">Transferir</button>
                     </form>
                 </div>
 
@@ -222,7 +227,8 @@
                     <h3>Cupones APAI Pay (cuota y recarga)</h3>
                     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
                         <button type="button" class="btn btn-primary btn-sm" id="tab-cuota" onclick="cuponTab('cuota')">Cuota del mes</button>
-                        <button type="button" class="btn btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga ApaiCard</button>
+                        <button type="button" class="btn btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga individual</button>
+                        <button type="button" class="btn btn-sm" id="tab-recargalote" onclick="cuponTab('recargalote')">Recarga en lote</button>
                         <span style="flex:1"></span>
                         <button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaEmail()">👁 Vista previa</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()">✎ Editar plantillas</button>
@@ -249,7 +255,7 @@
                         </div>
                         <div>
                             <div id="cuota-info" style="font-size:0.85rem;color:#5b6b80;margin-bottom:0.5rem"></div>
-                            <button type="button" class="btn btn-red" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
+                            <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
                         </div>
                     </div>
 
@@ -270,7 +276,31 @@
                             <input type="number" id="cupon-monto" min="1" step="0.01">
                         </div>
                         <div>
-                            <button type="button" class="btn btn-red" style="width:100%" onclick="enviarRecarga()">Generar y enviar recarga</button>
+                            <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarRecarga()">Generar y enviar recarga</button>
+                        </div>
+                    </div>
+
+                    <!-- RECARGA EN LOTE -->
+                    <div id="cupon-recargalote" class="ops-grid" style="display:none;align-items:end">
+                        <div>
+                            <label>Área a enviar</label>
+                            <select id="rlote-area">
+                                <option value="">Todas las áreas</option>
+                                <option value="Ciclo Basico">Ciclo Básico</option>
+                                <option value="Avionica">Aviónica</option>
+                                <option value="Mecanica">Mecánica</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Curso (opcional)</label>
+                            <select id="rlote-curso"><option value="">Todos los cursos</option></select>
+                        </div>
+                        <div>
+                            <label>Monto a recargar ($)</label>
+                            <input type="number" id="rlote-monto" min="1" step="0.01">
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarRecargaLote()">Enviar recarga al lote</button>
                         </div>
                     </div>
 
@@ -288,7 +318,6 @@
                         <div class="buscador-dropdown" id="drop-hist"></div>
                     </div>
                     <button class="btn btn-primary" onclick="cargarHistorialDia()">Historial del día</button>
-                    <button class="btn btn-danger" onclick="limpiarHistorial()">Limpiar historial</button>
                 </div>
                 <div id="hist-indicador" style="font-size:0.88rem;color:var(--gray-600);margin-bottom:0.6rem;font-weight:600"></div>
                 <table id="tabla-historial">
@@ -315,7 +344,7 @@
                             <button type="button" class="buscador-clear">&times;</button>
                             <div class="buscador-dropdown" id="drop-tj-alumno"></div>
                         </div>
-                        <button type="submit" class="btn btn-primary">Emitir Tarjeta</button>
+                        <button type="submit" class="btn btn-primary btn-3d">Emitir Tarjeta</button>
                     </form>
                 </div>
 
@@ -433,7 +462,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
     <script src="/static/app.js"></script>
     <script src="/static/reportes.js"></script>
+    <script src="/static/efectos.js"></script>
 </body>
 </html>

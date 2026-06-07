@@ -512,6 +512,54 @@ tbody tr:hover td { background: var(--sky-light); }
 
 .reportes-acciones { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
 
+/* ---------------- CHIPS DE CONCEPTOS ---------------- */
+.concept-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.chip {
+    padding: 0.45rem 0.9rem;
+    border: 2px solid var(--gray-200);
+    background: var(--gray-100);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.chip:hover { border-color: var(--sky); color: var(--sky); }
+.chip-activo {
+    background: var(--sky);
+    border-color: var(--sky);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(61,127,196,0.35);
+}
+
+/* ---------------- BOTONES 3D ---------------- */
+.btn-3d { transform-style: preserve-3d; will-change: transform; }
+
+/* ---------------- MI CUENTA ---------------- */
+.mc-banner {
+    display: flex; align-items: center; gap: 1rem;
+    background: linear-gradient(120deg, var(--navy), var(--navy-3));
+    color: #fff; padding: 1.1rem 1.25rem; border-radius: 12px; margin-bottom: 1.25rem;
+}
+.mc-avatar {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: var(--red); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; font-weight: 800; box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    flex-shrink: 0;
+}
+.mc-nombre { font-size: 1.2rem; font-weight: 700; }
+.mc-user { font-size: 0.85rem; color: var(--sky-2); }
+.mc-card {
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 12px; padding: 1.1rem; margin-bottom: 1rem;
+}
+.mc-card-tit { font-weight: 700; color: var(--navy); margin-bottom: 0.75rem; font-size: 1rem; }
+.mc-lbl { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.82rem; color: var(--gray-600); font-weight: 500; }
+.mc-inp { width: 100%; padding: 0.6rem; border: 1px solid var(--gray-200); border-radius: 8px; margin-bottom: 0.4rem; }
+.mc-inp:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 3px rgba(61,127,196,0.15); }
+
 @media (max-width: 900px) {
     .reportes-charts { grid-template-columns: 1fr; }
 }
