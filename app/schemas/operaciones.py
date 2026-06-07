@@ -10,7 +10,7 @@ class CobroRequest(BaseModel):
     uid: str
     monto: Decimal
     descripcion: str | None = None
-    operador: str
+    operador: str | None = None
 
     @field_validator("monto")
     @classmethod
@@ -23,7 +23,7 @@ class CobroRequest(BaseModel):
 class RecargaRequest(BaseModel):
     alumno_id: int
     monto: Decimal
-    operador: str
+    operador: str | None = None
     descripcion: str | None = None
 
     @field_validator("monto")
@@ -38,7 +38,7 @@ class TransferenciaRequest(BaseModel):
     uid_origen: str
     uid_destino: str
     monto: Decimal
-    operador: str
+    operador: str | None = None
 
     @field_validator("monto")
     @classmethod
@@ -51,7 +51,7 @@ class TransferenciaRequest(BaseModel):
 class ReintegroRequest(BaseModel):
     alumno_id: int
     monto: Decimal
-    operador: str
+    operador: str | None = None
 
     @field_validator("monto")
     @classmethod
@@ -70,7 +70,7 @@ class MovimientoResponse(BaseModel):
     monto: Decimal
     descripcion: str | None
     referencia_id: int | None
-    operador: str | None
+    operador: str | None = None | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

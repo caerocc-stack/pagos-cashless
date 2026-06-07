@@ -156,6 +156,45 @@ def cuota_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/recarga-masiva")
+def recarga_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
+    """Envia un cupon de recarga con monto fijo a un area o curso completo."""
+    if not siro.siro_configurado():
+        raise HTTPException(400, "SIRO todavía no está configurado. Cargá las credenciales para activar el envío.")
+    if not email_util.email_configurado():
+        raise HTTPException(400, "El envío de email no está configurado todavía.")
+    if not data.monto or data.monto <= 0:
+        raise HTTPException(400, "Indicá el monto de la recarga")
+
+    query = db.query(Alumno).filter(Alumno.activo == True)
+    if data.curso:
+        query = query.filter(Alumno.curso == data.curso)
+    if data.area:
+        query = query.filter(Alumno.area == data.area)
+    alumnos = query.order_by(Alumno.apellido, Alumno.nombre).all()
+
+    enviados = 0
+    sin_email = 0
+    errores = []
+    for a in alumnos:
+        if not a.email:
+            sin_email += 1
+            continue
+        try:
+            _generar_y_enviar(db, "recarga", a, data.monto)
+            enviados += 1
+        except Exception as e:
+            errores.append(f"{a.apellido}, {a.nombre}: {e}")
+
+    return {
+        "ok": True,
+        "mensaje": f"Recarga: {enviados} enviados, {sin_email} sin email, {len(errores)} con error",
+        "enviados": enviados,
+        "sin_email": sin_email,
+        "errores": errores[:30],
+    }
+
+
 @router.post("/preview")
 def preview(data: PreviewRequest, db: Session = Depends(get_db), user=None):
     """Devuelve el email renderizado con datos de ejemplo (no envía nada)."""

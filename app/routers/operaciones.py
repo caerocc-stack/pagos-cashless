@@ -4,6 +4,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 
 from app.database import get_db
+from app.auth import get_current_user, solo_nombres
 from app.models.alumno import Alumno
 from app.models.tarjeta import Tarjeta
 from app.models.saldo import Saldo
@@ -41,7 +42,7 @@ def _obtener_saldo(alumno_id: int, db: Session) -> Saldo:
 
 
 @router.post("/cobro", response_model=OperacionResponse)
-def cobrar(data: CobroRequest, db: Session = Depends(get_db)):
+def cobrar(data: CobroRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Descuenta saldo por consumo (fotocopiadora, etc)."""
     alumno, _ = _obtener_alumno_por_uid(data.uid, db)
     saldo = _obtener_saldo(alumno.id, db)
@@ -58,7 +59,7 @@ def cobrar(data: CobroRequest, db: Session = Depends(get_db)):
         tipo="consumo",
         monto=-data.monto,
         descripcion=data.descripcion or "Consumo",
-        operador=data.operador,
+        operador=solo_nombres(user["nombre"]),
     ))
     db.commit()
 
@@ -70,7 +71,7 @@ def cobrar(data: CobroRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/recarga", response_model=OperacionResponse)
-def recargar(data: RecargaRequest, db: Session = Depends(get_db)):
+def recargar(data: RecargaRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Acredita saldo por transferencia bancaria recibida."""
     alumno = db.get(Alumno, data.alumno_id)
     if not alumno:
@@ -83,7 +84,7 @@ def recargar(data: RecargaRequest, db: Session = Depends(get_db)):
         tipo="recarga",
         monto=data.monto,
         descripcion=data.descripcion or "Recarga por transferencia",
-        operador=data.operador,
+        operador=solo_nombres(user["nombre"]),
     ))
     db.commit()
 
@@ -95,8 +96,9 @@ def recargar(data: RecargaRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/transferencia", response_model=OperacionResponse)
-def transferir(data: TransferenciaRequest, db: Session = Depends(get_db)):
+def transferir(data: TransferenciaRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Transfiere saldo de un alumno a otro."""
+    op = solo_nombres(user["nombre"])
     alumno_origen, _ = _obtener_alumno_por_uid(data.uid_origen, db)
     alumno_destino, _ = _obtener_alumno_por_uid(data.uid_destino, db)
 
@@ -122,7 +124,7 @@ def transferir(data: TransferenciaRequest, db: Session = Depends(get_db)):
         monto=-data.monto,
         descripcion=desc,
         referencia_id=alumno_destino.id,
-        operador=data.operador,
+        operador=op,
     ))
     desc = f"Transferencia de {alumno_origen.apellido}, {alumno_origen.nombre}"
     db.add(Movimiento(
@@ -131,7 +133,7 @@ def transferir(data: TransferenciaRequest, db: Session = Depends(get_db)):
         monto=data.monto,
         descripcion=desc,
         referencia_id=alumno_origen.id,
-        operador=data.operador,
+        operador=op,
     ))
     db.commit()
 
@@ -143,7 +145,7 @@ def transferir(data: TransferenciaRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/reintegro", response_model=OperacionResponse)
-def reintegrar(data: ReintegroRequest, db: Session = Depends(get_db)):
+def reintegrar(data: ReintegroRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Devuelve saldo en efectivo (máximo $2.500)."""
     alumno = db.get(Alumno, data.alumno_id)
     if not alumno:
@@ -162,7 +164,7 @@ def reintegrar(data: ReintegroRequest, db: Session = Depends(get_db)):
         tipo="reintegro",
         monto=-data.monto,
         descripcion="Reintegro en efectivo",
-        operador=data.operador,
+        operador=solo_nombres(user["nombre"]),
     ))
     db.commit()
 

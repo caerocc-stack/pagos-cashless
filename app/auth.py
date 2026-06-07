@@ -59,6 +59,16 @@ def get_current_user(request: Request):
     return payload
 
 
+def solo_nombres(nombre_completo: str) -> str:
+    """Devuelve solo los nombres de pila (quita la ultima palabra = apellido)."""
+    if not nombre_completo:
+        return ""
+    partes = nombre_completo.strip().split()
+    if len(partes) <= 1:
+        return partes[0] if partes else ""
+    return " ".join(partes[:-1])
+
+
 def crear_usuario_inicial(db: Session):
     """Crea el usuario admin si no existe ninguno. La clave inicial sale de
     ADMIN_PASSWORD (o 'apai2024' por defecto, que DEBE cambiarse al primer ingreso)."""

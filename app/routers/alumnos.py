@@ -96,6 +96,17 @@ def actualizar_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(
     return alumno
 
 
+@router.delete("/eliminar-todos")
+def eliminar_todos(db: Session = Depends(get_db)):
+    """Elimina TODO el padron: alumnos, tarjetas, saldos y movimientos. Accion irreversible."""
+    db.query(Movimiento).delete()
+    db.query(Tarjeta).delete()
+    db.query(Saldo).delete()
+    cantidad = db.query(Alumno).delete()
+    db.commit()
+    return {"ok": True, "mensaje": f"Se eliminaron {cantidad} alumnos y todos sus datos asociados"}
+
+
 @router.delete("/{alumno_id}")
 def eliminar_alumno(alumno_id: int, db: Session = Depends(get_db)):
     """Elimina un alumno y todos sus datos asociados (tarjetas, saldo, movimientos)."""
