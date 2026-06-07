@@ -107,6 +107,27 @@
             font-size: 0.72rem;
             color: #94a3b8;
         }
+        /* --- Animacion del motor al iniciar sesion --- */
+        #motor-anim {
+            position: fixed; inset: 0;
+            display: none;
+            align-items: center; justify-content: center;
+            background: radial-gradient(circle at center, #1f3354 0%, #0c1422 80%);
+            z-index: 9999;
+        }
+        #anim-wrap {
+            position: relative;
+            width: 280px; height: 280px;
+            will-change: transform;
+        }
+        #anim-motor, #anim-helice {
+            position: absolute; inset: 0;
+            width: 100%; height: 100%;
+            object-fit: contain;
+            /* el arte es negro: lo paso a plateado/blanco con resplandor */
+            filter: invert(1) drop-shadow(0 0 18px rgba(120,180,240,0.55));
+        }
+        #anim-helice { transform-origin: 50% 50%; will-change: transform; }
     </style>
 </head>
 <body>
@@ -124,7 +145,40 @@
         </form>
         <div class="pie">Sistema interno · Acceso restringido</div>
     </div>
+
+    <!-- Animacion del motor al ingresar -->
+    <div id="motor-anim">
+        <div id="anim-wrap">
+            <img id="anim-motor" src="/static/motor.png" alt="">
+            <img id="anim-helice" src="/static/helice.png" alt="">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
     <script>
+        function arrancarMotor() {
+            // Si GSAP no esta disponible, entrar directo
+            if (!window.gsap) { window.location.href = '/'; return; }
+            const overlay = document.getElementById('motor-anim');
+            overlay.style.display = 'flex';
+
+            // Las letras/logo del login se desvanecen
+            gsap.to('.login-card', { opacity: 0, scale: 0.85, duration: 0.4, ease: 'power2.in' });
+            gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.5 });
+            gsap.fromTo('#anim-wrap',
+                { scale: 0.55, opacity: 0 },
+                { scale: 1, opacity: 1, duration: 0.6, ease: 'back.out(1.4)' });
+
+            // El motor gira acelerando de forma progresiva
+            gsap.to('#anim-helice', { rotation: 360 * 26, duration: 3.1, ease: 'power3.in' });
+
+            // Al alcanzar la maxima velocidad, se acerca y agranda hasta cubrir la pantalla
+            gsap.to('#anim-wrap', {
+                scale: 24, duration: 1.5, ease: 'power3.in', delay: 1.9,
+                onComplete: () => { window.location.href = '/'; }
+            });
+        }
+
         async function login(e) {
             e.preventDefault();
             const errEl = document.getElementById('error');
@@ -142,7 +196,7 @@
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión');
-                window.location.href = '/';
+                arrancarMotor();
             } catch (err) {
                 errEl.textContent = err.message;
                 errEl.style.display = 'block';
