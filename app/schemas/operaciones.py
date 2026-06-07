@@ -70,7 +70,7 @@ class MovimientoResponse(BaseModel):
     monto: Decimal
     descripcion: str | None
     referencia_id: int | None
-    operador: str | None = None | None
+    operador: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
