@@ -120,15 +120,20 @@
             object-fit: contain;
         }
         #anim-helice { transform-origin: 50% 50%; will-change: transform; }
-        #flash {
-            position: fixed; inset: 0;
-            background: #ffffff;
-            opacity: 0; display: none; z-index: 50;
+        /* Fondo difuso: bandera argentina horizontal + sol con rayos */
+        #flag-bg {
+            position: fixed; inset: -40px;
+            display: none; opacity: 0; z-index: 50;
+            background:
+                repeating-conic-gradient(from 0deg at 50% 50%, rgba(247,210,60,0.32) 0deg 5deg, rgba(247,210,60,0) 5deg 11deg),
+                radial-gradient(circle at 50% 50%, rgba(248,205,40,0.60) 0%, rgba(248,205,40,0) 20%),
+                linear-gradient(to bottom, #75aadb 0%, #75aadb 33.3%, #ffffff 33.3%, #ffffff 66.6%, #75aadb 66.6%, #75aadb 100%);
+            filter: blur(26px);
         }
     </style>
 </head>
 <body>
-    <div id="flash"></div>
+    <div id="flag-bg"></div>
     <div class="login-card">
         <div class="login-logo-wrap" id="anim-wrap">
             <img id="anim-motor" src="/static/motor.png" alt="APAI">
@@ -152,24 +157,38 @@
         function arrancarMotor() {
             // Si GSAP no esta disponible, entrar directo
             if (!window.gsap) { window.location.href = '/'; return; }
-            const flash = document.getElementById('flash');
-            flash.style.display = 'block';
+            const wrap = document.getElementById('anim-wrap');
+            const bg = document.getElementById('flag-bg');
 
-            // Se desvanecen las letras y el formulario; queda solo la helice/motor
-            gsap.to(['.login-card h1', '.login-card .sub', '.login-card form', '.login-card .pie', '#error'],
-                { opacity: 0, duration: 0.35, ease: 'power2.in' });
-            // El marco de la tarjeta desaparece (solo queda el motor sobre blanco)
-            gsap.to('.login-card', { backgroundColor: 'rgba(255,255,255,0)', boxShadow: '0 0 0 rgba(0,0,0,0)', borderTopColor: 'rgba(0,0,0,0)', duration: 0.4 });
-            gsap.to(flash, { opacity: 1, duration: 0.5 });
-
-            // La helice gira acelerando de forma progresiva
-            gsap.to('#anim-helice', { rotation: 360 * 26, duration: 3.1, ease: 'power3.in' });
-
-            // Al alcanzar la maxima velocidad, el motor se acerca y agranda hasta cubrir la pantalla
-            gsap.to('#anim-wrap', {
-                scale: 34, duration: 1.7, ease: 'power3.in', delay: 1.7,
-                onComplete: () => { window.location.href = '/'; }
+            // Fijar el motor en su posicion actual y sacarlo de la tarjeta (sin salto visual)
+            const r = wrap.getBoundingClientRect();
+            Object.assign(wrap.style, {
+                position: 'fixed', margin: '0',
+                left: r.left + 'px', top: r.top + 'px',
+                width: r.width + 'px', height: r.height + 'px', zIndex: '60',
             });
+            document.body.appendChild(wrap);
+
+            // Aparece el fondo difuso (bandera + sol) y se desvanece la tarjeta
+            bg.style.display = 'block';
+            gsap.to(bg, { opacity: 1, duration: 0.6 });
+            gsap.to('.login-card', { opacity: 0, duration: 0.35, ease: 'power2.in' });
+
+            const objetivo = 0.75 * Math.min(window.innerWidth, window.innerHeight);
+            const escala = objetivo / r.width;
+            const centroX = window.innerWidth / 2 - r.width / 2;
+            const centroY = window.innerHeight / 2 - r.height / 2;
+
+            const tl = gsap.timeline();
+            // 1) Primero se centra en la pantalla (sin girar)
+            tl.to(wrap, { left: centroX, top: centroY, duration: 0.7, ease: 'power2.inOut' });
+            // 2) Recien centrado, la helice empieza a girar acelerando
+            tl.to('#anim-helice', { rotation: 360 * 34, duration: 3.6, ease: 'power2.in' }, '>');
+            // 3) Mientras gira, crece hasta el 75% y entra al sistema (sin quedar congelado)
+            tl.to(wrap, {
+                scale: escala, duration: 1.6, ease: 'power2.inOut',
+                onComplete: () => { window.location.href = '/'; },
+            }, '<0.25');
         }
 
         async function login(e) {
