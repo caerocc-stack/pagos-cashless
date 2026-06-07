@@ -53,6 +53,9 @@ app = FastAPI(
     title="APAI Pay",
     description="Sistema de pagos cashless para el colegio — APAI",
     version="2.0.0",
+    docs_url=None,       # deshabilita Swagger UI publico
+    redoc_url=None,      # deshabilita ReDoc publico
+    openapi_url=None,    # no expone el esquema de la API
 )
 
 # CORS: solo se permiten los origenes definidos en APP_ORIGIN (separados por coma).
@@ -90,16 +93,18 @@ async def headers_seguridad(request: Request, call_next):
     return response
 
 
-# Endpoints de datos y operaciones: requieren sesion iniciada (proteccion global)
+# Todos los endpoints de la API (salvo login/logout) requieren sesion iniciada.
+# Se aplica la dependencia a nivel de router para que cualquier endpoint nuevo
+# quede protegido por defecto (defensa en profundidad).
 _auth = [Depends(get_current_user)]
 app.include_router(auth_router.router)
 app.include_router(alumnos.router, dependencies=_auth)
 app.include_router(tarjetas.router, dependencies=_auth)
 app.include_router(operaciones.router, dependencies=_auth)
 app.include_router(cupones.router, dependencies=_auth)
-app.include_router(reportes.router)
-app.include_router(admin.router)
-app.include_router(config.router)
+app.include_router(reportes.router, dependencies=_auth)
+app.include_router(admin.router, dependencies=_auth)
+app.include_router(config.router, dependencies=_auth)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

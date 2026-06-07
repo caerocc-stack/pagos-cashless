@@ -120,4 +120,46 @@ propios con puertos abiertos a internet. Superficie de exposición real:
 
 ---
 
+## 9. Revisión 2 — foco en acceso a la base y filtración de datos
+
+Segunda pasada con el objetivo de que **nadie pueda leer la base ni filtrar datos**.
+
+| Sev. | Hallazgo | Estado |
+|------|----------|--------|
+| 🔴 Crítica | **API de datos de Supabase (Data API / PostgREST)**: Supabase expone automáticamente las tablas por HTTPS. Si la "Row Level Security" (RLS) está desactivada, alguien con la *anon key* del proyecto podría leer/escribir las tablas (incluidos los hash de contraseñas) sin pasar por nuestro backend. | ⚠️ Acción manual (10.1) |
+| 🟡 Media | **Documentación de la API pública** (`/docs`, `/redoc`, `/openapi.json`): exponía el mapa completo de endpoints. | ✅ Deshabilitada |
+| 🟢 Verificado | Inyección SQL: no existe (todo el acceso usa ORM parametrizado; las migraciones son SQL fijo sin datos del usuario). | ✅ OK |
+| 🟢 Verificado | Enumeración de usuarios en el login: el mensaje de error es genérico. | ✅ OK |
+| 🟢 Verificado | Contraseñas: almacenadas con bcrypt (no reversible). | ✅ OK |
+| 🟢 Verificado | Autenticación: aplicada a nivel de router en TODA la API (cualquier endpoint nuevo queda protegido por defecto). | ✅ OK |
+| 🔵 Nota | `index.html` (la cáscara de la interfaz) se sirve sin login, pero no contiene datos: toda la información viaja por la API, que sí exige sesión. | ✅ Aceptable |
+
+### 10. Acciones manuales de la Revisión 2 (en Supabase)
+
+**10.1 — Cerrar el acceso directo a la base (IMPORTANTE).** Elegí una de las dos opciones:
+
+- **Opción simple (recomendada): desactivar la Data API.** En Supabase → **Settings → API → Data API** → desactivarla (o quitar todos los esquemas expuestos). Nuestro sistema NO usa la Data API (se conecta directo por la cadena de conexión), así que no se rompe nada y se cierra la puerta por completo.
+
+- **Opción alternativa: activar RLS en todas las tablas.** En Supabase → **SQL Editor**, ejecutar:
+  ```sql
+  ALTER TABLE alumnos       ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE saldos        ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE tarjetas      ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE movimientos   ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE usuarios      ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE configuracion ENABLE ROW LEVEL SECURITY;
+  ```
+  Al no haber políticas, la Data API niega todo acceso, mientras que nuestro backend (que se conecta como `postgres`) sigue funcionando normal.
+
+**10.2 — (Opcional) Rotar las API keys de Supabase** (anon y service_role) en Settings → API, por si la *anon key* hubiera quedado expuesta.
+
+---
+
+## Cambios de código de la Revisión 2
+
+- Deshabilitada la documentación pública de la API (`docs_url`, `redoc_url`, `openapi_url` en `None`).
+- Autenticación obligatoria a nivel de router en **todos** los routers de la API.
+
+---
+
 *Elaborado por Carlos Cambareri.*
