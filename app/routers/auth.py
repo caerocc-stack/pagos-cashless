@@ -85,8 +85,8 @@ def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     _limpiar_intentos(ip)
     token = create_token(usuario.username, usuario.nombre)
-    response = JSONResponse({"ok": True, "nombre": usuario.nombre, "token": token})
-    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200, secure=True)
+    response = JSONResponse({"ok": True, "nombre": usuario.nombre})
+    response.set_cookie("token", token, httponly=True, samesite="lax", max_age=43200, secure=True)
     return response
 
 
@@ -145,5 +145,5 @@ def actualizar_cuenta(data: ActualizarCuentaRequest, user=Depends(get_current_us
         "nombre": usuario.nombre,
         "mensaje": "Cuenta actualizada",
     })
-    response.set_cookie("token", token, httponly=False, samesite="lax", max_age=43200, secure=True)
+    response.set_cookie("token", token, httponly=True, samesite="lax", max_age=43200, secure=True)
     return response

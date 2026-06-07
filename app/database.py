@@ -12,7 +12,8 @@ DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+psycopg://")
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
+    pool_pre_ping=True,   # verifica la conexion antes de usarla (evita errores por conexiones caidas)
+    pool_recycle=1800,    # recicla conexiones cada 30 min (el pooler cierra las inactivas)
 )
 SessionLocal = sessionmaker(bind=engine)
 

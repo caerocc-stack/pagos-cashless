@@ -1,6 +1,17 @@
 const API = '';
 let alumnosCache = [];
 
+// Escapa texto para insertarlo de forma segura en HTML (previene XSS)
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // --- Navegacion ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -79,8 +90,8 @@ function crearBuscador(config) {
                 : '';
             return `<div class="buscador-item" data-index="${i}" data-id="${a.id}">
                 <div>
-                    <span class="buscador-nombre">${a.apellido}, ${a.nombre}</span>
-                    <span class="buscador-detalle"> - ${a.legajo} - ${a.curso}</span>
+                    <span class="buscador-nombre">${escapeHtml(a.apellido)}, ${escapeHtml(a.nombre)}</span>
+                    <span class="buscador-detalle"> - ${escapeHtml(a.legajo)} - ${escapeHtml(a.curso)}</span>
                 </div>
                 ${saldoHtml}
             </div>`;
@@ -226,17 +237,17 @@ function renderAlumnos(lista) {
         const saldo = Number(a.saldo);
         const clsSaldo = saldo > 0 ? 'saldo-positivo' : 'saldo-cero';
         return `<tr>
-            <td>${a.legajo}</td>
-            <td>${a.dni}</td>
-            <td>${a.apellido}</td>
-            <td>${a.nombre}</td>
-            <td>${a.curso}</td>
-            <td>${a.area || '-'}${a.cuota_excluir ? ' 🚫' : ''}</td>
+            <td>${escapeHtml(a.legajo)}</td>
+            <td>${escapeHtml(a.dni)}</td>
+            <td>${escapeHtml(a.apellido)}</td>
+            <td>${escapeHtml(a.nombre)}</td>
+            <td>${escapeHtml(a.curso)}</td>
+            <td>${escapeHtml(a.area || '-')}${a.cuota_excluir ? ' 🚫' : ''}</td>
             <td class="${clsSaldo}">$${saldo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
                 <button class="btn btn-sm" onclick="editarAlumno(${a.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarAlumno(${a.id}, '${a.apellido}, ${a.nombre}')">Eliminar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarAlumno(${a.id})">Eliminar</button>
             </td>
         </tr>`;
     }).join('');
@@ -325,7 +336,9 @@ async function guardarAlumno(e) {
     }
 }
 
-async function eliminarAlumno(id, nombre) {
+async function eliminarAlumno(id) {
+    const a = alumnosCache.find(x => x.id === id);
+    const nombre = a ? `${a.apellido}, ${a.nombre}` : 'este alumno';
     if (!confirm(`ATENCION: Vas a eliminar al alumno "${nombre}" y todos sus datos (tarjetas, saldo, movimientos).\n\nEsta accion no se puede deshacer. ¿Continuar?`)) return;
     if (!confirm(`¿Estas SEGURO de eliminar a "${nombre}"?`)) return;
     try {
@@ -343,9 +356,9 @@ async function verAlumno(id) {
         const movs = await api(`/api/operaciones/historial/${id}?limite=10`);
         const tarjetas = await api(`/api/tarjetas/alumno/${id}`);
 
-        let html = `<h3>${a.apellido}, ${a.nombre}</h3>
-            <p><strong>Legajo:</strong> ${a.legajo} | <strong>DNI:</strong> ${a.dni} | <strong>Curso:</strong> ${a.curso}</p>
-            <p><strong>Área:</strong> ${a.area || '-'} | <strong>Email:</strong> ${a.email || '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${a.codigo_siro || '-'}</p>
+        let html = `<h3>${escapeHtml(a.apellido)}, ${escapeHtml(a.nombre)}</h3>
+            <p><strong>Legajo:</strong> ${escapeHtml(a.legajo)} | <strong>DNI:</strong> ${escapeHtml(a.dni)} | <strong>Curso:</strong> ${escapeHtml(a.curso)}</p>
+            <p><strong>Área:</strong> ${escapeHtml(a.area || '-')} | <strong>Email:</strong> ${a.email ? escapeHtml(a.email) : '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${escapeHtml(a.codigo_siro || '-')}</p>
             <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:#a01e22">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
             <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
@@ -359,7 +372,7 @@ async function verAlumno(id) {
             html += '<p style="color:#94a3b8">Sin tarjetas asignadas</p>';
         } else {
             html += tarjetas.map(t =>
-                `<span class="badge ${t.activa ? 'badge-activa' : 'badge-inactiva'}">${t.uid} — ${t.activa ? 'Activa' : 'Inactiva'}</span> `
+                `<span class="badge ${t.activa ? 'badge-activa' : 'badge-inactiva'}">${escapeHtml(t.uid)} — ${t.activa ? 'Activa' : 'Inactiva'}</span> `
             ).join('');
         }
 
@@ -373,9 +386,9 @@ async function verAlumno(id) {
                 const monto = Number(m.monto);
                 return `<tr>
                     <td>${fecha}</td>
-                    <td class="tipo-${m.tipo}">${m.tipo}</td>
+                    <td class="tipo-${escapeHtml(m.tipo)}">${escapeHtml(m.tipo)}</td>
                     <td class="${monto >= 0 ? 'saldo-positivo' : ''}" style="${monto < 0 ? 'color:#ef4444' : ''}">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-                    <td>${m.descripcion || ''}</td>
+                    <td>${escapeHtml(m.descripcion || '')}</td>
                 </tr>`;
             }).join('');
             html += '</tbody></table>';
@@ -621,15 +634,15 @@ function renderMovimientos(movs) {
     document.getElementById('body-historial').innerHTML = movs.map(m => {
         const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
         const monto = Number(m.monto);
-        const alumno = m.apellido ? `${m.apellido}, ${m.nombre}` : '';
+        const alumno = m.apellido ? `${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}` : '';
         return `<tr>
             <td>${fecha}</td>
             <td>${alumno}</td>
-            <td>${m.curso || ''}</td>
-            <td class="tipo-${m.tipo}">${m.tipo}</td>
+            <td>${escapeHtml(m.curso || '')}</td>
+            <td class="tipo-${escapeHtml(m.tipo)}">${escapeHtml(m.tipo)}</td>
             <td style="color:${monto >= 0 ? '#16a34a' : '#a01e22'};font-weight:600">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-            <td>${m.descripcion || ''}</td>
-            <td>${m.operador || ''}</td>
+            <td>${escapeHtml(m.descripcion || '')}</td>
+            <td>${escapeHtml(m.operador || '')}</td>
         </tr>`;
     }).join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
 }

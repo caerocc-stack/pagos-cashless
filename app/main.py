@@ -1,12 +1,13 @@
+import os
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import text
 
 from app.database import engine, Base, SessionLocal
-from app.auth import verify_token, crear_usuario_inicial
+from app.auth import verify_token, crear_usuario_inicial, get_current_user
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config
 from app.routers import auth as auth_router
 from app.models import configuracion as _configuracion  # noqa: F401 (registra la tabla)
@@ -25,6 +26,11 @@ def _asegurar_columnas():
         "UPDATE alumnos SET area='Ciclo Basico' WHERE area IS NULL AND curso ILIKE '%ciclo%'",
         "UPDATE alumnos SET area='Avionica' WHERE area IS NULL AND curso ILIKE '%avionica%'",
         "UPDATE alumnos SET area='Mecanica' WHERE area IS NULL AND curso ILIKE '%mecanica%'",
+        # Indices para acelerar historial, reportes y envios por curso/area
+        "CREATE INDEX IF NOT EXISTS ix_mov_alumno ON movimientos (alumno_id)",
+        "CREATE INDEX IF NOT EXISTS ix_mov_fecha ON movimientos (created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_alumno_curso ON alumnos (curso)",
+        "CREATE INDEX IF NOT EXISTS ix_alumno_area ON alumnos (area)",
     ]
     for sql in migraciones:
         try:
@@ -49,12 +55,25 @@ app = FastAPI(
     version="2.0.0",
 )
 
+# CORS: solo se permiten los origenes definidos en APP_ORIGIN (separados por coma).
+# Como la interfaz se sirve desde el mismo dominio, por defecto no se permite cross-origin.
+_origenes = [o.strip() for o in os.getenv("APP_ORIGIN", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origenes,
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
+)
+
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 
 
@@ -66,16 +85,20 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = CSP
     return response
 
 
+# Endpoints de datos y operaciones: requieren sesion iniciada (proteccion global)
+_auth = [Depends(get_current_user)]
 app.include_router(auth_router.router)
-app.include_router(alumnos.router)
-app.include_router(tarjetas.router)
-app.include_router(operaciones.router)
+app.include_router(alumnos.router, dependencies=_auth)
+app.include_router(tarjetas.router, dependencies=_auth)
+app.include_router(operaciones.router, dependencies=_auth)
+app.include_router(cupones.router, dependencies=_auth)
 app.include_router(reportes.router)
 app.include_router(admin.router)
-app.include_router(cupones.router)
 app.include_router(config.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
