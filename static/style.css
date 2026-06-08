@@ -41,10 +41,12 @@
     --row-hover: #eaf3fb;
     --input-bg: #ffffff;
     --input-border: #e2e8f0;
+    color-scheme: light;
 }
 
 /* --- Modo oscuro corporativo --- */
 [data-theme="dark"] {
+    color-scheme: dark;
     --bg-grad: linear-gradient(160deg, #0d1626 0%, #111d31 50%, #0b1422 100%);
     --surface: #16223c;
     --surface-2: #1c2b48;
