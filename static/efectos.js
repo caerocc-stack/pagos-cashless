@@ -43,9 +43,9 @@
         // 3s acelera -> 5s a maxima velocidad -> 3s frena hasta detenerse -> repite
         if (window.gsap && document.getElementById('header-helice')) {
             const tl = window.gsap.timeline({ repeat: -1, repeatDelay: 0.6 });
-            tl.to('#header-helice', { rotation: '+=540', duration: 3, ease: 'power2.in' });    // acelera
-            tl.to('#header-helice', { rotation: '+=1800', duration: 5, ease: 'none' });        // maxima
-            tl.to('#header-helice', { rotation: '+=540', duration: 3, ease: 'power2.out' });   // frena
+            tl.to('#header-helice', { rotation: '+=1620', duration: 3, ease: 'power2.in' });    // acelera
+            tl.to('#header-helice', { rotation: '+=5400', duration: 5, ease: 'none' });        // maxima
+            tl.to('#header-helice', { rotation: '+=1620', duration: 3, ease: 'power2.out' });   // frena
         }
     }
 
