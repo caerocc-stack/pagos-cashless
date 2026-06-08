@@ -39,15 +39,15 @@
         // Animacion inicial
         setTimeout(animarSeccion, 100);
 
-        // Parallax suave del logo del header siguiendo el mouse
-        if (window.gsap) {
-            document.addEventListener('mousemove', function (e) {
-                const x = e.clientX / window.innerWidth - 0.5;
-                const y = e.clientY / window.innerHeight - 0.5;
-                window.gsap.to('.header-logo', {
-                    x: x * 12, y: y * 7, rotation: x * 10,
-                    duration: 0.6, ease: 'power2.out',
-                });
+        // Motor del header: la helice gira en bucle (arranca suave, sube a maxima,
+        // frena suave y vuelve a empezar)
+        if (window.gsap && document.getElementById('header-helice')) {
+            window.gsap.to('#header-helice', {
+                rotation: '+=1080',     // 3 vueltas por ciclo
+                duration: 2.6,
+                ease: 'power2.inOut',   // acelera y desacelera suave
+                repeat: -1,             // bucle infinito
+                repeatDelay: 0.35,      // breve pausa al detenerse antes de rearrancar
             });
         }
     }
