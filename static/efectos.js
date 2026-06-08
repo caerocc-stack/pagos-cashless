@@ -39,16 +39,13 @@
         // Animacion inicial
         setTimeout(animarSeccion, 100);
 
-        // Motor del header: la helice gira en bucle (arranca suave, sube a maxima,
-        // frena suave y vuelve a empezar)
+        // Motor del header: la helice gira en bucle en 3 fases
+        // 3s acelera -> 5s a maxima velocidad -> 3s frena hasta detenerse -> repite
         if (window.gsap && document.getElementById('header-helice')) {
-            window.gsap.to('#header-helice', {
-                rotation: '+=1080',     // 3 vueltas por ciclo
-                duration: 2.6,
-                ease: 'power2.inOut',   // acelera y desacelera suave
-                repeat: -1,             // bucle infinito
-                repeatDelay: 0.35,      // breve pausa al detenerse antes de rearrancar
-            });
+            const tl = window.gsap.timeline({ repeat: -1, repeatDelay: 0.6 });
+            tl.to('#header-helice', { rotation: '+=540', duration: 3, ease: 'power2.in' });    // acelera
+            tl.to('#header-helice', { rotation: '+=1800', duration: 5, ease: 'none' });        // maxima
+            tl.to('#header-helice', { rotation: '+=540', duration: 3, ease: 'power2.out' });   // frena
         }
     }
 
