@@ -2,28 +2,15 @@
 //  Efectos visuales: tilt 3D en botones de accion + parallax (GSAP)
 // ===================================================================
 
-// --- Efecto 3D (tilt) en botones .btn-3d, con delegacion (sirve para botones dinamicos) ---
+// --- Botones .btn-3d: destello al hacer click (la presion 3D la hace el CSS con :active) ---
 (function () {
-    let actual = null;
-
-    document.addEventListener('mousemove', function (e) {
+    document.addEventListener('click', function (e) {
         const btn = e.target.closest ? e.target.closest('.btn-3d') : null;
-        if (btn) {
-            const r = btn.getBoundingClientRect();
-            const px = (e.clientX - r.left) / r.width - 0.5;
-            const py = (e.clientY - r.top) / r.height - 0.5;
-            btn.style.transform =
-                `perspective(600px) rotateY(${px * 12}deg) rotateX(${-py * 12}deg) translateY(-2px) scale(1.02)`;
-            actual = btn;
-        } else if (actual) {
-            actual.style.transform = '';
-            actual = null;
-        }
-    });
-
-    document.addEventListener('mousedown', function (e) {
-        const btn = e.target.closest ? e.target.closest('.btn-3d') : null;
-        if (btn) btn.style.transform += ' scale(0.97)';
+        if (!btn) return;
+        btn.classList.remove('pulse');
+        void btn.offsetWidth;   // reinicia la animacion
+        btn.classList.add('pulse');
+        setTimeout(() => btn.classList.remove('pulse'), 520);
     });
 })();
 

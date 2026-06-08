@@ -76,6 +76,12 @@ async function cargarReportes() {
         inpHasta.value = hoy.toISOString().slice(0, 10);
         inpDesde.value = hace30.toISOString().slice(0, 10);
     }
+    // Colores de los graficos segun el tema (claro/oscuro)
+    if (window.Chart) {
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        Chart.defaults.color = dark ? '#9fb2c9' : '#5b6b80';
+        Chart.defaults.borderColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    }
     const q = paramsFecha();
     try {
         const [resumen, porCurso, diario, topAlumnos] = await Promise.all([

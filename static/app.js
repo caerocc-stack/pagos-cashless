@@ -1202,7 +1202,25 @@ async function guardarPassword() {
     }
 }
 
+// --- TEMA CLARO / OSCURO ---
+function aplicarTema(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('tema', t); } catch (e) {}
+    const b = document.getElementById('btn-tema');
+    if (b) b.textContent = t === 'dark' ? '☀️' : '🌙';
+}
+function toggleTema() {
+    const actual = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    aplicarTema(actual === 'dark' ? 'light' : 'dark');
+    // Si estamos en Reportes, redibujar los graficos con los colores del tema
+    if (document.getElementById('sec-reportes').classList.contains('active') &&
+        typeof cargarReportes === 'function') {
+        cargarReportes();
+    }
+}
+
 // --- INIT ---
+aplicarTema(localStorage.getItem('tema') || 'light');
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();
