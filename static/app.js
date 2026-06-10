@@ -198,6 +198,7 @@ async function cargarAlumnos() {
     poblarFiltroCursos();
     poblarCursosCuota();
     filtrarAlumnos();
+    if (typeof dashKPIs === 'function') dashKPIs();
 }
 
 function poblarFiltroCursos() {
@@ -1096,6 +1097,7 @@ async function cargarUsuario() {
         const user = await api('/api/auth/me');
         usuarioActual = user;
         document.getElementById('user-nombre').textContent = user.nombre;
+        if (typeof dashSaludoYFecha === 'function') dashSaludoYFecha();
     } catch {
         document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
         window.location.href = '/login';
@@ -1202,6 +1204,75 @@ async function guardarPassword() {
     }
 }
 
+// =========================================================
+// --- DASHBOARD DE INICIO ---
+// =========================================================
+function dashIr(seccion, callback) {
+    const btn = document.querySelector(`.nav-btn[data-section="${seccion}"]`);
+    if (btn) btn.click();
+    if (callback === true && seccion === 'reportes' && typeof cargarReportes === 'function') {
+        cargarReportes();
+    }
+}
+
+function dashProx(nombre) {
+    toast(`"${nombre}" estará disponible próximamente. Lo activamos en la siguiente fase.`, 'success');
+}
+
+function dashSaludoYFecha() {
+    const u = usuarioActual || {};
+    const nombre = (u.nombre || 'Hola').split(' ')[0];
+    const hora = new Date().getHours();
+    const saludo = hora < 13 ? 'Buen día' : (hora < 20 ? 'Buenas tardes' : 'Buenas noches');
+    const sal = document.getElementById('dash-saludo');
+    if (sal) sal.textContent = `${saludo}, ${nombre} 👋`;
+    const fecha = document.getElementById('dash-fecha');
+    if (fecha) {
+        fecha.textContent = new Date().toLocaleDateString('es-AR', {
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        });
+    }
+}
+
+async function dashKPIs() {
+    const grid = document.getElementById('dash-kpis');
+    if (!grid) return;
+    const total = alumnosCache.length;
+    const conSaldo = alumnosCache.filter(a => Number(a.saldo) > 0).length;
+    const saldoTotal = alumnosCache.reduce((s, a) => s + Number(a.saldo || 0), 0);
+    let movsHoy = 0;
+    try {
+        const hoy = await api('/api/operaciones/diario');
+        movsHoy = hoy.length;
+    } catch (e) { /* sin sesion o sin datos */ }
+    const fmt = n => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    grid.innerHTML = `
+        <div class="dash-kpi"><div class="dash-kpi-label">Saldo total en tarjetas</div>
+            <div class="dash-kpi-valor">$${fmt(saldoTotal)}</div>
+            <div class="dash-kpi-sub">${conSaldo} alumnos con saldo</div></div>
+        <div class="dash-kpi"><div class="dash-kpi-label">Alumnos registrados</div>
+            <div class="dash-kpi-valor">${fmt(total)}</div>
+            <div class="dash-kpi-sub">en el padrón</div></div>
+        <div class="dash-kpi"><div class="dash-kpi-label">Movimientos de hoy</div>
+            <div class="dash-kpi-valor">${fmt(movsHoy)}</div>
+            <div class="dash-kpi-sub">operaciones</div></div>
+        <div class="dash-kpi"><div class="dash-kpi-label">Estado del sistema</div>
+            <div class="dash-kpi-valor" style="color:var(--green)">●  En línea</div>
+            <div class="dash-kpi-sub">conectado a la base</div></div>`;
+}
+
+function dashBuscador() {
+    const inp = document.getElementById('dash-buscar');
+    if (!inp) return;
+    inp.addEventListener('input', () => {
+        const q = inp.value.trim().toLowerCase();
+        document.querySelectorAll('.dash-card').forEach(c => {
+            const txt = ((c.dataset.tags || '') + ' ' + c.innerText).toLowerCase();
+            c.classList.toggle('dash-oculta', q && !txt.includes(q));
+        });
+    });
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1221,6 +1292,8 @@ function toggleTema() {
 
 // --- INIT ---
 aplicarTema(localStorage.getItem('tema') || 'light');
+dashSaludoYFecha();
+dashBuscador();
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();

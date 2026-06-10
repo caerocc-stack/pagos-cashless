@@ -730,3 +730,103 @@ tbody tr:hover td { background: var(--row-hover); }
 
 /* Toggle de tema en el header */
 #btn-tema { font-size: 1rem; padding: 0.35rem 0.7rem; }
+
+/* ===================================================================
+   DASHBOARD DE INICIO
+   =================================================================== */
+.dash-hero {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1.25rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+}
+.dash-saludo { font-size: 1.7rem; font-weight: 800; color: var(--heading); letter-spacing: -0.02em; }
+.dash-fecha { color: var(--text-muted); font-size: 0.92rem; text-transform: capitalize; margin-top: 0.15rem; }
+.dash-search { flex: 1; max-width: 360px; min-width: 220px; }
+.dash-search input {
+    width: 100%; padding: 0.7rem 1rem;
+    border: 1px solid var(--input-border); border-radius: 12px;
+    background: var(--input-bg); color: var(--text);
+    font-size: 0.95rem;
+}
+.dash-search input:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 3px rgba(61,127,196,0.15); }
+
+.dash-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.85rem; margin-bottom: 1.75rem;
+}
+.dash-kpi {
+    background: var(--surface); border-radius: 12px; padding: 1rem 1.1rem;
+    border: 1px solid var(--border); position: relative; overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+.dash-kpi-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+.dash-kpi-valor { font-size: 1.5rem; font-weight: 800; color: var(--heading); margin-top: 0.25rem; }
+.dash-kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+.dash-grupo-tit {
+    font-size: 0.95rem; font-weight: 700;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 0.5rem 0 0.85rem;
+    display: flex; align-items: center; gap: 0.6rem;
+}
+.dash-grupo-tit::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem; margin-bottom: 1.75rem;
+}
+.dash-card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.25rem 1.1rem 1rem;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    overflow: hidden;
+}
+.dash-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--accent, var(--sky)); transition: width 0.2s ease;
+}
+.dash-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(21,35,59,0.18);
+    border-color: var(--accent, var(--sky));
+}
+.dash-card:hover::before { width: 6px; }
+.dash-card[data-color="red"]    { --accent: var(--red); }
+.dash-card[data-color="sky"]    { --accent: var(--sky); }
+.dash-card[data-color="green"]  { --accent: var(--green); }
+.dash-card[data-color="amber"]  { --accent: var(--amber); }
+.dash-card[data-color="purple"] { --accent: #8b5cf6; }
+
+.dash-icon {
+    width: 50px; height: 50px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.65rem;
+    background: color-mix(in srgb, var(--accent, var(--sky)) 14%, transparent);
+    margin-bottom: 0.85rem;
+}
+.dash-nombre { font-size: 1.08rem; font-weight: 700; color: var(--heading); margin-bottom: 0.25rem; }
+.dash-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.85rem; min-height: 2.4em; }
+.dash-badge {
+    display: inline-block;
+    padding: 0.22rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700;
+    background: var(--surface-2); color: var(--text-muted);
+    border: 1px solid var(--border);
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.dash-badge-on { background: rgba(22,163,74,0.14); color: var(--green); border-color: rgba(22,163,74,0.35); }
+.dash-card.dash-soon { opacity: 0.78; }
+.dash-card.dash-soon .dash-icon { filter: grayscale(0.25); }
+.dash-card.dash-oculta { display: none; }
+
+@media (max-width: 640px) {
+    .dash-hero { flex-direction: column; align-items: stretch; }
+    .dash-search { max-width: 100%; }
+}

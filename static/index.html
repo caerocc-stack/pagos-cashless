@@ -24,7 +24,8 @@
             </div>
         </div>
         <nav>
-            <button class="nav-btn active" data-section="cobrar">Cobrar</button>
+            <button class="nav-btn active" data-section="inicio">Inicio</button>
+            <button class="nav-btn" data-section="cobrar">Cobrar</button>
             <button class="nav-btn" data-section="alumnos">Alumnos</button>
             <button class="nav-btn" data-section="operaciones">Operaciones</button>
             <button class="nav-btn" data-section="tarjetas">Tarjetas</button>
@@ -40,8 +41,123 @@
     </header>
 
     <main>
+        <!-- INICIO (Dashboard) -->
+        <section id="sec-inicio" class="section active">
+            <div class="dash-hero">
+                <div>
+                    <div class="dash-saludo" id="dash-saludo">Hola</div>
+                    <div class="dash-fecha" id="dash-fecha"></div>
+                </div>
+                <div class="dash-search">
+                    <input type="text" id="dash-buscar" placeholder="🔎 Buscar módulo..." autocomplete="off">
+                </div>
+            </div>
+
+            <div class="dash-kpis" id="dash-kpis"></div>
+
+            <div class="dash-grupo-tit">🎓 Alumnos y cobros</div>
+            <div class="dash-grid" data-grupo="alumnos">
+                <div class="dash-card" data-color="red" data-tags="cobrar venta fotocopia" onclick="dashIr('cobrar')">
+                    <div class="dash-icon">💳</div>
+                    <div class="dash-nombre">Cobrar</div>
+                    <div class="dash-desc">Cobro con tarjeta en los puntos de venta</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card" data-color="sky" data-tags="alumnos padron lista" onclick="dashIr('alumnos')">
+                    <div class="dash-icon">👥</div>
+                    <div class="dash-nombre">Alumnos</div>
+                    <div class="dash-desc">Padrón completo de alumnos y datos</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card" data-color="green" data-tags="tarjetas rfid emitir" onclick="dashIr('tarjetas')">
+                    <div class="dash-icon">🎫</div>
+                    <div class="dash-nombre">Tarjetas</div>
+                    <div class="dash-desc">Emitir, consultar y desactivar tarjetas</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card" data-color="amber" data-tags="operaciones recarga reintegro transferencia cupon" onclick="dashIr('operaciones')">
+                    <div class="dash-icon">💸</div>
+                    <div class="dash-nombre">Operaciones y Cupones</div>
+                    <div class="dash-desc">Recargas, reintegros, transferencias y envío de cupones</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card dash-soon" data-color="purple" data-tags="cuotas cuenta corriente deuda" onclick="dashProx('Cuenta corriente de cuotas')">
+                    <div class="dash-icon">📋</div>
+                    <div class="dash-nombre">Cuenta corriente</div>
+                    <div class="dash-desc">Estado de deuda y pagos de cuotas por alumno</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+            </div>
+
+            <div class="dash-grupo-tit">💰 Administración financiera</div>
+            <div class="dash-grid" data-grupo="finanzas">
+                <div class="dash-card dash-soon" data-color="green" data-tags="caja efectivo ingreso egreso saldo" onclick="dashProx('Libro de Caja')">
+                    <div class="dash-icon">📒</div>
+                    <div class="dash-nombre">Libro de Caja</div>
+                    <div class="dash-desc">Ingresos y egresos en efectivo, saldo en tiempo real</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+                <div class="dash-card dash-soon" data-color="red" data-tags="gastos facturas" onclick="dashProx('Gastos')">
+                    <div class="dash-icon">🧾</div>
+                    <div class="dash-nombre">Gastos</div>
+                    <div class="dash-desc">Registro de gastos con concepto, fecha y destino</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+                <div class="dash-card dash-soon" data-color="sky" data-tags="proveedores razon social cuit" onclick="dashProx('Proveedores')">
+                    <div class="dash-icon">🏢</div>
+                    <div class="dash-nombre">Proveedores</div>
+                    <div class="dash-desc">Base de proveedores con datos, contacto y rubro</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+                <div class="dash-card dash-soon" data-color="amber" data-tags="facturas pdf imagenes" onclick="dashProx('Facturas')">
+                    <div class="dash-icon">📑</div>
+                    <div class="dash-nombre">Facturas</div>
+                    <div class="dash-desc">PDFs y fotos de respaldo de cada compra</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+                <div class="dash-card dash-soon" data-color="purple" data-tags="banco roela conciliacion transferencia" onclick="dashProx('Conciliación bancaria')">
+                    <div class="dash-icon">🏦</div>
+                    <div class="dash-nombre">Conciliación bancaria</div>
+                    <div class="dash-desc">Cruce con movimientos de Banco Roela</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+            </div>
+
+            <div class="dash-grupo-tit">👤 Personal</div>
+            <div class="dash-grid" data-grupo="personal">
+                <div class="dash-card dash-soon" data-color="sky" data-tags="horario fichar ingreso egreso horas extras administrativa" onclick="dashProx('Control horario')">
+                    <div class="dash-icon">⏰</div>
+                    <div class="dash-nombre">Control horario</div>
+                    <div class="dash-desc">Ingreso, egreso, horas extras y liquidación mensual</div>
+                    <div class="dash-badge">Próximamente</div>
+                </div>
+            </div>
+
+            <div class="dash-grupo-tit">📊 Análisis y herramientas</div>
+            <div class="dash-grid" data-grupo="analisis">
+                <div class="dash-card" data-color="sky" data-tags="reportes estadisticas graficos kpi" onclick="dashIr('reportes', true)">
+                    <div class="dash-icon">📈</div>
+                    <div class="dash-nombre">Reportes</div>
+                    <div class="dash-desc">Indicadores, gráficos y exportación a Excel/PDF</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card" data-color="green" data-tags="importar excel padron" onclick="dashIr('importar')">
+                    <div class="dash-icon">📥</div>
+                    <div class="dash-nombre">Importar Excel</div>
+                    <div class="dash-desc">Carga masiva de alumnos desde planilla</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+                <div class="dash-card" data-color="amber" data-tags="mi cuenta clave email" onclick="abrirMiCuenta()">
+                    <div class="dash-icon">⚙️</div>
+                    <div class="dash-nombre">Mi cuenta</div>
+                    <div class="dash-desc">Datos del usuario, contraseña y prueba de email</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
+                </div>
+            </div>
+        </section>
+
         <!-- COBRAR -->
-        <section id="sec-cobrar" class="section active">
+        <section id="sec-cobrar" class="section">
             <div class="cobro-layout">
                 <div class="cobro-panel-izq">
                     <div class="card cobro-card-tarjeta">
