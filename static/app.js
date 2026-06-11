@@ -1381,6 +1381,267 @@ async function eliminarProveedor(id) {
     }
 }
 
+// =========================================================
+// --- GASTOS ---
+// =========================================================
+let gastosCache = [];
+let gastosMeta = null;
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function gastoFmt(n) {
+    return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function gastoOpts(sel, valores, conVacio) {
+    const el = document.getElementById(sel);
+    if (!el) return;
+    const previo = el.value;
+    el.innerHTML = (conVacio ? `<option value="">${conVacio}</option>` : '') +
+        valores.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (previo) el.value = previo;
+}
+
+async function cargarGastosMeta() {
+    if (gastosMeta) return;
+    gastosMeta = await api('/api/gastos/meta');
+    // Filtros
+    gastoOpts('gasto-f-categoria', gastosMeta.categorias, 'Todas las categorías');
+    // Formulario
+    gastoOpts('gasto-tipo', gastosMeta.tipos_comprobante, '— tipo —');
+    gastoOpts('gasto-categoria', gastosMeta.categorias, '— elegir —');
+    gastoOpts('gasto-forma', gastosMeta.formas_pago, '— elegir —');
+    // Filtro de mes
+    const fmes = document.getElementById('gasto-f-mes');
+    fmes.innerHTML = '<option value="">Todo el año</option>' +
+        MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+    // Filtro de año (año actual y 3 anteriores)
+    const hoy = new Date().getFullYear();
+    const fanio = document.getElementById('gasto-f-anio');
+    fanio.innerHTML = '<option value="">Todos los años</option>' +
+        [0, 1, 2, 3].map(d => `<option value="${hoy - d}">${hoy - d}</option>`).join('');
+    fanio.value = String(hoy);
+}
+
+async function cargarGastos() {
+    try {
+        await cargarGastosMeta();
+        if (!proveedoresCache.length) { try { proveedoresCache = await api('/api/proveedores/'); } catch (e) {} }
+        const cat = document.getElementById('gasto-f-categoria').value;
+        const mes = document.getElementById('gasto-f-mes').value;
+        const anio = document.getElementById('gasto-f-anio').value;
+        const p = new URLSearchParams();
+        if (cat) p.set('categoria', cat);
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        gastosCache = await api('/api/gastos/?' + p.toString());
+        filtrarGastos();
+        cargarResumenGastos(mes, anio);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function cargarResumenGastos(mes, anio) {
+    try {
+        const p = new URLSearchParams();
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        const r = await api('/api/gastos/resumen?' + p.toString());
+        const cont = document.getElementById('gasto-resumen');
+        const cats = (r.por_categoria || []).map(c =>
+            `<div class="gasto-kpi"><div class="gasto-kpi-label">${escapeHtml(c.categoria)}</div>
+                <div class="gasto-kpi-valor">$${gastoFmt(c.total)}</div>
+                <div class="gasto-kpi-sub">${c.cantidad} comprob.</div></div>`).join('');
+        cont.innerHTML =
+            `<div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total del período</div>
+                <div class="gasto-kpi-valor">$${gastoFmt(r.total)}</div>
+                <div class="gasto-kpi-sub">${r.cantidad} comprobantes</div></div>` + cats;
+    } catch (err) { /* sin datos */ }
+}
+
+function filtrarGastos() {
+    const q = (document.getElementById('buscar-gasto').value || '').toLowerCase();
+    const lista = gastosCache.filter(g => !q ||
+        [g.razon_social, g.cuit, g.concepto, g.rubro, g.destino, g.numero]
+            .some(v => (v || '').toLowerCase().includes(q)));
+    renderGastos(lista);
+}
+
+function renderGastos(lista) {
+    document.getElementById('body-gastos').innerHTML = lista.map(g => {
+        const neg = Number(g.importe) < 0;
+        const fecha = g.fecha ? g.fecha.split('-').reverse().join('/') : '-';
+        const nc = g.nc_de_id ? ' <span class="tag-nc">NC</span>' : '';
+        return `<tr>
+            <td>${fecha}</td>
+            <td>${escapeHtml(g.razon_social || '-')}${nc}</td>
+            <td>${escapeHtml(g.concepto || '-')}</td>
+            <td>${escapeHtml(g.categoria || '-')}</td>
+            <td>${escapeHtml(g.forma_pago || '-')}</td>
+            <td style="text-align:right;${neg ? 'color:var(--red)' : ''}">$${gastoFmt(g.importe)}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editarGasto(${g.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarGasto(${g.id})">Eliminar</button>
+            </td>
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin gastos en este período</td></tr>';
+}
+
+function gastoLlenarProveedores() {
+    const sel = document.getElementById('gasto-proveedor');
+    const previo = sel.value;
+    const lista = (proveedoresCache || []).slice().sort((a, b) =>
+        (a.razon_social || '').localeCompare(b.razon_social || ''));
+    sel.innerHTML = '<option value="">— sin proveedor / cargar a mano —</option>' +
+        lista.map(p => `<option value="${p.id}">${escapeHtml(p.razon_social)}${p.cuit ? ' (' + escapeHtml(p.cuit) + ')' : ''}</option>`).join('');
+    if (previo) sel.value = previo;
+}
+
+function gastoProveedorElegido() {
+    const id = Number(document.getElementById('gasto-proveedor').value);
+    const p = (proveedoresCache || []).find(x => x.id === id);
+    if (p) {
+        document.getElementById('gasto-razon').value = p.razon_social || '';
+        document.getElementById('gasto-cuit').value = p.cuit || '';
+    }
+    gastoLlenarNCde();
+}
+
+function gastoToggleNC() {
+    const on = document.getElementById('gasto-es-nc').checked;
+    document.getElementById('gasto-nc-wrap').style.display = on ? 'block' : 'none';
+    if (on) {
+        document.getElementById('gasto-tipo').value = 'Nota de Crédito';
+        gastoLlenarNCde();
+    }
+}
+
+function gastoLlenarNCde() {
+    const sel = document.getElementById('gasto-nc-de');
+    if (!sel) return;
+    const cuit = (document.getElementById('gasto-cuit').value || '').replace(/\D/g, '');
+    const editId = Number(document.getElementById('gasto-edit-id').value) || 0;
+    const facturas = gastosCache.filter(g =>
+        g.id !== editId && Number(g.importe) >= 0 &&
+        (!cuit || (g.cuit || '').replace(/\D/g, '') === cuit));
+    sel.innerHTML = '<option value="">— seleccionar factura del proveedor —</option>' +
+        facturas.map(g => {
+            const f = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
+            const nro = [g.punto_venta, g.numero].filter(Boolean).join('-');
+            return `<option value="${g.id}">${f} · ${nro || 's/n'} · $${gastoFmt(g.importe)} · ${escapeHtml(g.concepto || '')}</option>`;
+        }).join('');
+}
+
+function mostrarFormGasto() {
+    document.getElementById('form-gasto').style.display = 'block';
+    document.getElementById('form-gasto-titulo').textContent = 'Nuevo Gasto';
+    document.getElementById('gasto-edit-id').value = '';
+    ['gasto-pv', 'gasto-numero', 'gasto-razon', 'gasto-cuit', 'gasto-importe',
+        'gasto-rubro', 'gasto-concepto', 'gasto-destino', 'gasto-adjunto',
+        'gasto-fecha-pago', 'gasto-notas'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('gasto-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('gasto-tipo').value = '';
+    document.getElementById('gasto-categoria').value = '';
+    document.getElementById('gasto-forma').value = '';
+    document.getElementById('gasto-proveedor').value = '';
+    document.getElementById('gasto-es-nc').checked = false;
+    document.getElementById('gasto-nc-wrap').style.display = 'none';
+    gastoLlenarProveedores();
+    document.getElementById('form-gasto').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cerrarFormGasto() {
+    document.getElementById('form-gasto').style.display = 'none';
+}
+
+function editarGasto(id) {
+    const g = gastosCache.find(x => x.id === id);
+    if (!g) return;
+    gastoLlenarProveedores();
+    document.getElementById('form-gasto').style.display = 'block';
+    document.getElementById('form-gasto-titulo').textContent = 'Editar Gasto';
+    document.getElementById('gasto-edit-id').value = id;
+    document.getElementById('gasto-fecha').value = g.fecha || '';
+    document.getElementById('gasto-tipo').value = g.tipo_comprobante || '';
+    document.getElementById('gasto-pv').value = g.punto_venta || '';
+    document.getElementById('gasto-numero').value = g.numero || '';
+    document.getElementById('gasto-proveedor').value = g.proveedor_id || '';
+    document.getElementById('gasto-razon').value = g.razon_social || '';
+    document.getElementById('gasto-cuit').value = g.cuit || '';
+    document.getElementById('gasto-importe').value = g.importe;
+    document.getElementById('gasto-categoria').value = g.categoria || '';
+    document.getElementById('gasto-rubro').value = g.rubro || '';
+    document.getElementById('gasto-forma').value = g.forma_pago || '';
+    document.getElementById('gasto-fecha-pago').value = g.fecha_pago || '';
+    document.getElementById('gasto-concepto').value = g.concepto || '';
+    document.getElementById('gasto-destino').value = g.destino || '';
+    document.getElementById('gasto-adjunto').value = g.adjunto_url || '';
+    document.getElementById('gasto-notas').value = g.notas || '';
+    const esNC = !!g.nc_de_id;
+    document.getElementById('gasto-es-nc').checked = esNC;
+    document.getElementById('gasto-nc-wrap').style.display = esNC ? 'block' : 'none';
+    if (esNC) { gastoLlenarNCde(); document.getElementById('gasto-nc-de').value = g.nc_de_id; }
+    document.getElementById('form-gasto').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function guardarGasto(e) {
+    e.preventDefault();
+    const editId = document.getElementById('gasto-edit-id').value;
+    const esNC = document.getElementById('gasto-es-nc').checked;
+    let importe = parseFloat(document.getElementById('gasto-importe').value);
+    if (isNaN(importe)) { toast('Ingresá el importe', 'error'); return; }
+    // Una nota de crédito siempre se guarda en negativo
+    if (esNC) importe = -Math.abs(importe);
+    const ncDe = document.getElementById('gasto-nc-de').value;
+    const provId = document.getElementById('gasto-proveedor').value;
+    const body = {
+        fecha: document.getElementById('gasto-fecha').value,
+        tipo_comprobante: document.getElementById('gasto-tipo').value || null,
+        punto_venta: document.getElementById('gasto-pv').value || null,
+        numero: document.getElementById('gasto-numero').value || null,
+        proveedor_id: provId ? Number(provId) : null,
+        razon_social: document.getElementById('gasto-razon').value || null,
+        cuit: document.getElementById('gasto-cuit').value || null,
+        importe: importe,
+        concepto: document.getElementById('gasto-concepto').value || null,
+        rubro: document.getElementById('gasto-rubro').value || null,
+        categoria: document.getElementById('gasto-categoria').value || null,
+        destino: document.getElementById('gasto-destino').value || null,
+        forma_pago: document.getElementById('gasto-forma').value || null,
+        fecha_pago: document.getElementById('gasto-fecha-pago').value || null,
+        adjunto_url: document.getElementById('gasto-adjunto').value || null,
+        nc_de_id: (esNC && ncDe) ? Number(ncDe) : null,
+        notas: document.getElementById('gasto-notas').value || null,
+    };
+    try {
+        if (editId) {
+            await api(`/api/gastos/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+            toast('Gasto actualizado');
+        } else {
+            await api('/api/gastos/', { method: 'POST', body: JSON.stringify(body) });
+            toast('Gasto registrado');
+        }
+        cerrarFormGasto();
+        cargarGastos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarGasto(id) {
+    const g = gastosCache.find(x => x.id === id);
+    if (!confirm(`¿Eliminar este gasto${g && g.razon_social ? ' de ' + g.razon_social : ''}?`)) return;
+    try {
+        const res = await api(`/api/gastos/${id}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        cargarGastos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1404,6 +1665,8 @@ dashSaludoYFecha();
 dashBuscador();
 const _bp = document.getElementById('buscar-proveedor');
 if (_bp) _bp.addEventListener('input', filtrarProveedores);
+const _bg = document.getElementById('buscar-gasto');
+if (_bg) _bg.addEventListener('input', filtrarGastos);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();
