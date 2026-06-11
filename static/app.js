@@ -1273,6 +1273,114 @@ function dashBuscador() {
     });
 }
 
+// =========================================================
+// --- PROVEEDORES ---
+// =========================================================
+let proveedoresCache = [];
+
+async function cargarProveedores() {
+    try {
+        proveedoresCache = await api('/api/proveedores/');
+        filtrarProveedores();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+function filtrarProveedores() {
+    const q = (document.getElementById('buscar-proveedor').value || '').toLowerCase();
+    const lista = proveedoresCache.filter(p => !q ||
+        [p.razon_social, p.nombre_fantasia, p.cuit, p.rubro].some(v => (v || '').toLowerCase().includes(q)));
+    renderProveedores(lista);
+}
+
+function renderProveedores(lista) {
+    document.getElementById('body-proveedores').innerHTML = lista.map(p => `
+        <tr>
+            <td>${escapeHtml(p.cuit)}</td>
+            <td>${escapeHtml(p.razon_social)}</td>
+            <td>${escapeHtml(p.nombre_fantasia || '-')}</td>
+            <td>${escapeHtml(p.rubro || '-')}</td>
+            <td>${escapeHtml(p.contacto || p.telefono || '-')}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editarProveedor(${p.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarProveedor(${p.id})">Eliminar</button>
+            </td>
+        </tr>`).join('') ||
+        '<tr><td colspan="6" style="text-align:center;color:#94a3b8">Sin proveedores</td></tr>';
+}
+
+function mostrarFormProveedor() {
+    document.getElementById('form-proveedor').style.display = 'block';
+    document.getElementById('form-proveedor-titulo').textContent = 'Nuevo Proveedor';
+    document.getElementById('prov-edit-id').value = '';
+    ['prov-cuit', 'prov-razon', 'prov-fantasia', 'prov-rubro', 'prov-contacto',
+        'prov-telefono', 'prov-email', 'prov-cbu', 'prov-notas'].forEach(id =>
+        document.getElementById(id).value = '');
+}
+
+function cerrarFormProveedor() {
+    document.getElementById('form-proveedor').style.display = 'none';
+}
+
+function editarProveedor(id) {
+    const p = proveedoresCache.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('form-proveedor').style.display = 'block';
+    document.getElementById('form-proveedor-titulo').textContent = 'Editar Proveedor';
+    document.getElementById('prov-edit-id').value = id;
+    document.getElementById('prov-cuit').value = p.cuit || '';
+    document.getElementById('prov-razon').value = p.razon_social || '';
+    document.getElementById('prov-fantasia').value = p.nombre_fantasia || '';
+    document.getElementById('prov-rubro').value = p.rubro || '';
+    document.getElementById('prov-contacto').value = p.contacto || '';
+    document.getElementById('prov-telefono').value = p.telefono || '';
+    document.getElementById('prov-email').value = p.email || '';
+    document.getElementById('prov-cbu').value = p.cbu || '';
+    document.getElementById('prov-notas').value = p.notas || '';
+}
+
+async function guardarProveedor(e) {
+    e.preventDefault();
+    const editId = document.getElementById('prov-edit-id').value;
+    const body = {
+        cuit: document.getElementById('prov-cuit').value,
+        razon_social: document.getElementById('prov-razon').value,
+        nombre_fantasia: document.getElementById('prov-fantasia').value || null,
+        rubro: document.getElementById('prov-rubro').value || null,
+        contacto: document.getElementById('prov-contacto').value || null,
+        telefono: document.getElementById('prov-telefono').value || null,
+        email: document.getElementById('prov-email').value || null,
+        cbu: document.getElementById('prov-cbu').value || null,
+        notas: document.getElementById('prov-notas').value || null,
+    };
+    try {
+        if (editId) {
+            await api(`/api/proveedores/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+            toast('Proveedor actualizado');
+        } else {
+            await api('/api/proveedores/', { method: 'POST', body: JSON.stringify(body) });
+            toast('Proveedor creado');
+        }
+        cerrarFormProveedor();
+        cargarProveedores();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarProveedor(id) {
+    const p = proveedoresCache.find(x => x.id === id);
+    if (!confirm(`¿Eliminar al proveedor "${p ? p.razon_social : ''}"?`)) return;
+    try {
+        const res = await api(`/api/proveedores/${id}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        cargarProveedores();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1294,6 +1402,8 @@ function toggleTema() {
 aplicarTema(localStorage.getItem('tema') || 'light');
 dashSaludoYFecha();
 dashBuscador();
+const _bp = document.getElementById('buscar-proveedor');
+if (_bp) _bp.addEventListener('input', filtrarProveedores);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();

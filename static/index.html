@@ -29,6 +29,7 @@
             <button class="nav-btn" data-section="alumnos">Alumnos</button>
             <button class="nav-btn" data-section="operaciones">Operaciones</button>
             <button class="nav-btn" data-section="tarjetas">Tarjetas</button>
+            <button class="nav-btn" data-section="proveedores" onclick="cargarProveedores()">Proveedores</button>
             <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
             <button class="nav-btn" data-section="importar">Importar</button>
         </nav>
@@ -103,11 +104,11 @@
                     <div class="dash-desc">Registro de gastos con concepto, fecha y destino</div>
                     <div class="dash-badge">Próximamente</div>
                 </div>
-                <div class="dash-card dash-soon" data-color="sky" data-tags="proveedores razon social cuit" onclick="dashProx('Proveedores')">
+                <div class="dash-card" data-color="sky" data-tags="proveedores razon social cuit" onclick="dashIr('proveedores')">
                     <div class="dash-icon">🏢</div>
                     <div class="dash-nombre">Proveedores</div>
                     <div class="dash-desc">Base de proveedores con datos, contacto y rubro</div>
-                    <div class="dash-badge">Próximamente</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
                 </div>
                 <div class="dash-card dash-soon" data-color="amber" data-tags="facturas pdf imagenes" onclick="dashProx('Facturas')">
                     <div class="dash-icon">📑</div>
@@ -496,6 +497,46 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- PROVEEDORES -->
+        <section id="sec-proveedores" class="section">
+            <div class="section-titulo">Proveedores</div>
+            <div class="toolbar">
+                <input type="text" id="buscar-proveedor" placeholder="Buscar por razón social, nombre de fantasía, CUIT o rubro...">
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormProveedor()">+ Nuevo Proveedor</button>
+            </div>
+
+            <div id="form-proveedor" class="card form-card" style="display:none">
+                <h3 id="form-proveedor-titulo">Nuevo Proveedor</h3>
+                <form onsubmit="guardarProveedor(event)">
+                    <input type="hidden" id="prov-edit-id">
+                    <div class="form-grid">
+                        <div><label>CUIT</label><input type="text" id="prov-cuit" required placeholder="20-12345678-9"></div>
+                        <div><label>Razón social</label><input type="text" id="prov-razon" required></div>
+                        <div><label>Nombre de fantasía</label><input type="text" id="prov-fantasia" placeholder="opcional"></div>
+                        <div><label>Rubro</label><input type="text" id="prov-rubro" placeholder="ej: Ferretería, Librería..."></div>
+                        <div><label>Contacto</label><input type="text" id="prov-contacto" placeholder="opcional"></div>
+                        <div><label>Teléfono</label><input type="text" id="prov-telefono" placeholder="opcional"></div>
+                        <div><label>Email</label><input type="email" id="prov-email" placeholder="opcional"></div>
+                        <div><label>CBU</label><input type="text" id="prov-cbu" placeholder="opcional"></div>
+                        <div style="grid-column:1/-1"><label>Notas</label><input type="text" id="prov-notas" placeholder="opcional"></div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
+                        <button type="button" class="btn btn-red" onclick="cerrarFormProveedor()">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="tabla-proveedores">
+                <thead>
+                    <tr>
+                        <th>CUIT</th><th>Razón social</th><th>Nombre fantasía</th><th>Rubro</th><th>Contacto</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="body-proveedores"></tbody>
+            </table>
         </section>
 
         <!-- REPORTES -->
