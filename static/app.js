@@ -1219,6 +1219,13 @@ function dashProx(nombre) {
     toast(`"${nombre}" estará disponible próximamente. Lo activamos en la siguiente fase.`, 'success');
 }
 
+// Atajo del inicio: ir a Gastos y abrir directo el formulario para cargar una factura
+async function dashNuevaFactura() {
+    dashIr('gastos');
+    try { await cargarGastos(); } catch (e) {}
+    if (typeof mostrarFormGasto === 'function') mostrarFormGasto();
+}
+
 function dashSaludoYFecha() {
     const u = usuarioActual || {};
     const nombre = (u.nombre || 'Hola').split(' ')[0];
