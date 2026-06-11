@@ -936,7 +936,8 @@ tbody tr:hover td { background: var(--row-hover); }
 }
 .gasto-lector-tit { font-weight: 800; color: var(--heading); margin-bottom: 0.2rem; }
 .gasto-lector-txt { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; margin: 0 0 0.7rem; }
-.gasto-lector-estado { display: inline-block; margin-left: 0.6rem; font-size: 0.85rem; font-weight: 600; }
+.gasto-lector-estado { display: block; margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600; line-height: 1.35; }
+.gasto-lector-estado:empty { display: none; }
 .gasto-lector-estado.activo { color: var(--text-muted); }
 .gasto-lector-estado.ok { color: var(--green); }
 .gasto-lector-estado.error { color: var(--red); }

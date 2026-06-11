@@ -33,35 +33,47 @@ def storage_configurado() -> bool:
     return bool(url and key)
 
 
-def _request(metodo: str, url: str, key: str, datos: bytes | None, content_type: str | None):
+def _request(metodo: str, url: str, key: str, datos: bytes | None, content_type: str | None, extra: dict | None = None):
     headers = {
         "Authorization": f"Bearer {key}",
         "apikey": key,
     }
     if content_type:
         headers["Content-Type"] = content_type
+    if extra:
+        headers.update(extra)
     req = urllib.request.Request(url, data=datos, headers=headers, method=metodo)
     return urllib.request.urlopen(req, timeout=30)
 
 
 def _asegurar_bucket(url: str, key: str, bucket: str):
-    """Crea el bucket público si no existe (idempotente; ignora 'ya existe')."""
+    """Crea el bucket público. Devuelve True si lo creó o ya existía."""
+    cuerpo = json.dumps({"name": bucket, "id": bucket, "public": True}).encode()
+    _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
+
+
+def _traducir_error(e: urllib.error.HTTPError) -> str:
+    detalle = ""
     try:
-        cuerpo = json.dumps({"name": bucket, "id": bucket, "public": True}).encode()
-        _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
-    except urllib.error.HTTPError as e:
-        # 400/409 = ya existe -> está bien
-        if e.code not in (400, 409):
-            raise
+        detalle = e.read().decode("utf-8", "ignore")[:200]
+    except Exception:
+        pass
+    if e.code in (401, 403):
+        return ("La clave de Supabase es inválida o no tiene permisos. "
+                "Verificá que sea la clave 'service_role' (Project Settings > API), no la 'anon'. "
+                f"[{e.code}] {detalle}")
+    if e.code == 404:
+        return f"No se encontró el proyecto/bucket en Supabase. Revisá SUPABASE_URL. [{e.code}] {detalle}"
+    return f"No se pudo subir el archivo a Storage [{e.code}] {detalle}"
 
 
 def subir_comprobante(contenido: bytes, filename: str, content_type: str | None = None) -> str:
-    """Sube el archivo y devuelve la URL pública. Lanza ValueError si no está configurado."""
+    """Sube el archivo y devuelve la URL pública. Lanza ValueError con un mensaje claro si falla."""
     url, key, bucket = _cfg()
     if not (url and key):
         raise ValueError(
             "Supabase Storage no está configurado. Cargá SUPABASE_URL y "
-            "SUPABASE_SERVICE_KEY en las variables de entorno."
+            "SUPABASE_SERVICE_KEY en las variables de entorno de Render y volvé a desplegar."
         )
 
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
@@ -72,12 +84,28 @@ def subir_comprobante(contenido: bytes, filename: str, content_type: str | None 
 
     anio = ahora_ar().year
     ruta = f"{anio}/{uuid.uuid4().hex}.{ext}"
+    destino = f"{url}/storage/v1/object/{bucket}/{ruta}"
 
-    _asegurar_bucket(url, key, bucket)
+    def _intentar():
+        _request("POST", destino, key, contenido, content_type, extra={"x-upsert": "true"})
+
     try:
-        _request("POST", f"{url}/storage/v1/object/{bucket}/{ruta}", key, contenido, content_type)
+        _intentar()
     except urllib.error.HTTPError as e:
-        detalle = e.read().decode("utf-8", "ignore")[:200]
-        raise ValueError(f"No se pudo subir el archivo a Storage ({e.code}): {detalle}")
+        # Si el bucket no existe (404), lo creamos y reintentamos una vez.
+        if e.code == 404:
+            try:
+                _asegurar_bucket(url, key, bucket)
+            except urllib.error.HTTPError as e_bucket:
+                if e_bucket.code not in (400, 409):  # 400/409 = ya existía
+                    raise ValueError(_traducir_error(e_bucket))
+            try:
+                _intentar()
+            except urllib.error.HTTPError as e2:
+                raise ValueError(_traducir_error(e2))
+        else:
+            raise ValueError(_traducir_error(e))
+    except urllib.error.URLError as e:
+        raise ValueError(f"No se pudo conectar con Supabase: {e.reason}. Revisá SUPABASE_URL.")
 
     return f"{url}/storage/v1/object/public/{bucket}/{ruta}"

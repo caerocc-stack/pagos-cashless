@@ -1657,6 +1657,19 @@ function gastoMostrarVerAdjunto() {
     if (url) { ver.href = url; ver.style.display = ''; } else { ver.style.display = 'none'; }
 }
 
+// Avisa al abrir el form si Supabase Storage está conectado
+async function gastoChequearStorage() {
+    const est = document.getElementById('gasto-lector-estado');
+    if (!est) return;
+    try {
+        const r = await api('/api/gastos/storage-estado');
+        if (!r.configurado) {
+            est.textContent = '⚠ Falta conectar Supabase Storage: vas a poder leer el QR, pero la foto no se guardará hasta cargar las claves en Render.';
+            est.className = 'gasto-lector-estado error';
+        }
+    } catch (e) { /* sin sesión */ }
+}
+
 function mostrarFormGasto() {
     document.getElementById('form-gasto').style.display = 'block';
     document.getElementById('form-gasto-titulo').textContent = 'Nuevo Gasto';
@@ -1675,6 +1688,7 @@ function mostrarFormGasto() {
     if (est) { est.textContent = ''; est.className = 'gasto-lector-estado'; }
     gastoMostrarVerAdjunto();
     gastoLlenarProveedores();
+    gastoChequearStorage();
     document.getElementById('form-gasto').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
