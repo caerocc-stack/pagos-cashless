@@ -1473,9 +1473,11 @@ function renderGastos(lista) {
         const neg = Number(g.importe) < 0;
         const fecha = g.fecha ? g.fecha.split('-').reverse().join('/') : '-';
         const nc = g.nc_de_id ? ' <span class="tag-nc">NC</span>' : '';
+        const adj = g.adjunto_url
+            ? ` <a href="${escapeHtml(g.adjunto_url)}" target="_blank" rel="noopener" title="Ver comprobante" style="text-decoration:none">📎</a>` : '';
         return `<tr>
             <td>${fecha}</td>
-            <td>${escapeHtml(g.razon_social || '-')}${nc}</td>
+            <td>${escapeHtml(g.razon_social || '-')}${nc}${adj}</td>
             <td>${escapeHtml(g.concepto || '-')}</td>
             <td>${escapeHtml(g.categoria || '-')}</td>
             <td>${escapeHtml(g.forma_pago || '-')}</td>
@@ -1534,6 +1536,120 @@ function gastoLlenarNCde() {
         }).join('');
 }
 
+// --- Lectura automática de factura por QR de AFIP ---
+const AFIP_TIPO = {
+    1: 'Factura A', 2: 'Comprobante', 3: 'Nota de Crédito',
+    6: 'Factura B', 7: 'Comprobante', 8: 'Nota de Crédito',
+    11: 'Factura C', 12: 'Comprobante', 13: 'Nota de Crédito',
+    51: 'Factura A', 52: 'Comprobante', 53: 'Nota de Crédito',
+    81: 'Ticket', 82: 'Ticket', 83: 'Ticket',
+};
+const AFIP_ES_NC = new Set([3, 8, 13, 53]);
+
+function parseAfipQR(texto) {
+    try {
+        let p = null;
+        const m = (texto || '').match(/[?&]p=([^&]+)/);
+        if (m) p = decodeURIComponent(m[1]);
+        else if (/^[A-Za-z0-9+/=]+$/.test(texto || '')) p = texto;
+        if (!p) return null;
+        const json = JSON.parse(atob(p));
+        return (json && json.cuit) ? json : null;
+    } catch (e) { return null; }
+}
+
+function escanearQRdeImagen(file) {
+    return new Promise((resolve) => {
+        if (!file.type.startsWith('image/') || typeof jsQR === 'undefined') { resolve(null); return; }
+        const img = new Image();
+        img.onload = () => {
+            const max = 1600;
+            let w = img.width, h = img.height;
+            const esc = Math.min(1, max / Math.max(w, h));
+            w = Math.round(w * esc); h = Math.round(h * esc);
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+            let code = null;
+            try { const d = ctx.getImageData(0, 0, w, h); code = jsQR(d.data, w, h); } catch (e) {}
+            URL.revokeObjectURL(img.src);
+            resolve(code ? code.data : null);
+        };
+        img.onerror = () => resolve(null);
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+function aplicarDatosAfip(d) {
+    if (d.fecha) document.getElementById('gasto-fecha').value = String(d.fecha).slice(0, 10);
+    let provEncontrado = true;
+    if (d.cuit) {
+        const cuit = String(d.cuit);
+        document.getElementById('gasto-cuit').value = cuit;
+        const prov = (proveedoresCache || []).find(p => (p.cuit || '').replace(/\D/g, '') === cuit.replace(/\D/g, ''));
+        if (prov) {
+            document.getElementById('gasto-proveedor').value = prov.id;
+            document.getElementById('gasto-razon').value = prov.razon_social || '';
+        } else {
+            provEncontrado = false;
+        }
+    }
+    if (d.ptoVta != null) document.getElementById('gasto-pv').value = String(d.ptoVta).padStart(4, '0');
+    if (d.nroCmp != null) document.getElementById('gasto-numero').value = String(d.nroCmp).padStart(8, '0');
+    if (d.importe != null) document.getElementById('gasto-importe').value = d.importe;
+    const tipo = AFIP_TIPO[d.tipoCmp];
+    if (tipo) document.getElementById('gasto-tipo').value = tipo;
+    if (AFIP_ES_NC.has(d.tipoCmp)) { document.getElementById('gasto-es-nc').checked = true; gastoToggleNC(); }
+    gastoLlenarNCde();
+    return provEncontrado;
+}
+
+async function leerComprobante(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const est = document.getElementById('gasto-lector-estado');
+    est.textContent = '⏳ Leyendo la factura...';
+    est.className = 'gasto-lector-estado activo';
+
+    let leido = false, provFalta = false;
+    const qr = await escanearQRdeImagen(file);
+    if (qr) {
+        const datos = parseAfipQR(qr);
+        if (datos) { provFalta = !aplicarDatosAfip(datos); leido = true; }
+    }
+
+    // Subir la imagen/PDF a Storage como respaldo
+    try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await fetch(API + '/api/gastos/adjunto', { method: 'POST', credentials: 'same-origin', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al subir');
+        document.getElementById('gasto-adjunto').value = data.url;
+        const ver = document.getElementById('gasto-adjunto-ver');
+        ver.href = data.url; ver.style.display = '';
+        if (leido) {
+            est.textContent = provFalta
+                ? '✓ Datos leídos del QR. Ojo: el proveedor (CUIT) no está en tu base, cargalo en Proveedores.'
+                : '✓ Datos leídos del QR y comprobante guardado.';
+            est.className = 'gasto-lector-estado ok';
+        } else {
+            est.textContent = '✓ Comprobante guardado. No tenía QR de AFIP: completá los datos a mano.';
+            est.className = 'gasto-lector-estado ok';
+        }
+    } catch (err) {
+        est.textContent = (leido ? '✓ Datos leídos del QR. ' : '') + '⚠ No se pudo guardar la imagen: ' + err.message;
+        est.className = 'gasto-lector-estado ' + (leido ? 'ok' : 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+function gastoMostrarVerAdjunto() {
+    const url = document.getElementById('gasto-adjunto').value;
+    const ver = document.getElementById('gasto-adjunto-ver');
+    if (url) { ver.href = url; ver.style.display = ''; } else { ver.style.display = 'none'; }
+}
+
 function mostrarFormGasto() {
     document.getElementById('form-gasto').style.display = 'block';
     document.getElementById('form-gasto-titulo').textContent = 'Nuevo Gasto';
@@ -1548,6 +1664,9 @@ function mostrarFormGasto() {
     document.getElementById('gasto-proveedor').value = '';
     document.getElementById('gasto-es-nc').checked = false;
     document.getElementById('gasto-nc-wrap').style.display = 'none';
+    const est = document.getElementById('gasto-lector-estado');
+    if (est) { est.textContent = ''; est.className = 'gasto-lector-estado'; }
+    gastoMostrarVerAdjunto();
     gastoLlenarProveedores();
     document.getElementById('form-gasto').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1578,6 +1697,9 @@ function editarGasto(id) {
     document.getElementById('gasto-concepto').value = g.concepto || '';
     document.getElementById('gasto-destino').value = g.destino || '';
     document.getElementById('gasto-adjunto').value = g.adjunto_url || '';
+    gastoMostrarVerAdjunto();
+    const est = document.getElementById('gasto-lector-estado');
+    if (est) { est.textContent = ''; est.className = 'gasto-lector-estado'; }
     document.getElementById('gasto-notas').value = g.notas || '';
     const esNC = !!g.nc_de_id;
     document.getElementById('gasto-es-nc').checked = esNC;

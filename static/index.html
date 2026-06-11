@@ -560,6 +560,18 @@
 
             <div id="form-gasto" class="card form-card" style="display:none">
                 <h3 id="form-gasto-titulo">Nuevo Gasto</h3>
+
+                <div class="gasto-lector">
+                    <div class="gasto-lector-tit">📷 Leer factura automáticamente</div>
+                    <p class="gasto-lector-txt">Sacá o subí una foto de la factura. Si tiene el <b>QR de AFIP</b>,
+                        el sistema completa solo la fecha, CUIT, número e importe. La imagen queda guardada como respaldo.</p>
+                    <input type="file" id="gasto-leer-archivo" accept="image/*,.pdf,.heic" capture="environment"
+                        style="display:none" onchange="leerComprobante(this)">
+                    <button type="button" class="btn btn-primary btn-3d" onclick="document.getElementById('gasto-leer-archivo').click()">
+                        📤 Subir / sacar foto de la factura</button>
+                    <span id="gasto-lector-estado" class="gasto-lector-estado"></span>
+                </div>
+
                 <form onsubmit="guardarGasto(event)">
                     <input type="hidden" id="gasto-edit-id">
                     <div class="form-grid">
@@ -579,7 +591,12 @@
                         <div><label>Fecha de pago</label><input type="date" id="gasto-fecha-pago"></div>
                         <div style="grid-column:1/-1"><label>Concepto</label><input type="text" id="gasto-concepto" placeholder="¿qué se compró?"></div>
                         <div style="grid-column:1/-1"><label>Destino en la escuela</label><input type="text" id="gasto-destino" placeholder="ej: Taller de Avionica, Secretaría..."></div>
-                        <div style="grid-column:1/-1"><label>Link de foto / PDF del comprobante <span style="color:var(--text-muted);font-weight:400">(opcional, por ahora)</span></label><input type="text" id="gasto-adjunto" placeholder="próximamente: subir la foto directo"></div>
+                        <div style="grid-column:1/-1"><label>Comprobante adjunto</label>
+                            <div class="gasto-adjunto-fila">
+                                <input type="text" id="gasto-adjunto" placeholder="se completa al subir la foto/PDF (o pegá un link)">
+                                <a id="gasto-adjunto-ver" href="#" target="_blank" rel="noopener" class="btn btn-sm" style="display:none">Ver</a>
+                            </div>
+                        </div>
                         <div style="grid-column:1/-1"><label class="check-inline"><input type="checkbox" id="gasto-es-nc" onchange="gastoToggleNC()"> Es una Nota de Crédito (resta del proveedor)</label></div>
                         <div id="gasto-nc-wrap" style="grid-column:1/-1;display:none"><label>Factura original que anula/devuelve</label>
                             <select id="gasto-nc-de"><option value="">— seleccionar factura del proveedor —</option></select>
@@ -822,6 +839,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="/static/app.js"></script>
     <script src="/static/reportes.js"></script>
     <script src="/static/efectos.js"></script>

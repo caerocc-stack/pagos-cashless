@@ -925,3 +925,20 @@ tbody tr:hover td { background: var(--row-hover); }
     background: rgba(22,163,74,0.15); color: var(--green);
     border-radius: 5px; padding: 0.1rem 0.4rem; margin-right: 0.2rem;
 }
+
+/* ===== LECTOR DE COMPROBANTE (Gastos) ===== */
+.gasto-lector {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.1rem;
+    background: var(--surface-2);
+}
+.gasto-lector-tit { font-weight: 800; color: var(--heading); margin-bottom: 0.2rem; }
+.gasto-lector-txt { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; margin: 0 0 0.7rem; }
+.gasto-lector-estado { display: inline-block; margin-left: 0.6rem; font-size: 0.85rem; font-weight: 600; }
+.gasto-lector-estado.activo { color: var(--text-muted); }
+.gasto-lector-estado.ok { color: var(--green); }
+.gasto-lector-estado.error { color: var(--red); }
+.gasto-adjunto-fila { display: flex; gap: 0.5rem; align-items: center; }
+.gasto-adjunto-fila input { flex: 1; }

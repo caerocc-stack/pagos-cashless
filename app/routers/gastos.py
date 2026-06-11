@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, extract
 
@@ -6,8 +6,28 @@ from app.database import get_db
 from app.models.gasto import Gasto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE
 from app.models.proveedor import Proveedor
 from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
+from app.storage_util import subir_comprobante, storage_configurado
 
 router = APIRouter(prefix="/api/gastos", tags=["Gastos"])
+
+
+@router.get("/storage-estado")
+def storage_estado():
+    """Indica si Supabase Storage está configurado (para mostrar avisos en la interfaz)."""
+    return {"configurado": storage_configurado()}
+
+
+@router.post("/adjunto")
+async def subir_adjunto(archivo: UploadFile = File(...)):
+    """Sube la foto/PDF del comprobante a Storage y devuelve su URL pública."""
+    contenido = await archivo.read()
+    if len(contenido) > 10 * 1024 * 1024:
+        raise HTTPException(400, "El archivo supera los 10 MB.")
+    try:
+        url = subir_comprobante(contenido, archivo.filename, archivo.content_type)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"url": url}
 
 
 def _completar_proveedor(data: dict, db: Session):
