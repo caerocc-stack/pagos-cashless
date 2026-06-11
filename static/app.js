@@ -1642,6 +1642,180 @@ async function eliminarGasto(id) {
     }
 }
 
+// =========================================================
+// --- LIBRO DE CAJA ---
+// =========================================================
+let cajaCache = [];
+let cajaMeta = null;
+
+async function cargarCajaMeta() {
+    if (cajaMeta) return;
+    cajaMeta = await api('/api/caja/meta');
+    gastoOpts('caja-tipomov', cajaMeta.tipos_movimiento, '— elegir —');
+    // Filtros mes/año
+    const fmes = document.getElementById('caja-f-mes');
+    fmes.innerHTML = '<option value="">Todo el año</option>' +
+        MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+    const hoy = new Date().getFullYear();
+    const fanio = document.getElementById('caja-f-anio');
+    fanio.innerHTML = '<option value="">Todos los años</option>' +
+        [0, 1, 2, 3].map(d => `<option value="${hoy - d}">${hoy - d}</option>`).join('');
+    fanio.value = String(hoy);
+}
+
+async function cargarCaja() {
+    try {
+        await cargarCajaMeta();
+        const tipo = document.getElementById('caja-f-tipo').value;
+        const mes = document.getElementById('caja-f-mes').value;
+        const anio = document.getElementById('caja-f-anio').value;
+        const p = new URLSearchParams();
+        if (tipo) p.set('tipo', tipo);
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        cajaCache = await api('/api/caja/?' + p.toString());
+        filtrarCaja();
+        cargarResumenCaja(mes, anio);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function cargarResumenCaja(mes, anio) {
+    try {
+        const p = new URLSearchParams();
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        const r = await api('/api/caja/resumen?' + p.toString());
+        document.getElementById('caja-resumen').innerHTML = `
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Saldo actual en caja</div>
+                <div class="gasto-kpi-valor">$${gastoFmt(r.saldo_actual)}</div>
+                <div class="gasto-kpi-sub">inicial: $${gastoFmt(r.saldo_inicial)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Ingresos del período</div>
+                <div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(r.ingresos_periodo)}</div>
+                <div class="gasto-kpi-sub">${r.cantidad} movimientos</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Egresos del período</div>
+                <div class="gasto-kpi-valor" style="color:var(--red)">$${gastoFmt(r.egresos_periodo)}</div>
+                <div class="gasto-kpi-sub">&nbsp;</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Neto del período</div>
+                <div class="gasto-kpi-valor" style="color:${r.neto_periodo < 0 ? 'var(--red)' : 'var(--green)'}">$${gastoFmt(r.neto_periodo)}</div>
+                <div class="gasto-kpi-sub">ingresos − egresos</div></div>`;
+    } catch (err) { /* sin datos */ }
+}
+
+function filtrarCaja() {
+    const q = (document.getElementById('buscar-caja').value || '').toLowerCase();
+    const lista = cajaCache.filter(m => !q ||
+        [m.concepto, m.tipo_movimiento, m.notas].some(v => (v || '').toLowerCase().includes(q)));
+    renderCaja(lista);
+}
+
+function renderCaja(lista) {
+    document.getElementById('body-caja').innerHTML = lista.map(m => {
+        const fecha = m.fecha ? m.fecha.split('-').reverse().join('/') : '-';
+        const esIng = m.tipo === 'ingreso';
+        return `<tr>
+            <td>${fecha}</td>
+            <td>${escapeHtml(m.concepto)}</td>
+            <td>${escapeHtml(m.tipo_movimiento || '-')}</td>
+            <td style="text-align:right;color:var(--green)">${esIng ? '$' + gastoFmt(m.monto) : ''}</td>
+            <td style="text-align:right;color:var(--red)">${esIng ? '' : '$' + gastoFmt(m.monto)}</td>
+            <td style="text-align:right;font-weight:700">$${gastoFmt(m.saldo)}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editarCaja(${m.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarCaja(${m.id})">Eliminar</button>
+            </td>
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos en este período</td></tr>';
+}
+
+function mostrarFormCaja(tipo) {
+    document.getElementById('form-caja').style.display = 'block';
+    document.getElementById('form-caja-titulo').textContent =
+        tipo === 'egreso' ? 'Nuevo egreso (salida de efectivo)' : 'Nuevo ingreso (entrada de efectivo)';
+    document.getElementById('caja-edit-id').value = '';
+    document.getElementById('caja-tipo').value = tipo;
+    ['caja-monto', 'caja-concepto', 'caja-notas'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('caja-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('caja-tipomov').value = '';
+    document.getElementById('form-caja').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cerrarFormCaja() {
+    document.getElementById('form-caja').style.display = 'none';
+}
+
+function editarCaja(id) {
+    const m = cajaCache.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('form-caja').style.display = 'block';
+    document.getElementById('form-caja-titulo').textContent =
+        'Editar ' + (m.tipo === 'egreso' ? 'egreso' : 'ingreso');
+    document.getElementById('caja-edit-id').value = id;
+    document.getElementById('caja-tipo').value = m.tipo;
+    document.getElementById('caja-fecha').value = m.fecha || '';
+    document.getElementById('caja-tipomov').value = m.tipo_movimiento || '';
+    document.getElementById('caja-monto').value = m.monto;
+    document.getElementById('caja-concepto').value = m.concepto || '';
+    document.getElementById('caja-notas').value = m.notas || '';
+    document.getElementById('form-caja').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function guardarCaja(e) {
+    e.preventDefault();
+    const editId = document.getElementById('caja-edit-id').value;
+    const monto = parseFloat(document.getElementById('caja-monto').value);
+    if (isNaN(monto) || monto <= 0) { toast('Ingresá un importe válido', 'error'); return; }
+    const body = {
+        fecha: document.getElementById('caja-fecha').value,
+        concepto: document.getElementById('caja-concepto').value,
+        tipo_movimiento: document.getElementById('caja-tipomov').value || null,
+        tipo: document.getElementById('caja-tipo').value,
+        monto: monto,
+        notas: document.getElementById('caja-notas').value || null,
+    };
+    try {
+        if (editId) {
+            await api(`/api/caja/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+            toast('Movimiento actualizado');
+        } else {
+            await api('/api/caja/', { method: 'POST', body: JSON.stringify(body) });
+            toast('Movimiento registrado');
+        }
+        cerrarFormCaja();
+        cargarCaja();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarCaja(id) {
+    if (!confirm('¿Eliminar este movimiento de caja?')) return;
+    try {
+        const res = await api(`/api/caja/${id}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        cargarCaja();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function editarSaldoInicial() {
+    try {
+        const actual = await api('/api/caja/saldo-inicial');
+        const v = prompt('Saldo inicial de la caja (el efectivo con el que arranca el libro):', actual.valor);
+        if (v === null) return;
+        const num = parseFloat(v);
+        if (isNaN(num)) { toast('Importe inválido', 'error'); return; }
+        await api('/api/caja/saldo-inicial', { method: 'PUT', body: JSON.stringify({ valor: num }) });
+        toast('Saldo inicial actualizado');
+        cargarCaja();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1667,6 +1841,8 @@ const _bp = document.getElementById('buscar-proveedor');
 if (_bp) _bp.addEventListener('input', filtrarProveedores);
 const _bg = document.getElementById('buscar-gasto');
 if (_bg) _bg.addEventListener('input', filtrarGastos);
+const _bc = document.getElementById('buscar-caja');
+if (_bc) _bc.addEventListener('input', filtrarCaja);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();
