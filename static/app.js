@@ -1565,36 +1565,70 @@ function parseAfipQR(texto) {
     } catch (e) { return null; }
 }
 
+// Busca un QR en una fuente ya dibujable (imagen o canvas) probando varias
+// resoluciones (de mayor a menor) y QR invertidos. Devuelve el texto del QR o null.
+function _jsQRdesdeFuente(fuente, anchoNat, altoNat) {
+    if (typeof jsQR === 'undefined') return null;
+    const maxLado = Math.max(anchoNat, altoNat);
+    const objetivos = [2600, 1800, 1200, 900];
+    const escalas = [...new Set(objetivos.map(m => Math.min(1, m / maxLado)))];
+    const cv = document.createElement('canvas');
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    for (const f of escalas) {
+        const w = Math.max(1, Math.round(anchoNat * f));
+        const h = Math.max(1, Math.round(altoNat * f));
+        cv.width = w; cv.height = h;
+        ctx.drawImage(fuente, 0, 0, w, h);
+        try {
+            const d = ctx.getImageData(0, 0, w, h);
+            const code = jsQR(d.data, w, h, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) return code.data;
+        } catch (e) {}
+    }
+    return null;
+}
+
 function escanearQRdeImagen(file) {
     return new Promise((resolve) => {
         if (!file.type.startsWith('image/') || typeof jsQR === 'undefined') { resolve(null); return; }
         const img = new Image();
         img.onload = () => {
-            const cv = document.createElement('canvas');
-            const ctx = cv.getContext('2d', { willReadFrequently: true });
-            const maxLado = Math.max(img.width, img.height);
-            // Probar varias resoluciones (de mayor a menor): un QR chico dentro de una
-            // factura grande se detecta mejor en alta resolución; uno de cerca, en baja.
-            const objetivos = [2600, 1800, 1200, 900];
-            const escalas = [...new Set(objetivos.map(m => Math.min(1, m / maxLado)))];
-            let encontrado = null;
-            for (const f of escalas) {
-                const w = Math.max(1, Math.round(img.width * f));
-                const h = Math.max(1, Math.round(img.height * f));
-                cv.width = w; cv.height = h;
-                ctx.drawImage(img, 0, 0, w, h);
-                try {
-                    const d = ctx.getImageData(0, 0, w, h);
-                    const code = jsQR(d.data, w, h, { inversionAttempts: 'attemptBoth' });
-                    if (code && code.data) { encontrado = code.data; break; }
-                } catch (e) {}
-            }
+            const data = _jsQRdesdeFuente(img, img.width, img.height);
             URL.revokeObjectURL(img.src);
-            resolve(encontrado);
+            resolve(data);
         };
         img.onerror = () => resolve(null);
         img.src = URL.createObjectURL(file);
     });
+}
+
+async function escanearQRdePDF(file) {
+    if (typeof pdfjsLib === 'undefined' || typeof jsQR === 'undefined') return null;
+    try {
+        const buf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        const cv = document.createElement('canvas');
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        const maxPag = Math.min(pdf.numPages, 5);
+        for (let n = 1; n <= maxPag; n++) {
+            const page = await pdf.getPage(n);
+            const base = page.getViewport({ scale: 1 });
+            // Renderizar a ~2200px de ancho para que el QR salga nítido
+            const escala = Math.min(4, Math.max(2, 2200 / base.width));
+            const vp = page.getViewport({ scale: escala });
+            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            const data = _jsQRdesdeFuente(cv, cv.width, cv.height);
+            if (data) return data;
+        }
+    } catch (e) { console.warn('No se pudo leer el PDF:', e); }
+    return null;
+}
+
+// Detecta el QR en una imagen o un PDF
+async function escanearQR(file) {
+    const esPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+    return esPDF ? await escanearQRdePDF(file) : await escanearQRdeImagen(file);
 }
 
 function aplicarDatosAfip(d) {
@@ -1628,12 +1662,13 @@ async function leerComprobante(input) {
     est.textContent = '⏳ Leyendo la factura...';
     est.className = 'gasto-lector-estado activo';
 
-    let leido = false, provFalta = false, qrPeroNoFactura = false;
+    let leido = false, provFalta = false, qrPeroNoFactura = false, qrViejo = false;
     const esPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
-    const qr = await escanearQRdeImagen(file);
+    const qr = await escanearQR(file);
     if (qr) {
         const datos = parseAfipQR(qr);
         if (datos) { provFalta = !aplicarDatosAfip(datos); leido = true; }
+        else if (/qr\.afip\.gob\.ar|[?&]qr=/i.test(qr)) { qrViejo = true; }
         else { qrPeroNoFactura = true; }
     }
 
@@ -1652,11 +1687,14 @@ async function leerComprobante(input) {
                 ? '✓ Datos leídos del QR. Ojo: el proveedor (CUIT) no está en tu base, cargalo en Proveedores.'
                 : '✓ Datos leídos del QR y comprobante guardado.';
             est.className = 'gasto-lector-estado ok';
+        } else if (qrViejo) {
+            est.textContent = '✓ Comprobante guardado. Tiene el QR viejo de AFIP, que no incluye los datos adentro — cargalos a mano.';
+            est.className = 'gasto-lector-estado ok';
         } else if (qrPeroNoFactura) {
             est.textContent = '✓ Comprobante guardado. Leí un QR pero no es el de la factura de AFIP/ARCA — completá los datos a mano.';
             est.className = 'gasto-lector-estado ok';
         } else if (esPDF) {
-            est.textContent = '✓ PDF guardado. Por ahora no leo el QR desde PDF: completá los datos a mano (o subí una foto del comprobante).';
+            est.textContent = '✓ PDF guardado. No encontré el QR de AFIP/ARCA en el PDF: completá los datos a mano.';
             est.className = 'gasto-lector-estado ok';
         } else {
             est.textContent = '✓ Comprobante guardado. No detecté el QR — probá una foto más nítida, derecha y con el QR bien visible y de cerca.';
