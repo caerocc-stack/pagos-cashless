@@ -1652,6 +1652,7 @@ async function cargarCajaMeta() {
     if (cajaMeta) return;
     cajaMeta = await api('/api/caja/meta');
     gastoOpts('caja-tipomov', cajaMeta.tipos_movimiento, '— elegir —');
+    cajaLlenarMasGastos();
     // Filtros mes/año
     const fmes = document.getElementById('caja-f-mes');
     fmes.innerHTML = '<option value="">Todo el año</option>' +
@@ -1795,6 +1796,63 @@ async function eliminarCaja(id) {
     try {
         const res = await api(`/api/caja/${id}`, { method: 'DELETE' });
         toast(res.mensaje);
+        cargarCaja();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// Gastos frecuentes extra para el desplegable "+ Más gastos…"
+const CAJA_EGRESO_MAS = [
+    'Pago proveedor', 'Compra de materiales', 'Herramientas', 'Limpieza',
+    'Servicios (luz/agua/internet)', 'Mantenimiento', 'Papelería', 'Honorarios',
+    'Sueldos', 'Impuestos', 'Retiro de efectivo', 'Otro egreso',
+];
+
+function cajaLlenarMasGastos() {
+    const sel = document.getElementById('caja-rap-out-mas');
+    if (!sel || sel.dataset.lleno) return;
+    sel.innerHTML = '<option value="">+ Más gastos…</option>' +
+        CAJA_EGRESO_MAS.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+    sel.dataset.lleno = '1';
+}
+
+function cajaPreset(lado, btn, concepto) {
+    document.querySelectorAll(`#caja-rap-${lado}-chips .chip`).forEach(c => c.classList.remove('chip-activo'));
+    if (btn) btn.classList.add('chip-activo');
+    document.getElementById(`caja-rap-${lado}-concepto`).value = concepto;
+    const monto = document.getElementById(`caja-rap-${lado}-monto`);
+    monto.focus();
+    // Resetear el desplegable de "más gastos" si veníamos de un chip
+    if (lado === 'out') document.getElementById('caja-rap-out-mas').value = '';
+}
+
+function cajaPresetSelect(sel) {
+    if (!sel.value) return;
+    document.querySelectorAll('#caja-rap-out-chips .chip').forEach(c => c.classList.remove('chip-activo'));
+    document.getElementById('caja-rap-out-concepto').value = sel.value;
+    document.getElementById('caja-rap-out-monto').focus();
+}
+
+async function cajaRapida(tipo) {
+    const lado = tipo === 'ingreso' ? 'in' : 'out';
+    const concepto = (document.getElementById(`caja-rap-${lado}-concepto`).value || '').trim();
+    const montoEl = document.getElementById(`caja-rap-${lado}-monto`);
+    const monto = parseFloat(montoEl.value);
+    if (!concepto) { toast('Elegí o escribí un concepto', 'error'); return; }
+    if (isNaN(monto) || monto <= 0) { toast('Ingresá un importe válido', 'error'); montoEl.focus(); return; }
+    const body = {
+        fecha: new Date().toISOString().slice(0, 10),
+        concepto: concepto,
+        tipo_movimiento: tipo === 'ingreso' ? 'Venta' : concepto,
+        tipo: tipo,
+        monto: monto,
+    };
+    try {
+        await api('/api/caja/', { method: 'POST', body: JSON.stringify(body) });
+        toast(`${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de $${gastoFmt(monto)} registrado`);
+        montoEl.value = '';          // se limpia el importe pero se mantiene el concepto
+        montoEl.focus();             // listo para cargar el siguiente al instante
         cargarCaja();
     } catch (err) {
         toast(err.message, 'error');

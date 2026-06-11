@@ -855,3 +855,52 @@ tbody tr:hover td { background: var(--row-hover); }
 }
 .check-inline { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; }
 .check-inline input { width: auto; margin: 0; }
+
+/* ===== CAJA RAPIDA (punto de venta) ===== */
+.caja-rapida {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+.caja-rap-col {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 1.1rem 1.1rem;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    border-top: 4px solid var(--border);
+}
+.caja-rap-in { border-top-color: var(--green); }
+.caja-rap-out { border-top-color: var(--red); }
+.caja-rap-tit {
+    font-size: 1rem; font-weight: 800; color: var(--heading);
+    margin-bottom: 0.85rem;
+}
+.caja-rap-chips {
+    display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.9rem;
+    align-items: center;
+}
+.caja-rap-in .chip.chip-activo { background: var(--green); border-color: var(--green); box-shadow: 0 3px 10px rgba(22,163,74,0.35); }
+.caja-rap-out .chip.chip-activo { background: var(--red); border-color: var(--red); box-shadow: 0 3px 10px rgba(160,30,34,0.35); }
+.caja-rap-in .chip:hover { border-color: var(--green); color: var(--green); }
+.caja-rap-out .chip:hover { border-color: var(--red); color: var(--red); }
+.chip-select {
+    padding: 0.45rem 0.7rem;
+    border: 2px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text);
+    border-radius: 999px;
+    font-size: 0.85rem; font-weight: 600;
+    cursor: pointer;
+}
+.caja-rap-fila {
+    display: flex; gap: 0.5rem; align-items: stretch; flex-wrap: wrap;
+}
+.caja-rap-fila input[type="text"] { flex: 1 1 160px; min-width: 0; }
+.caja-rap-fila input[type="number"] { flex: 0 1 130px; min-width: 0; font-weight: 700; }
+.caja-rap-fila .btn { white-space: nowrap; }
+
+@media (max-width: 760px) {
+    .caja-rapida { grid-template-columns: 1fr; }
+}
