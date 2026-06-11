@@ -116,6 +116,8 @@ def _intentar_match(mov: MovimientoBanco, db: Session) -> bool:
         mov.conciliado = True
         mov.conciliado_manual = False
         g.conciliado = True
+        g.forma_pago = "Transferencia"
+        g.fecha_pago = mov.fecha
         return True
     return False
 
@@ -243,10 +245,14 @@ def match_manual(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
         anterior = db.get(Gasto, mov.gasto_id)
         if anterior:
             anterior.conciliado = False
+            anterior.forma_pago = None
+            anterior.fecha_pago = None
     mov.gasto_id = g.id
     mov.conciliado = True
     mov.conciliado_manual = True
     g.conciliado = True
+    g.forma_pago = "Transferencia"
+    g.fecha_pago = mov.fecha
     db.commit()
     return {"ok": True, "mensaje": "Movimiento conciliado con la factura"}
 
@@ -260,6 +266,8 @@ def unmatch(mov_id: int, db: Session = Depends(get_db)):
         g = db.get(Gasto, mov.gasto_id)
         if g:
             g.conciliado = False
+            g.forma_pago = None
+            g.fecha_pago = None
     mov.gasto_id = None
     mov.conciliado = False
     mov.conciliado_manual = False

@@ -1416,8 +1416,6 @@ async function cargarGastosMeta() {
     gastoOpts('gasto-f-categoria', gastosMeta.categorias, 'Todas las categorías');
     // Formulario
     gastoOpts('gasto-tipo', gastosMeta.tipos_comprobante, '— tipo —');
-    gastoOpts('gasto-categoria', gastosMeta.categorias, '— elegir —');
-    gastoOpts('gasto-forma', gastosMeta.formas_pago, '— elegir —');
     // Filtro de mes
     const fmes = document.getElementById('gasto-f-mes');
     fmes.innerHTML = '<option value="">Todo el año</option>' +
@@ -1475,6 +1473,8 @@ function filtrarGastos() {
     renderGastos(lista);
 }
 
+const CATEGORIAS_GASTO = ['Oficina', 'Infraestructura', 'Escuela', 'Honorarios'];
+
 function renderGastos(lista) {
     document.getElementById('body-gastos').innerHTML = lista.map(g => {
         const neg = Number(g.importe) < 0;
@@ -1482,12 +1482,27 @@ function renderGastos(lista) {
         const nc = g.nc_de_id ? ' <span class="tag-nc">NC</span>' : '';
         const adj = g.adjunto_url
             ? ` <a href="${escapeHtml(g.adjunto_url)}" target="_blank" rel="noopener" title="Ver comprobante" style="text-decoration:none">📎</a>` : '';
+        // Selector de categoría en la fila
+        const opts = ['<option value="">— categoría —</option>']
+            .concat(CATEGORIAS_GASTO.map(c => `<option value="${c}"${g.categoria === c ? ' selected' : ''}>${c}</option>`))
+            .join('');
+        const selCat = `<select class="cat-select${g.categoria ? '' : ' cat-vacia'}" onchange="cambiarCategoriaGasto(${g.id}, this.value)">${opts}</select>`;
+        // Estado de pago
+        let pago;
+        if (g.forma_pago) {
+            const fp = g.fecha_pago ? g.fecha_pago.split('-').reverse().join('/') : '';
+            const icono = g.forma_pago === 'Efectivo' ? '💵' : '🏦';
+            pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}${fp ? ' · ' + fp : ''}</span>
+                <button class="btn btn-sm" title="Deshacer" onclick="desvincularPagoGasto(${g.id})">✕</button>`;
+        } else {
+            pago = `<button class="btn btn-sm btn-primary" onclick="abrirVincularPago(${g.id})">Vincular pago</button>`;
+        }
         return `<tr>
             <td>${fecha}</td>
             <td>${escapeHtml(g.razon_social || '-')}${nc}${adj}</td>
             <td>${escapeHtml(g.concepto || '-')}</td>
-            <td>${escapeHtml(g.categoria || '-')}</td>
-            <td>${escapeHtml(g.forma_pago || '-')}</td>
+            <td>${selCat}</td>
+            <td>${pago}</td>
             <td style="text-align:right;${neg ? 'color:var(--red)' : ''}">$${gastoFmt(g.importe)}</td>
             <td>
                 <button class="btn btn-sm" onclick="editarGasto(${g.id})">Editar</button>
@@ -1496,6 +1511,82 @@ function renderGastos(lista) {
         </tr>`;
     }).join('') ||
         '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin gastos en este período</td></tr>';
+}
+
+async function cambiarCategoriaGasto(id, valor) {
+    try {
+        await api(`/api/gastos/${id}`, { method: 'PUT', body: JSON.stringify({ categoria: valor || null }) });
+        const g = gastosCache.find(x => x.id === id);
+        if (g) g.categoria = valor || null;
+        filtrarGastos();
+        cargarGastos();  // refresca el resumen por categoría
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Vincular pago (banco o caja efectivo) ---
+async function abrirVincularPago(id) {
+    const g = gastosCache.find(x => x.id === id);
+    try {
+        const c = await api(`/api/gastos/${id}/candidatos-pago`);
+        const tag = (m, mo) => [m ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
+            mo ? '<span class="conc-tag-ok">Importe ✓</span>' : ''].join(' ');
+        const fBanco = (c.banco || []).map(b => {
+            const f = b.fecha ? b.fecha.split('-').reverse().join('/') : '';
+            return `<tr><td>${f}</td><td>${escapeHtml(b.razon_social || b.descripcion || '')}</td>
+                <td style="text-align:right">$${gastoFmt(b.importe)}</td>
+                <td>${tag(b.coincide_cuit, b.coincide_monto)}</td>
+                <td><button class="btn btn-sm btn-primary" onclick="pagoBanco(${id},${b.id})">Vincular</button></td></tr>`;
+        }).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">Sin movimientos de banco que coincidan.</td></tr>';
+        const fCaja = (c.caja || []).map(k => {
+            const f = k.fecha ? k.fecha.split('-').reverse().join('/') : '';
+            return `<tr><td>${f}</td><td>${escapeHtml(k.concepto || '')}</td>
+                <td style="text-align:right">$${gastoFmt(k.importe)}</td>
+                <td><button class="btn btn-sm btn-primary" onclick="pagoCaja(${id},${k.id})">Vincular</button></td></tr>`;
+        }).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">Sin egresos de caja que coincidan.</td></tr>';
+        const html = `
+            <h2 style="margin-top:0">Vincular el pago</h2>
+            <p style="color:var(--text-muted);margin-top:-0.4rem">
+                ${g ? `${escapeHtml(g.razon_social || '')} · $${gastoFmt(g.importe)}` : ''}</p>
+            <h3 style="margin-bottom:.4rem">🏦 Transferencia (extracto del banco)</h3>
+            <table><thead><tr><th>Fecha</th><th>Destinatario</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
+            <tbody>${fBanco}</tbody></table>
+            <h3 style="margin:1rem 0 .4rem">💵 Efectivo (movimiento de caja)</h3>
+            <table><thead><tr><th>Fecha</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
+            <tbody>${fCaja}</tbody></table>
+            <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:space-between">
+                <button class="btn btn-success" onclick="pagoEfectivoNuevo(${id})">+ Registrar pago en efectivo (crea el egreso de caja)</button>
+                <button class="btn" onclick="cerrarModal()">Cerrar</button>
+            </div>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function pagoBanco(id, bancoId) {
+    try { await api(`/api/gastos/${id}/pago/banco/${bancoId}`, { method: 'POST' });
+        toast('Pago vinculado (transferencia)'); cerrarModal(); cargarGastos();
+    } catch (err) { toast(err.message, 'error'); }
+}
+async function pagoCaja(id, cajaId) {
+    try { await api(`/api/gastos/${id}/pago/caja/${cajaId}`, { method: 'POST' });
+        toast('Pago vinculado (efectivo)'); cerrarModal(); cargarGastos();
+    } catch (err) { toast(err.message, 'error'); }
+}
+async function pagoEfectivoNuevo(id) {
+    if (!confirm('Se va a registrar un egreso en el Libro de Caja por este importe. ¿Continuar?')) return;
+    try { await api(`/api/gastos/${id}/pago/efectivo-nuevo`, { method: 'POST' });
+        toast('Pago en efectivo registrado'); cerrarModal(); cargarGastos();
+    } catch (err) { toast(err.message, 'error'); }
+}
+async function desvincularPagoGasto(id) {
+    if (!confirm('¿Deshacer el pago de este gasto?')) return;
+    try { await api(`/api/gastos/${id}/desvincular-pago`, { method: 'POST' });
+        toast('Pago desvinculado'); cargarGastos();
+    } catch (err) { toast(err.message, 'error'); }
 }
 
 function gastoLlenarProveedores() {
@@ -1514,6 +1605,7 @@ function gastoProveedorElegido() {
     if (p) {
         document.getElementById('gasto-razon').value = p.razon_social || '';
         document.getElementById('gasto-cuit').value = p.cuit || '';
+        if (p.rubro) document.getElementById('gasto-rubro').value = p.rubro;
     }
     gastoLlenarNCde();
 }
@@ -1641,6 +1733,7 @@ function aplicarDatosAfip(d) {
         if (prov) {
             document.getElementById('gasto-proveedor').value = prov.id;
             document.getElementById('gasto-razon').value = prov.razon_social || '';
+            if (prov.rubro) document.getElementById('gasto-rubro').value = prov.rubro;
         } else {
             provEncontrado = false;
         }
@@ -1684,9 +1777,9 @@ async function leerComprobante(input) {
         ver.href = data.url; ver.style.display = '';
         if (leido) {
             est.textContent = provFalta
-                ? '✓ Datos leídos del QR. Ojo: el proveedor (CUIT) no está en tu base, cargalo en Proveedores.'
-                : '✓ Datos leídos del QR y comprobante guardado.';
-            est.className = 'gasto-lector-estado ok';
+                ? '⚠ Proveedor NO registrado. Completá razón social y rubro: al guardar el gasto se da de alta solo.'
+                : '✓ Datos leídos del QR (proveedor, rubro e importe). Revisá y guardá.';
+            est.className = provFalta ? 'gasto-lector-estado activo' : 'gasto-lector-estado ok';
         } else if (qrViejo) {
             est.textContent = '✓ Comprobante guardado. Tiene el QR viejo de AFIP, que no incluye los datos adentro — cargalos a mano.';
             est.className = 'gasto-lector-estado ok';
@@ -1733,11 +1826,9 @@ function mostrarFormGasto() {
     document.getElementById('gasto-edit-id').value = '';
     ['gasto-pv', 'gasto-numero', 'gasto-razon', 'gasto-cuit', 'gasto-importe',
         'gasto-rubro', 'gasto-concepto', 'gasto-destino', 'gasto-adjunto',
-        'gasto-fecha-pago', 'gasto-notas'].forEach(id => document.getElementById(id).value = '');
+        'gasto-notas'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('gasto-fecha').value = new Date().toISOString().slice(0, 10);
     document.getElementById('gasto-tipo').value = '';
-    document.getElementById('gasto-categoria').value = '';
-    document.getElementById('gasto-forma').value = '';
     document.getElementById('gasto-proveedor').value = '';
     document.getElementById('gasto-es-nc').checked = false;
     document.getElementById('gasto-nc-wrap').style.display = 'none';
@@ -1768,10 +1859,7 @@ function editarGasto(id) {
     document.getElementById('gasto-razon').value = g.razon_social || '';
     document.getElementById('gasto-cuit').value = g.cuit || '';
     document.getElementById('gasto-importe').value = g.importe;
-    document.getElementById('gasto-categoria').value = g.categoria || '';
     document.getElementById('gasto-rubro').value = g.rubro || '';
-    document.getElementById('gasto-forma').value = g.forma_pago || '';
-    document.getElementById('gasto-fecha-pago').value = g.fecha_pago || '';
     document.getElementById('gasto-concepto').value = g.concepto || '';
     document.getElementById('gasto-destino').value = g.destino || '';
     document.getElementById('gasto-adjunto').value = g.adjunto_url || '';
@@ -1807,10 +1895,7 @@ async function guardarGasto(e) {
         importe: importe,
         concepto: document.getElementById('gasto-concepto').value || null,
         rubro: document.getElementById('gasto-rubro').value || null,
-        categoria: document.getElementById('gasto-categoria').value || null,
         destino: document.getElementById('gasto-destino').value || null,
-        forma_pago: document.getElementById('gasto-forma').value || null,
-        fecha_pago: document.getElementById('gasto-fecha-pago').value || null,
         adjunto_url: document.getElementById('gasto-adjunto').value || null,
         nc_de_id: (esNC && ncDe) ? Number(ncDe) : null,
         notas: document.getElementById('gasto-notas').value || null,
@@ -1821,9 +1906,10 @@ async function guardarGasto(e) {
             toast('Gasto actualizado');
         } else {
             await api('/api/gastos/', { method: 'POST', body: JSON.stringify(body) });
-            toast('Gasto registrado');
+            toast(body.proveedor_id ? 'Gasto registrado' : 'Gasto registrado y proveedor dado de alta');
         }
         cerrarFormGasto();
+        proveedoresCache = [];  // se recarga (puede haberse creado un proveedor nuevo)
         cargarGastos();
     } catch (err) {
         toast(err.message, 'error');

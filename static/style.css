@@ -943,3 +943,12 @@ tbody tr:hover td { background: var(--row-hover); }
 .gasto-lector-estado.error { color: var(--red); }
 .gasto-adjunto-fila { display: flex; gap: 0.5rem; align-items: center; }
 .gasto-adjunto-fila input { flex: 1; }
+
+/* ===== GASTOS: selector de categoria y estado de pago en la tabla ===== */
+.cat-select {
+    padding: 0.3rem 0.5rem; border: 1px solid var(--input-border);
+    background: var(--input-bg); color: var(--text);
+    border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.cat-select.cat-vacia { border-style: dashed; color: var(--text-muted); }
+.pago-ok { color: var(--green); font-weight: 700; font-size: 0.85rem; white-space: nowrap; }

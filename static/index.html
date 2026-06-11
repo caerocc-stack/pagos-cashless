@@ -582,14 +582,11 @@
                         <div style="grid-column:1/-1"><label>Proveedor</label>
                             <select id="gasto-proveedor" onchange="gastoProveedorElegido()"></select>
                         </div>
-                        <div><label>Razón social</label><input type="text" id="gasto-razon" placeholder="se completa con el proveedor"></div>
-                        <div><label>CUIT</label><input type="text" id="gasto-cuit" placeholder="se completa con el proveedor"></div>
+                        <div><label>Razón social</label><input type="text" id="gasto-razon" placeholder="se completa con el QR / proveedor"></div>
+                        <div><label>CUIT</label><input type="text" id="gasto-cuit" placeholder="se completa con el QR"></div>
                         <div><label>Importe (IVA incluido)</label><input type="number" step="0.01" id="gasto-importe" required placeholder="0.00"></div>
-                        <div><label>Categoría</label><select id="gasto-categoria"></select></div>
-                        <div><label>Rubro</label><input type="text" id="gasto-rubro" placeholder="ej: Librería, Ferretería..."></div>
-                        <div><label>Forma de pago</label><select id="gasto-forma"></select></div>
-                        <div><label>Fecha de pago</label><input type="date" id="gasto-fecha-pago"></div>
-                        <div style="grid-column:1/-1"><label>Concepto</label><input type="text" id="gasto-concepto" placeholder="¿qué se compró?"></div>
+                        <div><label>Rubro <span style="color:var(--text-muted);font-weight:400">(del proveedor)</span></label><input type="text" id="gasto-rubro" placeholder="ej: Librería, Ferretería..."></div>
+                        <div style="grid-column:1/-1"><label>Concepto <span style="color:var(--text-muted);font-weight:400">(qué se compró — se carga a mano)</span></label><input type="text" id="gasto-concepto" placeholder="ej: Resmas A4, tóner..."></div>
                         <div style="grid-column:1/-1"><label>Destino en la escuela</label><input type="text" id="gasto-destino" placeholder="ej: Taller de Avionica, Secretaría..."></div>
                         <div style="grid-column:1/-1"><label>Comprobante adjunto</label>
                             <div class="gasto-adjunto-fila">

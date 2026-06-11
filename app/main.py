@@ -35,6 +35,8 @@ def _asegurar_columnas():
         "CREATE INDEX IF NOT EXISTS ix_mov_fecha ON movimientos (created_at)",
         "CREATE INDEX IF NOT EXISTS ix_alumno_curso ON alumnos (curso)",
         "CREATE INDEX IF NOT EXISTS ix_alumno_area ON alumnos (area)",
+        # Gastos: vinculo a un movimiento de caja en efectivo (forma de pago)
+        "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS caja_mov_id INTEGER",
     ]
     for sql in migraciones:
         try:

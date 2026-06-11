@@ -6,11 +6,11 @@ from app.database import Base
 from app.tz import ahora_ar
 
 
-# Categorias generales (= hojas del Excel de Carlos)
+# Categorias generales (nombres cortos; antes eran las hojas del Excel)
 CATEGORIAS = [
-    "Gastos de Oficina",
+    "Oficina",
     "Infraestructura",
-    "Gastos de la Escuela",
+    "Escuela",
     "Honorarios",
 ]
 
@@ -49,9 +49,10 @@ class Gasto(Base):
     categoria: Mapped[str | None] = mapped_column(String(40))
     destino: Mapped[str | None] = mapped_column(String(160))
 
-    # Pago
+    # Pago (se completa al vincular un movimiento real: banco o caja efectivo)
     forma_pago: Mapped[str | None] = mapped_column(String(30))
     fecha_pago: Mapped[date | None] = mapped_column(Date)
+    caja_mov_id: Mapped[int | None] = mapped_column(ForeignKey("caja_movimientos.id"))
 
     # Respaldo (foto/PDF en Supabase Storage)
     adjunto_url: Mapped[str | None] = mapped_column(String(400))
