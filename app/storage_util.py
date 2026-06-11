@@ -21,8 +21,18 @@ from app.tz import ahora_ar
 EXT_PERMITIDAS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic"}
 
 
+def _normalizar_url(u: str) -> str:
+    """Deja solo https://<proyecto>.supabase.co, sacando rutas de API pegadas por error
+    (ej. .../rest/v1, .../storage/v1) y barras finales."""
+    u = (u or "").strip().rstrip("/")
+    for suf in ("/rest/v1", "/storage/v1", "/auth/v1", "/rest", "/storage", "/auth"):
+        if u.endswith(suf):
+            u = u[: -len(suf)].rstrip("/")
+    return u
+
+
 def _cfg():
-    url = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    url = _normalizar_url(os.getenv("SUPABASE_URL") or "")
     key = os.getenv("SUPABASE_SERVICE_KEY") or ""
     bucket = os.getenv("SUPABASE_BUCKET") or "comprobantes"
     return url, key, bucket
