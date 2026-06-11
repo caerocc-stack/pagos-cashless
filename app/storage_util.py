@@ -62,19 +62,25 @@ def _asegurar_bucket(url: str, key: str, bucket: str):
     _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
 
 
-def _traducir_error(e: urllib.error.HTTPError) -> str:
-    detalle = ""
+def _leer_cuerpo(e: urllib.error.HTTPError) -> str:
     try:
-        detalle = e.read().decode("utf-8", "ignore")[:200]
+        return e.read().decode("utf-8", "ignore")[:300]
     except Exception:
-        pass
-    if e.code in (401, 403):
+        return ""
+
+
+def _traducir(code: int, detalle: str) -> str:
+    if code in (401, 403):
         return ("La clave de Supabase es inválida o no tiene permisos. "
                 "Verificá que sea la clave 'service_role' (Project Settings > API), no la 'anon'. "
-                f"[{e.code}] {detalle}")
-    if e.code == 404:
-        return f"No se encontró el proyecto/bucket en Supabase. Revisá SUPABASE_URL. [{e.code}] {detalle}"
-    return f"No se pudo subir el archivo a Storage [{e.code}] {detalle}"
+                f"[{code}] {detalle}")
+    if code == 404:
+        return f"No se encontró el proyecto/bucket en Supabase. Revisá SUPABASE_URL. [{code}] {detalle}"
+    return f"No se pudo subir el archivo a Storage [{code}] {detalle}"
+
+
+def _es_bucket_inexistente(code: int, cuerpo: str) -> bool:
+    return code == 404 or "bucket not found" in (cuerpo or "").lower()
 
 
 def subir_comprobante(contenido: bytes, filename: str, content_type: str | None = None) -> str:
@@ -102,19 +108,22 @@ def subir_comprobante(contenido: bytes, filename: str, content_type: str | None 
     try:
         _intentar()
     except urllib.error.HTTPError as e:
-        # Si el bucket no existe (404), lo creamos y reintentamos una vez.
-        if e.code == 404:
+        cuerpo = _leer_cuerpo(e)
+        # Supabase responde "Bucket not found" a veces como 404 y a veces dentro de un 400.
+        if _es_bucket_inexistente(e.code, cuerpo):
             try:
                 _asegurar_bucket(url, key, bucket)
             except urllib.error.HTTPError as e_bucket:
-                if e_bucket.code not in (400, 409):  # 400/409 = ya existía
-                    raise ValueError(_traducir_error(e_bucket))
+                cb = _leer_cuerpo(e_bucket)
+                # 400/409 o "already exists" = el bucket ya estaba, seguimos
+                if e_bucket.code not in (400, 409) and "exist" not in cb.lower():
+                    raise ValueError(_traducir(e_bucket.code, cb))
             try:
                 _intentar()
             except urllib.error.HTTPError as e2:
-                raise ValueError(_traducir_error(e2))
+                raise ValueError(_traducir(e2.code, _leer_cuerpo(e2)))
         else:
-            raise ValueError(_traducir_error(e))
+            raise ValueError(_traducir(e.code, cuerpo))
     except urllib.error.URLError as e:
         raise ValueError(f"No se pudo conectar con Supabase: {e.reason}. Revisá SUPABASE_URL.")
 
