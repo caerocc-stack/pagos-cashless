@@ -1570,16 +1570,27 @@ function escanearQRdeImagen(file) {
         if (!file.type.startsWith('image/') || typeof jsQR === 'undefined') { resolve(null); return; }
         const img = new Image();
         img.onload = () => {
-            const max = 1600;
-            let w = img.width, h = img.height;
-            const esc = Math.min(1, max / Math.max(w, h));
-            w = Math.round(w * esc); h = Math.round(h * esc);
-            const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-            const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
-            let code = null;
-            try { const d = ctx.getImageData(0, 0, w, h); code = jsQR(d.data, w, h); } catch (e) {}
+            const cv = document.createElement('canvas');
+            const ctx = cv.getContext('2d', { willReadFrequently: true });
+            const maxLado = Math.max(img.width, img.height);
+            // Probar varias resoluciones (de mayor a menor): un QR chico dentro de una
+            // factura grande se detecta mejor en alta resolución; uno de cerca, en baja.
+            const objetivos = [2600, 1800, 1200, 900];
+            const escalas = [...new Set(objetivos.map(m => Math.min(1, m / maxLado)))];
+            let encontrado = null;
+            for (const f of escalas) {
+                const w = Math.max(1, Math.round(img.width * f));
+                const h = Math.max(1, Math.round(img.height * f));
+                cv.width = w; cv.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+                try {
+                    const d = ctx.getImageData(0, 0, w, h);
+                    const code = jsQR(d.data, w, h, { inversionAttempts: 'attemptBoth' });
+                    if (code && code.data) { encontrado = code.data; break; }
+                } catch (e) {}
+            }
             URL.revokeObjectURL(img.src);
-            resolve(code ? code.data : null);
+            resolve(encontrado);
         };
         img.onerror = () => resolve(null);
         img.src = URL.createObjectURL(file);
@@ -1617,11 +1628,13 @@ async function leerComprobante(input) {
     est.textContent = '⏳ Leyendo la factura...';
     est.className = 'gasto-lector-estado activo';
 
-    let leido = false, provFalta = false;
+    let leido = false, provFalta = false, qrPeroNoFactura = false;
+    const esPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
     const qr = await escanearQRdeImagen(file);
     if (qr) {
         const datos = parseAfipQR(qr);
         if (datos) { provFalta = !aplicarDatosAfip(datos); leido = true; }
+        else { qrPeroNoFactura = true; }
     }
 
     // Subir la imagen/PDF a Storage como respaldo
@@ -1639,8 +1652,14 @@ async function leerComprobante(input) {
                 ? '✓ Datos leídos del QR. Ojo: el proveedor (CUIT) no está en tu base, cargalo en Proveedores.'
                 : '✓ Datos leídos del QR y comprobante guardado.';
             est.className = 'gasto-lector-estado ok';
+        } else if (qrPeroNoFactura) {
+            est.textContent = '✓ Comprobante guardado. Leí un QR pero no es el de la factura de AFIP/ARCA — completá los datos a mano.';
+            est.className = 'gasto-lector-estado ok';
+        } else if (esPDF) {
+            est.textContent = '✓ PDF guardado. Por ahora no leo el QR desde PDF: completá los datos a mano (o subí una foto del comprobante).';
+            est.className = 'gasto-lector-estado ok';
         } else {
-            est.textContent = '✓ Comprobante guardado. No tenía QR de AFIP: completá los datos a mano.';
+            est.textContent = '✓ Comprobante guardado. No detecté el QR — probá una foto más nítida, derecha y con el QR bien visible y de cerca.';
             est.className = 'gasto-lector-estado ok';
         }
     } catch (err) {
