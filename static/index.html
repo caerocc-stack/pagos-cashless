@@ -32,6 +32,7 @@
             <button class="nav-btn" data-section="proveedores" onclick="cargarProveedores()">Proveedores</button>
             <button class="nav-btn" data-section="gastos" onclick="cargarGastos()">Gastos</button>
             <button class="nav-btn" data-section="caja" onclick="cargarCaja()">Caja</button>
+            <button class="nav-btn" data-section="conciliacion" onclick="cargarConciliacion()">Conciliación</button>
             <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
             <button class="nav-btn" data-section="importar">Importar</button>
         </nav>
@@ -118,11 +119,11 @@
                     <div class="dash-desc">PDFs y fotos de respaldo de cada compra</div>
                     <div class="dash-badge">Próximamente</div>
                 </div>
-                <div class="dash-card dash-soon" data-color="purple" data-tags="banco roela conciliacion transferencia" onclick="dashProx('Conciliación bancaria')">
+                <div class="dash-card" data-color="purple" data-tags="banco roela conciliacion transferencia" onclick="dashIr('conciliacion')">
                     <div class="dash-icon">🏦</div>
                     <div class="dash-nombre">Conciliación bancaria</div>
-                    <div class="dash-desc">Cruce con movimientos de Banco Roela</div>
-                    <div class="dash-badge">Próximamente</div>
+                    <div class="dash-desc">Cruce de pagos con el extracto del banco</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
                 </div>
             </div>
 
@@ -690,6 +691,45 @@
                     </tr>
                 </thead>
                 <tbody id="body-caja"></tbody>
+            </table>
+        </section>
+
+        <!-- CONCILIACION BANCARIA -->
+        <section id="sec-conciliacion" class="section">
+            <div class="section-titulo">Conciliación bancaria</div>
+
+            <div class="conc-importar">
+                <div class="conc-importar-txt">
+                    <strong>Importar extracto de cuenta</strong>
+                    <span>Subí el <b>.xls</b> del extracto del banco. El sistema toma solo los egresos
+                    (transferencias <b>190</b> y débitos <b>F30</b>) y los cruza con tus facturas por <b>CUIT + importe</b>.</span>
+                </div>
+                <div class="conc-importar-acc">
+                    <input type="file" id="conc-archivo" accept=".xls" style="display:none" onchange="importarExtracto(this)">
+                    <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()">📤 Subir extracto (.xls)</button>
+                    <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas">↻ Reintentar cruce</button>
+                </div>
+            </div>
+
+            <div class="gasto-resumen" id="conc-resumen"></div>
+
+            <div class="toolbar">
+                <input type="text" id="buscar-conc" placeholder="Buscar por CUIT, razón social o descripción...">
+                <select id="conc-f-estado" onchange="cargarConciliacion()">
+                    <option value="">Todos</option>
+                    <option value="pendiente">Solo pendientes</option>
+                    <option value="conciliado">Solo conciliados</option>
+                </select>
+            </div>
+
+            <table id="tabla-conc">
+                <thead>
+                    <tr>
+                        <th>Fecha</th><th>Tipo</th><th>CUIT</th><th>Destinatario</th>
+                        <th style="text-align:right">Importe</th><th>Estado / Factura</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="body-conc"></tbody>
             </table>
         </section>
 

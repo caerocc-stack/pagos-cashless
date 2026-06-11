@@ -5,6 +5,7 @@ psycopg[binary]
 pydantic
 python-dotenv
 openpyxl
+xlrd
 python-multipart
 alembic
 pyjwt[crypto]

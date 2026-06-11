@@ -1874,6 +1874,165 @@ async function editarSaldoInicial() {
     }
 }
 
+// =========================================================
+// --- CONCILIACION BANCARIA ---
+// =========================================================
+let concCache = [];
+
+async function cargarConciliacion() {
+    try {
+        const estado = document.getElementById('conc-f-estado').value;
+        const p = new URLSearchParams();
+        if (estado) p.set('estado', estado);
+        concCache = await api('/api/conciliacion/?' + p.toString());
+        filtrarConciliacion();
+        cargarResumenConc();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function cargarResumenConc() {
+    try {
+        const r = await api('/api/conciliacion/resumen');
+        document.getElementById('conc-resumen').innerHTML = `
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Movimientos del banco</div>
+                <div class="gasto-kpi-valor">${r.total}</div>
+                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_total)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados</div>
+                <div class="gasto-kpi-valor" style="color:var(--green)">${r.conciliados}</div>
+                <div class="gasto-kpi-sub">cruzados con factura</div></div>
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pendientes</div>
+                <div class="gasto-kpi-valor">${r.pendientes}</div>
+                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_pendiente)} sin factura</div></div>`;
+    } catch (err) { /* sin datos */ }
+}
+
+function filtrarConciliacion() {
+    const q = (document.getElementById('buscar-conc').value || '').toLowerCase();
+    const lista = concCache.filter(m => !q ||
+        [m.cuit, m.razon_social, m.descripcion].some(v => (v || '').toLowerCase().includes(q)));
+    renderConciliacion(lista);
+}
+
+function renderConciliacion(lista) {
+    document.getElementById('body-conc').innerHTML = lista.map(m => {
+        const fecha = m.fecha ? m.fecha.split('-').reverse().join('/') : '-';
+        const tipo = m.concepto === 'F30' ? 'DEBIN' : 'Transf.';
+        let estado, acciones;
+        if (m.conciliado && m.gasto) {
+            const g = m.gasto;
+            const fg = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
+            const badge = m.conciliado_manual ? 'manual' : 'auto';
+            estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')}
+                <span style="color:var(--text-muted)">· ${escapeHtml(g.concepto || '')} · ${fg}</span>`;
+            acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
+        } else {
+            estado = '<span class="conc-pend">● pendiente</span>';
+            acciones = `<button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})">Vincular factura</button>`;
+        }
+        return `<tr>
+            <td>${fecha}</td>
+            <td>${tipo}</td>
+            <td>${escapeHtml(m.cuit || '-')}</td>
+            <td>${escapeHtml(m.razon_social || '—')}</td>
+            <td style="text-align:right">$${gastoFmt(Math.abs(m.importe))}</td>
+            <td>${estado}</td>
+            <td>${acciones}</td>
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">No hay movimientos. Subí un extracto para empezar.</td></tr>';
+}
+
+async function importarExtracto(input) {
+    const file = input.files[0];
+    if (!file) return;
+    toast('Procesando extracto...', 'success');
+    try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await fetch(API + '/api/conciliacion/importar', {
+            method: 'POST', credentials: 'same-origin', body: fd,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al importar');
+        toast(`Listo: ${data.nuevos} nuevos, ${data.conciliados_automaticamente} conciliados solos, ${data.pendientes} pendientes` +
+            (data.duplicados ? ` (${data.duplicados} ya estaban)` : ''), 'success');
+        cargarConciliacion();
+    } catch (err) {
+        toast(err.message, 'error');
+    } finally {
+        input.value = '';  // permite volver a subir el mismo archivo
+    }
+}
+
+async function reconciliarAuto() {
+    try {
+        const r = await api('/api/conciliacion/auto', { method: 'POST' });
+        toast(`Se conciliaron ${r.conciliados} más. Quedan ${r.pendientes} pendientes.`);
+        cargarConciliacion();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function abrirCandidatos(movId) {
+    const mov = concCache.find(m => m.id === movId);
+    try {
+        const cands = await api(`/api/conciliacion/${movId}/candidatos`);
+        const filas = cands.map(c => {
+            const f = c.fecha ? c.fecha.split('-').reverse().join('/') : '';
+            const tags = [c.coincide_cuit ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
+                c.coincide_monto ? '<span class="conc-tag-ok">Importe ✓</span>' : ''].join(' ');
+            return `<tr>
+                <td>${f}</td>
+                <td>${escapeHtml(c.razon_social || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(c.concepto || '')}</small></td>
+                <td>${escapeHtml(c.cuit || '-')}</td>
+                <td style="text-align:right">$${gastoFmt(c.importe)}</td>
+                <td>${tags}</td>
+                <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id})">Vincular</button></td>
+            </tr>`;
+        }).join('') ||
+            '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No hay facturas con ese CUIT ni ese importe. Cargá la factura en Gastos primero.</td></tr>';
+        const html = `
+            <h2 style="margin-top:0">Vincular movimiento con una factura</h2>
+            <p style="color:var(--text-muted);margin-top:-0.4rem">
+                ${mov ? `${escapeHtml(mov.razon_social || mov.descripcion || '')} · CUIT ${escapeHtml(mov.cuit || '-')} · $${gastoFmt(Math.abs(mov.importe))}` : ''}
+            </p>
+            <div style="max-height:50vh;overflow:auto">
+            <table><thead><tr><th>Fecha</th><th>Factura</th><th>CUIT</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
+            <tbody>${filas}</tbody></table>
+            </div>
+            <div style="margin-top:1rem;text-align:right"><button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function matchManual(movId, gastoId) {
+    try {
+        await api(`/api/conciliacion/${movId}/match/${gastoId}`, { method: 'POST' });
+        toast('Movimiento conciliado');
+        cerrarModal();
+        cargarConciliacion();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function desconciliar(movId) {
+    if (!confirm('¿Deshacer la conciliación de este movimiento?')) return;
+    try {
+        await api(`/api/conciliacion/${movId}/unmatch`, { method: 'POST' });
+        toast('Conciliación deshecha');
+        cargarConciliacion();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1901,6 +2060,8 @@ const _bg = document.getElementById('buscar-gasto');
 if (_bg) _bg.addEventListener('input', filtrarGastos);
 const _bc = document.getElementById('buscar-caja');
 if (_bc) _bc.addEventListener('input', filtrarCaja);
+const _bco = document.getElementById('buscar-conc');
+if (_bco) _bco.addEventListener('input', filtrarConciliacion);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();

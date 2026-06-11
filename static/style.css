@@ -904,3 +904,24 @@ tbody tr:hover td { background: var(--row-hover); }
 @media (max-width: 760px) {
     .caja-rapida { grid-template-columns: 1fr; }
 }
+
+/* ===== CONCILIACION BANCARIA ===== */
+.conc-importar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: 1.1rem;
+    box-shadow: var(--shadow-sm);
+}
+.conc-importar-txt { display: flex; flex-direction: column; gap: 0.25rem; max-width: 560px; }
+.conc-importar-txt strong { color: var(--heading); font-size: 1rem; }
+.conc-importar-txt span { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; }
+.conc-importar-acc { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.conc-ok { color: var(--green); font-weight: 700; }
+.conc-pend { color: #d97706; font-weight: 700; }
+.conc-tag-ok {
+    display: inline-block; font-size: 0.7rem; font-weight: 700;
+    background: rgba(22,163,74,0.15); color: var(--green);
+    border-radius: 5px; padding: 0.1rem 0.4rem; margin-right: 0.2rem;
+}
