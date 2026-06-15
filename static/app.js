@@ -2330,6 +2330,121 @@ async function desconciliar(movId) {
     }
 }
 
+// =========================================================
+// --- CUOTAS: CURSOS Y PARAMETROS ---
+// =========================================================
+let cursosCache = [];
+
+async function cargarCursos() {
+    try {
+        cursosCache = await api('/api/cursos/');
+        // Si no hay ninguno, ofrecer cargar la config inicial
+        if (!cursosCache.length) {
+            if (confirm('No hay cursos cargados. ¿Cargar la configuración inicial (Ciclo Básico, ORR, TCP, DESP AER, etc.)?')) {
+                await api('/api/cursos/seed', { method: 'POST' });
+                cursosCache = await api('/api/cursos/');
+            }
+        }
+        renderCursos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+function renderCursos() {
+    document.getElementById('body-cursos').innerHTML = cursosCache.map(c => `
+        <tr>
+            <td><b>${escapeHtml(c.nombre)}</b>${c.patron ? ` <span style="color:var(--text-muted);font-size:.8rem">(${escapeHtml(c.patron)})</span>` : ''}</td>
+            <td>${escapeHtml(c.area || '-')}</td>
+            <td>${escapeHtml(c.divisiones || '-')}</td>
+            <td style="text-align:right">$${gastoFmt(c.cuota)}</td>
+            <td style="text-align:right">${c.n_cuotas}</td>
+            <td style="text-align:right">${Number(c.matricula) ? '$' + gastoFmt(c.matricula) : '—'}</td>
+            <td>${c.cobra_cuotas_viejas ? 'Sí' : 'No'}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editarCurso(${c.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarCurso(${c.id})">Eliminar</button>
+            </td>
+        </tr>`).join('') ||
+        '<tr><td colspan="8" style="text-align:center;color:#94a3b8">Sin cursos cargados</td></tr>';
+}
+
+function mostrarFormCurso() {
+    document.getElementById('form-curso').style.display = 'block';
+    document.getElementById('form-curso-titulo').textContent = 'Nuevo curso';
+    document.getElementById('cur-edit-id').value = '';
+    ['cur-nombre', 'cur-area', 'cur-divisiones', 'cur-patron', 'cur-cuota',
+        'cur-ncuotas', 'cur-matricula', 'cur-cuota-ant'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('cur-anio').value = '2026';
+    document.getElementById('cur-viejas').checked = false;
+    document.getElementById('form-curso').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cerrarFormCurso() {
+    document.getElementById('form-curso').style.display = 'none';
+}
+
+function editarCurso(id) {
+    const c = cursosCache.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('form-curso').style.display = 'block';
+    document.getElementById('form-curso-titulo').textContent = 'Editar curso';
+    document.getElementById('cur-edit-id').value = id;
+    document.getElementById('cur-nombre').value = c.nombre || '';
+    document.getElementById('cur-area').value = c.area || '';
+    document.getElementById('cur-divisiones').value = c.divisiones || '';
+    document.getElementById('cur-patron').value = c.patron || '';
+    document.getElementById('cur-cuota').value = c.cuota;
+    document.getElementById('cur-ncuotas').value = c.n_cuotas;
+    document.getElementById('cur-matricula').value = c.matricula;
+    document.getElementById('cur-cuota-ant').value = c.cuota_anio_anterior;
+    document.getElementById('cur-anio').value = c.anio;
+    document.getElementById('cur-viejas').checked = !!c.cobra_cuotas_viejas;
+    document.getElementById('form-curso').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function guardarCurso(e) {
+    e.preventDefault();
+    const editId = document.getElementById('cur-edit-id').value;
+    const body = {
+        nombre: document.getElementById('cur-nombre').value,
+        area: document.getElementById('cur-area').value || null,
+        divisiones: document.getElementById('cur-divisiones').value || null,
+        patron: document.getElementById('cur-patron').value || null,
+        cuota: parseFloat(document.getElementById('cur-cuota').value) || 0,
+        n_cuotas: parseInt(document.getElementById('cur-ncuotas').value) || 0,
+        matricula: parseFloat(document.getElementById('cur-matricula').value) || 0,
+        cuota_anio_anterior: parseFloat(document.getElementById('cur-cuota-ant').value) || 0,
+        anio: parseInt(document.getElementById('cur-anio').value) || 2026,
+        cobra_cuotas_viejas: document.getElementById('cur-viejas').checked,
+    };
+    try {
+        if (editId) {
+            await api(`/api/cursos/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+            toast('Curso actualizado');
+        } else {
+            await api('/api/cursos/', { method: 'POST', body: JSON.stringify(body) });
+            toast('Curso creado');
+        }
+        cerrarFormCurso();
+        cargarCursos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function eliminarCurso(id) {
+    const c = cursosCache.find(x => x.id === id);
+    if (!confirm(`¿Eliminar el curso "${c ? c.nombre : ''}"?`)) return;
+    try {
+        const res = await api(`/api/cursos/${id}`, { method: 'DELETE' });
+        toast(res.mensaje);
+        cargarCursos();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);

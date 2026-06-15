@@ -33,6 +33,7 @@
             <button class="nav-btn" data-section="gastos" onclick="cargarGastos()">Gastos</button>
             <button class="nav-btn" data-section="caja" onclick="cargarCaja()">Caja</button>
             <button class="nav-btn" data-section="conciliacion" onclick="cargarConciliacion()">Conciliación</button>
+            <button class="nav-btn" data-section="cuotas" onclick="cargarCursos()">Cuotas</button>
             <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
             <button class="nav-btn" data-section="importar">Importar</button>
         </nav>
@@ -757,6 +758,64 @@
                     </tr>
                 </thead>
                 <tbody id="body-conc"></tbody>
+            </table>
+        </section>
+
+        <!-- CUOTAS: cursos y parametros -->
+        <section id="sec-cuotas" class="section">
+            <div class="section-titulo">Cuotas — Cursos y parámetros</div>
+            <p style="color:var(--text-muted);margin:-0.6rem 0 1rem;font-size:0.9rem">
+                Definí cada tipo de curso con su <b>valor de cuota</b>, <b>cantidad de meses</b>, matrícula y divisiones.
+                Estos valores se usan para calcular la deuda y el estado de cada alumno.</p>
+
+            <div class="toolbar">
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormCurso()">+ Nuevo curso</button>
+            </div>
+
+            <div id="form-curso" class="card form-card" style="display:none">
+                <h3 id="form-curso-titulo">Nuevo curso</h3>
+                <form onsubmit="guardarCurso(event)">
+                    <input type="hidden" id="cur-edit-id">
+                    <div class="form-grid">
+                        <div><label>Nombre del curso</label><input type="text" id="cur-nombre" required placeholder="ej: Ciclo Básico, TCP, DESP AER"></div>
+                        <div><label>Área</label>
+                            <select id="cur-area">
+                                <option value="">—</option>
+                                <option value="Ciclo Basico">Ciclo Básico</option>
+                                <option value="Avionica">Aviónica</option>
+                                <option value="Mecanica">Mecánica</option>
+                                <option value="Aeronavegantes">Aeronavegantes</option>
+                                <option value="Examenes">Exámenes</option>
+                            </select>
+                        </div>
+                        <div><label>Divisiones <span style="color:var(--text-muted);font-weight:400">(separadas por coma)</span></label><input type="text" id="cur-divisiones" placeholder="ej: A,B"></div>
+                        <div><label>Patrón del curso <span style="color:var(--text-muted);font-weight:400">(prefijo, opcional)</span></label><input type="text" id="cur-patron" placeholder="ej: TCP, DESP AER (vacío = por área)"></div>
+                        <div><label>Valor de la cuota ($)</label><input type="number" step="0.01" id="cur-cuota" required placeholder="45000"></div>
+                        <div><label>Cantidad de meses (cuotas)</label><input type="number" id="cur-ncuotas" required placeholder="10"></div>
+                        <div><label>Matrícula ($)</label><input type="number" step="0.01" id="cur-matricula" placeholder="50000 (0 si no tiene)"></div>
+                        <div><label>Cuota año anterior ($)</label><input type="number" step="0.01" id="cur-cuota-ant" placeholder="30000 (0 si no aplica)"></div>
+                        <div><label>Año lectivo</label><input type="number" id="cur-anio" value="2026"></div>
+                        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:1.5rem">
+                            <input type="checkbox" id="cur-viejas" style="width:auto">
+                            <label for="cur-viejas" style="margin:0">Cobra cuotas de años anteriores</label>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
+                        <button type="button" class="btn btn-red" onclick="cerrarFormCurso()">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="tabla-cursos">
+                <thead>
+                    <tr>
+                        <th>Curso</th><th>Área</th><th>Divisiones</th>
+                        <th style="text-align:right">Cuota</th><th style="text-align:right">Meses</th>
+                        <th style="text-align:right">Matrícula</th><th>Cuotas viejas</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="body-cursos"></tbody>
             </table>
         </section>
 
