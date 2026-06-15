@@ -86,6 +86,12 @@ def crear_alumno(data: AlumnoCreate, db: Session = Depends(get_db)):
     db.add(saldo)
     db.commit()
     db.refresh(alumno)
+    # Reasignar pagos de cuota que estaban sin dueño y ahora matchean con este alumno
+    try:
+        from app.routers.cuotas import reasignar_pendientes
+        reasignar_pendientes(db)
+    except Exception as e:
+        print("Aviso reasignar cuotas:", e)
     return alumno
 
 

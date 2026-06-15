@@ -33,7 +33,7 @@
             <button class="nav-btn" data-section="gastos" onclick="cargarGastos()">Gastos</button>
             <button class="nav-btn" data-section="caja" onclick="cargarCaja()">Caja</button>
             <button class="nav-btn" data-section="conciliacion" onclick="cargarConciliacion()">Conciliación</button>
-            <button class="nav-btn" data-section="cuotas" onclick="cargarCursos()">Cuotas</button>
+            <button class="nav-btn" data-section="cuotas" onclick="cargarCuotasSec()">Cuotas</button>
             <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
             <button class="nav-btn" data-section="importar">Importar</button>
         </nav>
@@ -761,10 +761,58 @@
             </table>
         </section>
 
-        <!-- CUOTAS: cursos y parametros -->
+        <!-- CUOTAS: cursos y pagos SIRO -->
         <section id="sec-cuotas" class="section">
-            <div class="section-titulo">Cuotas — Cursos y parámetros</div>
-            <p style="color:var(--text-muted);margin:-0.6rem 0 1rem;font-size:0.9rem">
+            <div class="section-titulo">Cuotas</div>
+
+            <div class="cuotas-tabs">
+                <button class="cuota-tab activo" data-tab="pagos" onclick="cuotaTab('pagos')">Pagos (SIRO)</button>
+                <button class="cuota-tab" data-tab="cursos" onclick="cuotaTab('cursos')">Cursos y parámetros</button>
+            </div>
+
+            <!-- TAB: PAGOS SIRO -->
+            <div id="cuotas-tab-pagos">
+                <div class="conc-importar">
+                    <div class="conc-importar-txt">
+                        <strong>Importar pagos de SIRO</strong>
+                        <span>Subí el <b>.xls</b> del listado de cobranzas. Cada pago se asigna al alumno por
+                        <b>legajo</b> (o DNI), con la fecha de la <b>Fecha de Proceso</b>. Los que no matcheen quedan
+                        "sin asignar" y se asignan solos cuando cargás a ese alumno.</span>
+                    </div>
+                    <div class="conc-importar-acc">
+                        <input type="file" id="siro-archivo" accept=".xls" style="display:none" onchange="importarSiro(this)">
+                        <button class="btn btn-primary btn-3d" onclick="document.getElementById('siro-archivo').click()">📤 Subir cobranzas (.xls)</button>
+                        <button class="btn btn-outline" onclick="reasignarSiro()" title="Reintenta asignar los pagos sin dueño">↻ Reasignar pendientes</button>
+                    </div>
+                </div>
+
+                <div class="gasto-resumen" id="siro-resumen"></div>
+
+                <div class="toolbar">
+                    <input type="text" id="buscar-siro" placeholder="Buscar por N° de cliente...">
+                    <select id="siro-f-estado" onchange="cargarPagosSiro()">
+                        <option value="">Todos</option>
+                        <option value="sin_asignar">Sin asignar</option>
+                        <option value="asignado">Asignados</option>
+                    </select>
+                    <select id="siro-f-mes" onchange="cargarPagosSiro()"></select>
+                    <select id="siro-f-anio" onchange="cargarPagosSiro()"></select>
+                </div>
+
+                <table id="tabla-siro">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th><th>N° Cliente</th><th>Alumno</th><th>Curso</th>
+                            <th>Canal</th><th style="text-align:right">Importe</th><th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="body-siro"></tbody>
+                </table>
+            </div>
+
+            <!-- TAB: CURSOS -->
+            <div id="cuotas-tab-cursos" style="display:none">
+            <p style="color:var(--text-muted);margin:0 0 1rem;font-size:0.9rem">
                 Definí cada tipo de curso con su <b>valor de cuota</b>, <b>cantidad de meses</b>, matrícula y divisiones.
                 Estos valores se usan para calcular la deuda y el estado de cada alumno.</p>
 
@@ -817,6 +865,7 @@
                 </thead>
                 <tbody id="body-cursos"></tbody>
             </table>
+            </div><!-- /tab cursos -->
         </section>
 
         <!-- REPORTES -->

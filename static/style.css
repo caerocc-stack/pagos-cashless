@@ -952,3 +952,13 @@ tbody tr:hover td { background: var(--row-hover); }
 }
 .cat-select.cat-vacia { border-style: dashed; color: var(--text-muted); }
 .pago-ok { color: var(--green); font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
+
+/* ===== CUOTAS: pestañas ===== */
+.cuotas-tabs { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; border-bottom: 1px solid var(--border); }
+.cuota-tab {
+    padding: 0.6rem 1.1rem; border: none; background: transparent;
+    color: var(--text-muted); font-weight: 600; font-size: 0.92rem; cursor: pointer;
+    border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.cuota-tab:hover { color: var(--text); }
+.cuota-tab.activo { color: var(--sky); border-bottom-color: var(--sky); }

@@ -2331,7 +2331,153 @@ async function desconciliar(movId) {
 }
 
 // =========================================================
-// --- CUOTAS: CURSOS Y PARAMETROS ---
+// --- CUOTAS: pestañas, pagos SIRO y cursos ---
+// =========================================================
+function cargarCuotasSec() {
+    cuotaTab('pagos');
+}
+
+function cuotaTab(tab) {
+    document.querySelectorAll('.cuota-tab').forEach(b =>
+        b.classList.toggle('activo', b.dataset.tab === tab));
+    document.getElementById('cuotas-tab-pagos').style.display = tab === 'pagos' ? 'block' : 'none';
+    document.getElementById('cuotas-tab-cursos').style.display = tab === 'cursos' ? 'block' : 'none';
+    if (tab === 'pagos') cargarPagosSiro();
+    else cargarCursos();
+}
+
+// ---- Pagos SIRO ----
+let pagosSiroCache = [];
+let siroFiltrosListos = false;
+
+function siroLlenarFiltros() {
+    if (siroFiltrosListos) return;
+    const fmes = document.getElementById('siro-f-mes');
+    fmes.innerHTML = '<option value="">Todos los meses</option>' +
+        MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+    const hoy = new Date().getFullYear();
+    const fanio = document.getElementById('siro-f-anio');
+    fanio.innerHTML = '<option value="">Todos los años</option>' +
+        [0, 1, 2, 3].map(d => `<option value="${hoy - d}">${hoy - d}</option>`).join('');
+    fanio.value = String(hoy);
+    siroFiltrosListos = true;
+}
+
+async function cargarPagosSiro() {
+    try {
+        siroLlenarFiltros();
+        const estado = document.getElementById('siro-f-estado').value;
+        const mes = document.getElementById('siro-f-mes').value;
+        const anio = document.getElementById('siro-f-anio').value;
+        const p = new URLSearchParams();
+        if (estado) p.set('estado', estado);
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        pagosSiroCache = await api('/api/cuotas/?' + p.toString());
+        filtrarSiro();
+        cargarResumenSiro(mes, anio);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function cargarResumenSiro(mes, anio) {
+    try {
+        const p = new URLSearchParams();
+        if (mes) p.set('mes', mes);
+        if (anio) p.set('anio', anio);
+        const r = await api('/api/cuotas/resumen?' + p.toString());
+        document.getElementById('siro-resumen').innerHTML = `
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pagos importados</div>
+                <div class="gasto-kpi-valor">${r.total}</div>
+                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_total)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Asignados</div>
+                <div class="gasto-kpi-valor" style="color:var(--green)">${r.asignados}</div>
+                <div class="gasto-kpi-sub">a un alumno</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Sin asignar</div>
+                <div class="gasto-kpi-valor" style="color:#d97706">${r.sin_asignar}</div>
+                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_sin_asignar)}</div></div>`;
+    } catch (e) { /* sin datos */ }
+}
+
+function filtrarSiro() {
+    const q = (document.getElementById('buscar-siro').value || '').toLowerCase();
+    const lista = pagosSiroCache.filter(p => !q || (p.cliente_siro || '').toLowerCase().includes(q));
+    renderSiro(lista);
+}
+
+function renderSiro(lista) {
+    document.getElementById('body-siro').innerHTML = lista.map(p => {
+        const f = p.fecha ? p.fecha.split('-').reverse().join('/') : '-';
+        let alumno, acciones;
+        if (p.alumno) {
+            const via = p.via ? ` <span style="color:var(--text-muted);font-size:.78rem">(${p.via})</span>` : '';
+            alumno = `${escapeHtml(p.alumno.apellido)}, ${escapeHtml(p.alumno.nombre)}${via}`;
+            acciones = '';
+        } else {
+            alumno = '<span class="conc-pend">● sin asignar</span>';
+            acciones = `<button class="btn btn-sm btn-primary" onclick="asignarPagoSiro(${p.id})">Asignar</button>`;
+        }
+        return `<tr>
+            <td>${f}</td>
+            <td>${escapeHtml(p.cliente_siro || '-')}</td>
+            <td>${alumno}</td>
+            <td>${p.alumno ? escapeHtml(p.alumno.curso || '-') : '-'}</td>
+            <td>${escapeHtml(p.canal || '-')}</td>
+            <td style="text-align:right">$${gastoFmt(p.importe)}</td>
+            <td>${acciones}</td>
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">No hay pagos. Subí un listado de cobranzas SIRO.</td></tr>';
+}
+
+async function importarSiro(input) {
+    const file = input.files[0];
+    if (!file) return;
+    toast('Procesando cobranzas...', 'success');
+    try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await fetch(API + '/api/cuotas/importar', { method: 'POST', credentials: 'same-origin', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al importar');
+        toast(`Listo: ${data.nuevos} pagos nuevos, ${data.asignados} asignados, ${data.sin_asignar} sin asignar` +
+            (data.duplicados ? ` (${data.duplicados} ya estaban)` : ''), 'success');
+        cargarPagosSiro();
+    } catch (err) {
+        toast(err.message, 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+async function reasignarSiro() {
+    try {
+        const r = await api('/api/cuotas/reasignar', { method: 'POST' });
+        toast(`Se asignaron ${r.asignados} más. Quedan ${r.sin_asignar} sin asignar.`);
+        cargarPagosSiro();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function asignarPagoSiro(pagoId) {
+    const leg = prompt('Legajo del alumno al que asignar este pago:');
+    if (!leg) return;
+    try {
+        if (!alumnosCache.length) await cargarAlumnos();
+        const a = alumnosCache.find(x => String(x.legajo) === String(leg).trim());
+        if (!a) { toast('No encontré un alumno con ese legajo', 'error'); return; }
+        await api(`/api/cuotas/${pagoId}/asignar/${a.id}`, { method: 'POST' });
+        toast(`Asignado a ${a.apellido}, ${a.nombre}`);
+        cargarPagosSiro();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// =========================================================
+// --- CURSOS Y PARAMETROS ---
 // =========================================================
 let cursosCache = [];
 
@@ -2474,6 +2620,8 @@ const _bc = document.getElementById('buscar-caja');
 if (_bc) _bc.addEventListener('input', filtrarCaja);
 const _bco = document.getElementById('buscar-conc');
 if (_bco) _bco.addEventListener('input', filtrarConciliacion);
+const _bsi = document.getElementById('buscar-siro');
+if (_bsi) _bsi.addEventListener('input', filtrarSiro);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();
