@@ -281,9 +281,10 @@ function mostrarFormAlumno() {
     document.getElementById('form-alumno').style.display = 'block';
     document.getElementById('form-alumno-titulo').textContent = 'Nuevo Alumno';
     document.getElementById('alumno-edit-id').value = '';
-    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-email', 'al-area', 'al-cuota-personalizada'].forEach(id =>
-        document.getElementById(id).value = ''
-    );
+    ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-division',
+        'al-email', 'al-area', 'al-telefono', 'al-fecha-nac', 'al-modalidad',
+        'al-cuota-personalizada'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('al-condicion').value = 'Regular';
     document.getElementById('al-cuota-excluir').checked = false;
 }
 
@@ -302,8 +303,13 @@ function editarAlumno(id) {
     document.getElementById('al-nombre').value = a.nombre;
     document.getElementById('al-apellido').value = a.apellido;
     document.getElementById('al-curso').value = a.curso;
+    document.getElementById('al-division').value = a.division || '';
     document.getElementById('al-email').value = a.email || '';
     document.getElementById('al-area').value = a.area || '';
+    document.getElementById('al-condicion').value = a.condicion || 'Regular';
+    document.getElementById('al-modalidad').value = a.modalidad || '';
+    document.getElementById('al-telefono').value = a.telefono || '';
+    document.getElementById('al-fecha-nac').value = a.fecha_nacimiento || '';
     document.getElementById('al-cuota-personalizada').value = a.cuota_personalizada || '';
     document.getElementById('al-cuota-excluir').checked = !!a.cuota_excluir;
 }
@@ -317,8 +323,13 @@ async function guardarAlumno(e) {
         nombre: document.getElementById('al-nombre').value,
         apellido: document.getElementById('al-apellido').value,
         curso: document.getElementById('al-curso').value,
+        division: document.getElementById('al-division').value || null,
         email: document.getElementById('al-email').value || null,
         area: document.getElementById('al-area').value || null,
+        condicion: document.getElementById('al-condicion').value || null,
+        modalidad: document.getElementById('al-modalidad').value || null,
+        telefono: document.getElementById('al-telefono').value || null,
+        fecha_nacimiento: document.getElementById('al-fecha-nac').value || null,
         cuota_excluir: document.getElementById('al-cuota-excluir').checked,
         cuota_personalizada: document.getElementById('al-cuota-personalizada').value || null,
     };

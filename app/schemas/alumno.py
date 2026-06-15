@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 
 
@@ -10,17 +10,29 @@ class AlumnoCreate(BaseModel):
     apellido: str
     curso: str
     area: str | None = None
+    division: str | None = None
     email: str | None = None
+    telefono: str | None = None
+    fecha_nacimiento: date | None = None
+    condicion: str | None = None
+    modalidad: str | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
 
 
 class AlumnoUpdate(BaseModel):
+    legajo: str | None = None
+    dni: str | None = None
     nombre: str | None = None
     apellido: str | None = None
     curso: str | None = None
     area: str | None = None
+    division: str | None = None
     email: str | None = None
+    telefono: str | None = None
+    fecha_nacimiento: date | None = None
+    condicion: str | None = None
+    modalidad: str | None = None
     cuota_excluir: bool | None = None
     cuota_personalizada: Decimal | None = None
     activo: bool | None = None
@@ -34,7 +46,12 @@ class AlumnoResponse(BaseModel):
     apellido: str
     curso: str
     area: str | None = None
+    division: str | None = None
     email: str | None = None
+    telefono: str | None = None
+    fecha_nacimiento: date | None = None
+    condicion: str | None = None
+    modalidad: str | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
     activo: bool

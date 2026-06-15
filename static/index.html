@@ -259,15 +259,28 @@
                         <div><label>DNI</label><input type="text" id="al-dni" required></div>
                         <div><label>Nombre</label><input type="text" id="al-nombre" required></div>
                         <div><label>Apellido</label><input type="text" id="al-apellido" required></div>
-                        <div><label>Curso</label><input type="text" id="al-curso" required></div>
+                        <div><label>Curso</label><input type="text" id="al-curso" required placeholder="ej: 1°A, MMH, DESP AER A"></div>
+                        <div><label>División</label><input type="text" id="al-division" placeholder="ej: A (se deduce del curso)"></div>
                         <div><label>Área</label>
                             <select id="al-area">
                                 <option value="">(según curso)</option>
                                 <option value="Ciclo Basico">Ciclo Básico</option>
                                 <option value="Avionica">Aviónica</option>
                                 <option value="Mecanica">Mecánica</option>
+                                <option value="Aeronavegantes">Aeronavegantes</option>
+                                <option value="Examenes">Exámenes</option>
                             </select>
                         </div>
+                        <div><label>Condición</label>
+                            <select id="al-condicion">
+                                <option value="Regular">Regular</option>
+                                <option value="Becado">Becado</option>
+                                <option value="Exento">Exento</option>
+                            </select>
+                        </div>
+                        <div><label>Modalidad</label><input type="text" id="al-modalidad" placeholder="Mensual"></div>
+                        <div><label>Fecha de nacimiento</label><input type="date" id="al-fecha-nac"></div>
+                        <div><label>Teléfono</label><input type="text" id="al-telefono" placeholder="opcional"></div>
                         <div><label>Email del padre/madre</label><input type="email" id="al-email" placeholder="opcional"></div>
                         <div><label>Monto de cuota personalizado</label><input type="number" id="al-cuota-personalizada" placeholder="(deja vacío = cuota normal)"></div>
                         <div style="display:flex;align-items:center;gap:0.5rem;margin-top:1.5rem">
