@@ -1038,3 +1038,17 @@ main { margin-left: var(--sidebar-w); max-width: 1280px; }
 /* columnas ordenables */
 .th-sort th { cursor: pointer; user-select: none; white-space: nowrap; }
 .th-sort th:hover { color: var(--sky); }
+
+/* ===== Colores sutiles por grupo del menu lateral ===== */
+.side-group:nth-of-type(1) { --gc: #3d7fc4; }   /* ApaiCard - celeste */
+.side-group:nth-of-type(2) { --gc: #c2790c; }   /* Gastos - ambar */
+.side-group:nth-of-type(3) { --gc: #6d4ec7; }   /* Cuotas - violeta */
+.side-group:nth-of-type(4) { --gc: #5a6b82; }   /* Config - acero */
+
+.side-group-head {
+    justify-content: flex-start; gap: 0.5rem; text-align: left;
+    border-left: 3px solid var(--gc, transparent);
+}
+.side-group-head > span:first-child { color: var(--gc); flex: 1; }
+.side-group .side-item:hover { background: var(--surface-2); color: var(--gc); }
+.side-group .side-item.active { background: var(--gc); box-shadow: 0 3px 10px color-mix(in srgb, var(--gc) 40%, transparent); }
