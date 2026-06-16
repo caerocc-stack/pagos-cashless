@@ -139,9 +139,9 @@ def favicon():
     return FileResponse(str(STATIC_DIR / "logo.png"))
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
-    """Endpoint liviano para el keep-alive (no toca la base ni requiere sesion)."""
+    """Endpoint liviano para el keep-alive (responde a GET y HEAD; no toca la base ni requiere sesion)."""
     return {"ok": True}
 
 
@@ -150,7 +150,7 @@ def login_page():
     return FileResponse(str(STATIC_DIR / "login.html"))
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root(request: Request):
     token = request.cookies.get("token")
     if not token or not verify_token(token):
