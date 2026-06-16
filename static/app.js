@@ -2840,7 +2840,7 @@ async function eliminarCurso(id) {
 // =========================================================
 // --- CONTROL HORARIO (fichada) ---
 // =========================================================
-let horMeta = null, empleadosCache = [], horRegistros = [];
+let horMeta = null, empleadosCache = [], horRegistros = [], horResumen = null;
 
 async function cargarHorario() {
     try {
@@ -2882,11 +2882,13 @@ async function cargarHorarioMes() {
 }
 
 function renderResumenHor(s, emp, mes, anio) {
+    horResumen = s;
     document.getElementById('hor-resumen').innerHTML = `
         <div class="gasto-kpi"><div class="gasto-kpi-label">Días trabajados</div><div class="gasto-kpi-valor">${s.dias_trabajados}</div><div class="gasto-kpi-sub">${s.dias_vacaciones} vacac.</div></div>
         <div class="gasto-kpi"><div class="gasto-kpi-label">Hs trabajadas</div><div class="gasto-kpi-valor">${s.hs_trabajadas}</div><div class="gasto-kpi-sub">de ${s.hs_esperadas} esperadas</div></div>
-        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Hs extras</div><div class="gasto-kpi-valor">${s.hs_extras}</div><div class="gasto-kpi-sub">pend.: ${s.hs_pendientes}</div></div>
-        <div class="gasto-kpi" style="cursor:pointer" onclick="editarLiquidadas(${emp},${anio},${mes},${s.hs_liquidadas})"><div class="gasto-kpi-label">Hs liquidadas ✎</div><div class="gasto-kpi-valor">${s.hs_liquidadas}</div><div class="gasto-kpi-sub">clic para editar</div></div>`;
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Hs extras del mes</div><div class="gasto-kpi-valor" style="color:var(--green)">${s.hs_extras}</div><div class="gasto-kpi-sub">+ ${s.saldo_anterior} del mes anterior</div></div>
+        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Acumulado a liquidar</div><div class="gasto-kpi-valor">${s.acumulado_a_liquidar}</div><div class="gasto-kpi-sub">${s.saldo_anterior} ant. + ${s.hs_extras} del mes</div></div>
+        <div class="gasto-kpi" style="cursor:pointer" onclick="editarLiquidadas(${emp},${anio},${mes},${s.hs_liquidadas})"><div class="gasto-kpi-label">Hs liquidadas ✎</div><div class="gasto-kpi-valor">${s.hs_liquidadas}</div><div class="gasto-kpi-sub">queda pend.: ${s.pendiente_cierre}</div></div>`;
 }
 
 function renderHorarioDias(regs) {
@@ -2933,6 +2935,63 @@ async function cargarHorarioAnual(emp, anio) {
                 <td style="text-align:right">${r.totales.vac}</td>
                 <td style="text-align:right">${r.totales.liq.toFixed(1)}</td><td></td></tr>`;
     } catch (err) { /* */ }
+}
+
+function exportarHorarioPDF() {
+    if (typeof window.jspdf === 'undefined') { toast('No se pudo cargar el generador de PDF', 'error'); return; }
+    if (!horRegistros.length) { toast('No hay registros en este mes', 'error'); return; }
+    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const selE = document.getElementById('hor-empleado');
+    const nombreEmp = selE.options[selE.selectedIndex] ? selE.options[selE.selectedIndex].text : '';
+    const mes = Number(document.getElementById('hor-mes').value);
+    const anio = document.getElementById('hor-anio').value;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const f1 = n => Number(n || 0).toFixed(1);
+
+    doc.setFontSize(14); doc.text('Control horario — Registro mensual', 14, 16);
+    doc.setFontSize(10); doc.setTextColor(90);
+    doc.text(`${nombreEmp}  ·  ${MESES[mes - 1]} ${anio}`, 14, 22);
+    doc.setTextColor(20);
+
+    let acum = 0, totTrab = 0, totExtra = 0;
+    const body = horRegistros.map(r => {
+        const dl = new Date(r.fecha + 'T12:00:00').getDay();
+        const trab = Number(r.hs_trabajadas || 0), extra = Number(r.hs_extras || 0);
+        acum += extra; totTrab += trab; totExtra += extra;
+        const esNormal = r.tipo === 'Normal';
+        return [
+            r.fecha.split('-').reverse().join('/'),
+            dias[dl],
+            esNormal ? '' : r.tipo,
+            r.entrada || '', r.salida || '',
+            esNormal ? f1(trab) : '', esNormal ? f1(extra) : '',
+            esNormal ? f1(acum) : '',
+        ];
+    });
+
+    doc.autoTable({
+        startY: 27,
+        head: [['Fecha', 'Día', 'Tipo', 'Entrada', 'Salida', 'Hs trab.', 'Hs extras', 'Extras acum.']],
+        body: body,
+        styles: { fontSize: 8.5, halign: 'center' },
+        headStyles: { fillColor: [13, 148, 136] },
+        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'left' } },
+        foot: [[
+            { content: 'TOTALES', colSpan: 5, styles: { halign: 'right' } },
+            f1(totTrab), f1(totExtra), '',
+        ]],
+        footStyles: { fillColor: [21, 35, 59], textColor: 255 },
+    });
+
+    let y = doc.lastAutoTable.finalY + 8;
+    if (horResumen) {
+        doc.setFontSize(10);
+        doc.text(`Saldo extras del mes anterior: ${f1(horResumen.saldo_anterior)} hs`, 14, y);
+        doc.text(`Acumulado a liquidar (anterior + mes): ${f1(horResumen.acumulado_a_liquidar)} hs`, 14, y + 6);
+        doc.text(`Horas liquidadas este mes: ${f1(horResumen.hs_liquidadas)} hs   ·   Pendiente al cierre: ${f1(horResumen.pendiente_cierre)} hs`, 14, y + 12);
+    }
+    doc.save(`horario_${nombreEmp}_${MESES[mes - 1]}_${anio}.pdf`.replace(/\s+/g, '_'));
 }
 
 function diaToggleHoras() {

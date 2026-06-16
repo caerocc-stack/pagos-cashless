@@ -86,18 +86,41 @@ def eliminar_empleado(emp_id: int, db: Session = Depends(get_db)):
 
 
 # ---------- Registros (fichadas) ----------
+def _regs_mes(db, empleado_id, anio, mes):
+    return db.query(RegistroHorario).filter(
+        RegistroHorario.empleado_id == empleado_id,
+        extract("year", RegistroHorario.fecha) == anio,
+        extract("month", RegistroHorario.fecha) == mes,
+    ).order_by(RegistroHorario.fecha).all()
+
+
+def _saldo_anterior(db, empleado_id, anio, mes, horas_diarias):
+    """Saldo de horas extras pendientes arrastrado de los meses anteriores del año."""
+    saldo = Decimal("0")
+    for m in range(1, mes):
+        s = _resumen_mes(_regs_mes(db, empleado_id, anio, m), horas_diarias, db, empleado_id, anio, m)
+        saldo += Decimal(str(s["hs_extras"])) - Decimal(str(s["hs_liquidadas"]))
+    return saldo
+
+
 @router.get("/registros")
 def listar_registros(empleado_id: int, anio: int, mes: int, db: Session = Depends(get_db)):
     emp = db.get(Empleado, empleado_id)
     if not emp:
         raise HTTPException(404, "Empleado no encontrado")
-    regs = db.query(RegistroHorario).filter(
-        RegistroHorario.empleado_id == empleado_id,
-        extract("year", RegistroHorario.fecha) == anio,
-        extract("month", RegistroHorario.fecha) == mes,
-    ).order_by(RegistroHorario.fecha).all()
-    filas = [_fila(r, Decimal(str(emp.horas_diarias))) for r in regs]
-    return {"registros": filas, "resumen": _resumen_mes(regs, Decimal(str(emp.horas_diarias)), db, empleado_id, anio, mes)}
+    hd = Decimal(str(emp.horas_diarias))
+    regs = _regs_mes(db, empleado_id, anio, mes)
+    filas = [_fila(r, hd) for r in regs]
+    resumen = _resumen_mes(regs, hd, db, empleado_id, anio, mes)
+    # Saldo arrastrado + acumulado a liquidar
+    saldo_ant = _saldo_anterior(db, empleado_id, anio, mes, hd)
+    extras = Decimal(str(resumen["hs_extras"]))
+    liq = Decimal(str(resumen["hs_liquidadas"]))
+    acumulado = saldo_ant + extras            # lo que hay para liquidar a la fecha
+    resumen["saldo_anterior"] = float(saldo_ant)
+    resumen["acumulado_a_liquidar"] = float(acumulado)
+    resumen["pendiente_cierre"] = float(acumulado - liq)
+    return {"registros": filas, "resumen": resumen}
 
 
 def _resumen_mes(regs, horas_diarias, db, empleado_id, anio, mes):
