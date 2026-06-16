@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.database import engine, Base, SessionLocal
 from app.auth import verify_token, crear_usuario_inicial, get_current_user
-from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas
+from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
 from app.routers import auth as auth_router
 from app.models import configuracion as _configuracion  # noqa: F401 (registra la tabla)
 from app.models import proveedor as _proveedor  # noqa: F401 (registra la tabla)
@@ -17,6 +17,7 @@ from app.models import caja as _caja  # noqa: F401 (registra la tabla)
 from app.models import banco as _banco  # noqa: F401 (registra la tabla)
 from app.models import curso as _curso  # noqa: F401 (registra la tabla)
 from app.models import pago_cuota as _pago_cuota  # noqa: F401 (registra la tabla)
+from app.models import horario as _horario  # noqa: F401 (registra la tabla)
 
 Base.metadata.create_all(bind=engine)
 
@@ -129,6 +130,7 @@ app.include_router(caja.router, dependencies=_auth)
 app.include_router(conciliacion.router, dependencies=_auth)
 app.include_router(cursos.router, dependencies=_auth)
 app.include_router(cuotas.router, dependencies=_auth)
+app.include_router(horario.router, dependencies=_auth)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

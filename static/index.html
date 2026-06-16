@@ -64,6 +64,13 @@
         </div>
 
         <div class="side-group">
+            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🕒 Personal</span><span class="side-caret">▾</span></button>
+            <div class="side-group-body">
+                <button class="nav-btn side-item" data-section="horario" onclick="cargarHorario();cerrarSidebarMobile()">Control horario</button>
+            </div>
+        </div>
+
+        <div class="side-group">
             <button class="side-group-head" onclick="toggleGrupo(this)"><span>⚙️ Configuración y cuenta</span><span class="side-caret">▾</span></button>
             <div class="side-group-body">
                 <button class="side-item" onclick="abrirPlantillas();cerrarSidebarMobile()">Plantillas de email</button>
@@ -955,6 +962,62 @@
                 <tbody id="body-cursos"></tbody>
             </table>
             </div><!-- /tab cursos -->
+        </section>
+
+        <!-- CONTROL HORARIO -->
+        <section id="sec-horario" class="section">
+            <div class="section-titulo">Control horario (fichada)</div>
+
+            <div class="toolbar">
+                <select id="hor-empleado" onchange="cargarHorarioMes()"></select>
+                <select id="hor-mes" onchange="cargarHorarioMes()"></select>
+                <select id="hor-anio" onchange="cargarHorarioMes()"></select>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormDia()">+ Registrar día</button>
+                <button class="btn btn-outline" onclick="abrirEmpleados()">👤 Empleados</button>
+            </div>
+
+            <div class="gasto-resumen" id="hor-resumen"></div>
+
+            <div id="form-dia" class="card form-card" style="display:none">
+                <h3 id="form-dia-titulo">Registrar día</h3>
+                <form onsubmit="guardarDia(event)">
+                    <input type="hidden" id="dia-edit-id">
+                    <div class="form-grid">
+                        <div><label>Fecha</label><input type="date" id="dia-fecha" required></div>
+                        <div><label>Tipo de día</label><select id="dia-tipo" onchange="diaToggleHoras()"></select></div>
+                        <div><label>Entrada</label><input type="time" id="dia-entrada"></div>
+                        <div><label>Salida</label><input type="time" id="dia-salida"></div>
+                        <div style="grid-column:1/-1"><label>Notas</label><input type="text" id="dia-notas" placeholder="opcional"></div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
+                        <button type="button" class="btn btn-red" onclick="cerrarFormDia()">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="tabla-horario">
+                <thead>
+                    <tr>
+                        <th>Fecha</th><th>Día</th><th>Tipo</th><th>Entrada</th><th>Salida</th>
+                        <th style="text-align:right">Hs trab.</th><th style="text-align:right">Hs extras</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="body-horario"></tbody>
+            </table>
+
+            <h3 style="margin:1.4rem 0 .5rem">Resumen anual <span id="hor-anual-emp" style="color:var(--text-muted);font-weight:400"></span></h3>
+            <table id="tabla-horario-anual">
+                <thead>
+                    <tr>
+                        <th>Mes</th><th style="text-align:right">Días trab.</th><th style="text-align:right">Hs trab.</th>
+                        <th style="text-align:right">Hs esperadas</th><th style="text-align:right">Hs extras</th>
+                        <th style="text-align:right">Vacac.</th><th style="text-align:right">Liquidadas</th>
+                        <th style="text-align:right">Pend. acum.</th>
+                    </tr>
+                </thead>
+                <tbody id="body-horario-anual"></tbody>
+            </table>
         </section>
 
         <!-- REPORTES -->

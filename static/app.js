@@ -2837,6 +2837,233 @@ async function eliminarCurso(id) {
     }
 }
 
+// =========================================================
+// --- CONTROL HORARIO (fichada) ---
+// =========================================================
+let horMeta = null, empleadosCache = [], horRegistros = [];
+
+async function cargarHorario() {
+    try {
+        if (!horMeta) horMeta = await api('/api/horario/meta');
+        empleadosCache = await api('/api/horario/empleados');
+        if (!empleadosCache.length) {
+            await api('/api/horario/empleados', { method: 'POST', body: JSON.stringify({ nombre: 'Administración', puesto: 'Empleada administrativa', horas_diarias: 8 }) });
+            empleadosCache = await api('/api/horario/empleados');
+        }
+        const selE = document.getElementById('hor-empleado');
+        selE.innerHTML = empleadosCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)}</option>`).join('');
+        // mes / anio
+        const fmes = document.getElementById('hor-mes');
+        fmes.innerHTML = horMeta.meses.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+        fmes.value = String(new Date().getMonth() + 1);
+        const hoy = new Date().getFullYear();
+        const fanio = document.getElementById('hor-anio');
+        fanio.innerHTML = [0, 1, 2].map(d => `<option value="${hoy - d}">${hoy - d}</option>`).join('');
+        // tipos para el form
+        gastoOpts('dia-tipo', horMeta.tipos_dia, '');
+        cargarHorarioMes();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function horEmpleadoActual() { return Number(document.getElementById('hor-empleado').value); }
+
+async function cargarHorarioMes() {
+    const emp = horEmpleadoActual();
+    const mes = document.getElementById('hor-mes').value;
+    const anio = document.getElementById('hor-anio').value;
+    if (!emp) return;
+    try {
+        const r = await api(`/api/horario/registros?empleado_id=${emp}&anio=${anio}&mes=${mes}`);
+        horRegistros = r.registros;
+        renderResumenHor(r.resumen, emp, mes, anio);
+        renderHorarioDias(r.registros);
+        cargarHorarioAnual(emp, anio);
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function renderResumenHor(s, emp, mes, anio) {
+    document.getElementById('hor-resumen').innerHTML = `
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Días trabajados</div><div class="gasto-kpi-valor">${s.dias_trabajados}</div><div class="gasto-kpi-sub">${s.dias_vacaciones} vacac.</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Hs trabajadas</div><div class="gasto-kpi-valor">${s.hs_trabajadas}</div><div class="gasto-kpi-sub">de ${s.hs_esperadas} esperadas</div></div>
+        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Hs extras</div><div class="gasto-kpi-valor">${s.hs_extras}</div><div class="gasto-kpi-sub">pend.: ${s.hs_pendientes}</div></div>
+        <div class="gasto-kpi" style="cursor:pointer" onclick="editarLiquidadas(${emp},${anio},${mes},${s.hs_liquidadas})"><div class="gasto-kpi-label">Hs liquidadas ✎</div><div class="gasto-kpi-valor">${s.hs_liquidadas}</div><div class="gasto-kpi-sub">clic para editar</div></div>`;
+}
+
+function renderHorarioDias(regs) {
+    const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    document.getElementById('body-horario').innerHTML = regs.map(r => {
+        const f = r.fecha ? r.fecha.split('-').reverse().join('/') : '-';
+        const dl = new Date(r.fecha + 'T12:00:00').getDay();
+        const tipoBadge = r.tipo === 'Normal' ? '' : ` <span class="tag-nc" style="background:var(--steel)">${escapeHtml(r.tipo)}</span>`;
+        return `<tr>
+            <td>${f}</td><td>${dias[dl]}</td>
+            <td>${r.tipo === 'Normal' ? 'Normal' : escapeHtml(r.tipo)}</td>
+            <td>${r.entrada || '-'}</td><td>${r.salida || '-'}</td>
+            <td style="text-align:right">${r.hs_trabajadas || ''}</td>
+            <td style="text-align:right;${r.hs_extras > 0 ? 'color:var(--green);font-weight:700' : ''}">${r.hs_extras || ''}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editarDia(${r.id})">Editar</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarDia(${r.id})">✕</button>
+            </td>
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="8" style="text-align:center;color:#94a3b8">Sin fichadas este mes. Usá "+ Registrar día".</td></tr>';
+}
+
+async function cargarHorarioAnual(emp, anio) {
+    try {
+        const r = await api(`/api/horario/anual?empleado_id=${emp}&anio=${anio}`);
+        document.getElementById('hor-anual-emp').textContent = `· ${r.empleado} · ${r.anio}`;
+        document.getElementById('body-horario-anual').innerHTML = r.meses.map(m => `
+            <tr${(m.hs_trabajadas || m.dias_vacaciones) ? '' : ' style="opacity:.5"'}>
+                <td>${m.mes_nombre}</td>
+                <td style="text-align:right">${m.dias_trabajados}</td>
+                <td style="text-align:right">${m.hs_trabajadas}</td>
+                <td style="text-align:right">${m.hs_esperadas}</td>
+                <td style="text-align:right;${m.hs_extras > 0 ? 'color:var(--green)' : ''}">${m.hs_extras}</td>
+                <td style="text-align:right">${m.dias_vacaciones}</td>
+                <td style="text-align:right">${m.hs_liquidadas}</td>
+                <td style="text-align:right;font-weight:700">${m.pend_acumuladas}</td>
+            </tr>`).join('') +
+            `<tr style="font-weight:700;border-top:2px solid var(--border)">
+                <td>TOTAL</td><td style="text-align:right">${r.totales.dias}</td>
+                <td style="text-align:right">${r.totales.trab.toFixed(1)}</td>
+                <td style="text-align:right">${r.totales.esperadas.toFixed(1)}</td>
+                <td style="text-align:right">${r.totales.extras.toFixed(1)}</td>
+                <td style="text-align:right">${r.totales.vac}</td>
+                <td style="text-align:right">${r.totales.liq.toFixed(1)}</td><td></td></tr>`;
+    } catch (err) { /* */ }
+}
+
+function diaToggleHoras() {
+    const normal = document.getElementById('dia-tipo').value === 'Normal';
+    document.getElementById('dia-entrada').disabled = !normal;
+    document.getElementById('dia-salida').disabled = !normal;
+}
+
+function mostrarFormDia() {
+    document.getElementById('form-dia').style.display = 'block';
+    document.getElementById('form-dia-titulo').textContent = 'Registrar día';
+    document.getElementById('dia-edit-id').value = '';
+    document.getElementById('dia-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('dia-tipo').value = 'Normal';
+    ['dia-entrada', 'dia-salida', 'dia-notas'].forEach(id => document.getElementById(id).value = '');
+    diaToggleHoras();
+    document.getElementById('form-dia').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cerrarFormDia() { document.getElementById('form-dia').style.display = 'none'; }
+
+function editarDia(id) {
+    const r = horRegistros.find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('form-dia').style.display = 'block';
+    document.getElementById('form-dia-titulo').textContent = 'Editar día';
+    document.getElementById('dia-edit-id').value = id;
+    document.getElementById('dia-fecha').value = r.fecha;
+    document.getElementById('dia-tipo').value = r.tipo;
+    document.getElementById('dia-entrada').value = r.entrada || '';
+    document.getElementById('dia-salida').value = r.salida || '';
+    document.getElementById('dia-notas').value = r.notas || '';
+    diaToggleHoras();
+    document.getElementById('form-dia').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function guardarDia(e) {
+    e.preventDefault();
+    const editId = document.getElementById('dia-edit-id').value;
+    const tipo = document.getElementById('dia-tipo').value;
+    const body = {
+        empleado_id: horEmpleadoActual(),
+        fecha: document.getElementById('dia-fecha').value,
+        tipo: tipo,
+        entrada: tipo === 'Normal' ? (document.getElementById('dia-entrada').value || null) : null,
+        salida: tipo === 'Normal' ? (document.getElementById('dia-salida').value || null) : null,
+        notas: document.getElementById('dia-notas').value || null,
+    };
+    try {
+        if (editId) await api(`/api/horario/registros/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+        else await api('/api/horario/registros', { method: 'POST', body: JSON.stringify(body) });
+        toast('Día registrado');
+        cerrarFormDia();
+        cargarHorarioMes();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function eliminarDia(id) {
+    if (!confirm('¿Eliminar este día?')) return;
+    try { await api(`/api/horario/registros/${id}`, { method: 'DELETE' }); cargarHorarioMes(); }
+    catch (err) { toast(err.message, 'error'); }
+}
+
+async function editarLiquidadas(emp, anio, mes, actual) {
+    const v = prompt('Horas extras liquidadas (pagadas) este mes:', actual);
+    if (v === null) return;
+    const h = parseFloat(v);
+    if (isNaN(h)) { toast('Valor inválido', 'error'); return; }
+    try {
+        await api(`/api/horario/liquidacion?empleado_id=${emp}&anio=${anio}&mes=${mes}&horas=${h}`, { method: 'PUT' });
+        toast('Horas liquidadas actualizadas');
+        cargarHorarioMes();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function abrirEmpleados() {
+    empleadosCache = await api('/api/horario/empleados');
+    const filas = empleadosCache.map(e => `
+        <tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.puesto || '-')}</td>
+        <td style="text-align:right">${e.horas_diarias} hs/día</td>
+        <td><button class="btn btn-sm" onclick="editarEmpleado(${e.id})">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado(${e.id})">✕</button></td></tr>`).join('');
+    const html = `
+        <h2 style="margin-top:0">Empleados</h2>
+        <table><thead><tr><th>Nombre</th><th>Puesto</th><th style="text-align:right">Jornada</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+        <h3 style="margin:1rem 0 .5rem">Agregar / editar</h3>
+        <input type="hidden" id="emp-edit-id">
+        <div class="form-grid">
+            <div><label>Nombre</label><input type="text" id="emp-nombre"></div>
+            <div><label>Puesto</label><input type="text" id="emp-puesto"></div>
+            <div><label>Horas por día</label><input type="number" step="0.5" id="emp-horas" value="8"></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end">
+            <button class="btn btn-primary" onclick="guardarEmpleado()">Guardar</button>
+            <button class="btn" onclick="cerrarModal()">Cerrar</button>
+        </div>`;
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function editarEmpleado(id) {
+    const e = empleadosCache.find(x => x.id === id);
+    if (!e) return;
+    document.getElementById('emp-edit-id').value = id;
+    document.getElementById('emp-nombre').value = e.nombre;
+    document.getElementById('emp-puesto').value = e.puesto || '';
+    document.getElementById('emp-horas').value = e.horas_diarias;
+}
+
+async function guardarEmpleado() {
+    const id = document.getElementById('emp-edit-id').value;
+    const body = {
+        nombre: document.getElementById('emp-nombre').value,
+        puesto: document.getElementById('emp-puesto').value || null,
+        horas_diarias: parseFloat(document.getElementById('emp-horas').value) || 8,
+    };
+    if (!body.nombre) { toast('Poné un nombre', 'error'); return; }
+    try {
+        if (id) await api(`/api/horario/empleados/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+        else await api('/api/horario/empleados', { method: 'POST', body: JSON.stringify(body) });
+        toast('Empleado guardado');
+        await abrirEmpleados();
+        cargarHorario();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function eliminarEmpleado(id) {
+    if (!confirm('¿Eliminar este empleado y todos sus registros?')) return;
+    try { await api(`/api/horario/empleados/${id}`, { method: 'DELETE' }); await abrirEmpleados(); cargarHorario(); }
+    catch (err) { toast(err.message, 'error'); }
+}
+
 // --- TEMA CLARO / OSCURO ---
 function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);

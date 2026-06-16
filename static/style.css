@@ -1043,7 +1043,8 @@ main { margin-left: var(--sidebar-w); max-width: 1280px; }
 .side-group:nth-of-type(1) { --gc: #3d7fc4; }   /* ApaiCard - celeste */
 .side-group:nth-of-type(2) { --gc: #c2790c; }   /* Gastos - ambar */
 .side-group:nth-of-type(3) { --gc: #6d4ec7; }   /* Cuotas - violeta */
-.side-group:nth-of-type(4) { --gc: #5a6b82; }   /* Config - acero */
+.side-group:nth-of-type(4) { --gc: #0d9488; }   /* Personal - verde azulado */
+.side-group:nth-of-type(5) { --gc: #5a6b82; }   /* Config - acero */
 
 .side-group-head {
     justify-content: flex-start; gap: 0.5rem; text-align: left;
