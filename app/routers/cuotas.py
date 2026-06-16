@@ -1,3 +1,4 @@
+import re
 import hashlib
 from decimal import Decimal
 
@@ -9,7 +10,10 @@ from sqlalchemy import or_, func, extract
 from app.database import get_db
 from app.models.pago_cuota import PagoCuota
 from app.models.alumno import Alumno
+from app.models.curso import Curso
+from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
+from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -208,3 +212,167 @@ def eliminar(pago_id: int, db: Session = Depends(get_db)):
     db.delete(p)
     db.commit()
     return {"ok": True, "mensaje": "Pago eliminado"}
+
+
+# =========================================================
+# --- ESTADO DE CUENTA Y ESTADISTICAS ---
+# =========================================================
+def _nivel(curso: str) -> str:
+    m = re.match(r"\s*(\d+)", str(curso or ""))
+    return f"{m.group(1)}°" if m else "Otros"
+
+
+def _estado_de(alumno, curso, total_pagado: Decimal, mes_corte: int) -> dict:
+    cond = (alumno.condicion or "").strip().lower()
+    base = {
+        "id": alumno.id, "legajo": alumno.legajo,
+        "apellido": alumno.apellido, "nombre": alumno.nombre,
+        "curso": alumno.curso, "area": alumno.area,
+        "division": alumno.division, "nivel": _nivel(alumno.curso),
+        "modalidad": alumno.modalidad, "condicion": alumno.condicion,
+        "pagado": float(total_pagado),
+    }
+    if cond in ("becado", "exento"):
+        base.update(esperado=0, deuda=0, cuotas_pagas=0, estado=alumno.condicion)
+        return base
+    if not curso:
+        base.update(esperado=0, deuda=0, cuotas_pagas=0, estado="Sin curso")
+        return base
+    cuota = Decimal(str(curso.cuota or 0))
+    matric = Decimal(str(curso.matricula or 0))
+    devengadas = min(curso.n_cuotas, max(0, mes_corte - 2))
+    esperado = matric + devengadas * cuota
+    deuda = max(Decimal("0"), esperado - total_pagado)
+    cuotas_pagas = int(total_pagado / cuota) if cuota else 0
+    if total_pagado <= 0:
+        estado = "Sin pagos"
+    elif total_pagado >= esperado:
+        estado = "Al día"
+    else:
+        estado = "Moroso"
+    base.update(esperado=float(esperado), deuda=float(deuda),
+                cuotas_pagas=cuotas_pagas, estado=estado)
+    return base
+
+
+def _calcular(db: Session, anio: int, mes_corte: int):
+    cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
+    if not cursos:
+        cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    sumas = dict(
+        db.query(PagoCuota.alumno_id, func.coalesce(func.sum(PagoCuota.importe), 0))
+        .filter(PagoCuota.anio == anio, PagoCuota.alumno_id.isnot(None))
+        .group_by(PagoCuota.alumno_id).all()
+    )
+    salida = []
+    for a in db.query(Alumno).filter(Alumno.activo == True).all():  # noqa: E712
+        curso = curso_de_alumno(a, cursos)
+        total = Decimal(str(sumas.get(a.id, 0)))
+        salida.append(_estado_de(a, curso, total, mes_corte))
+    return salida
+
+
+@router.get("/estado")
+def estado(anio: int | None = None, mes: int | None = None,
+           area: str | None = None, curso: str | None = None,
+           estado: str | None = None, q: str | None = None,
+           db: Session = Depends(get_db)):
+    """Estado de cuenta de todos los alumnos (para consulta y morosos)."""
+    anio = anio or ahora_ar().year
+    mes_corte = mes or ahora_ar().month
+    filas = _calcular(db, anio, mes_corte)
+    if area:
+        filas = [f for f in filas if (f["area"] or "") == area]
+    if curso:
+        filas = [f for f in filas if (f["curso"] or "") == curso]
+    if estado:
+        filas = [f for f in filas if f["estado"] == estado]
+    if q:
+        t = q.strip().lower()
+        filas = [f for f in filas if t in f"{f['apellido']} {f['nombre']} {f['legajo']}".lower()]
+    filas.sort(key=lambda f: (-f["deuda"], f["apellido"]))
+    return {"anio": anio, "mes_corte": mes_corte, "alumnos": filas}
+
+
+@router.get("/estado/{alumno_id}")
+def estado_alumno(alumno_id: int, anio: int | None = None, db: Session = Depends(get_db)):
+    a = db.get(Alumno, alumno_id)
+    if not a:
+        raise HTTPException(404, "Alumno no encontrado")
+    anio = anio or ahora_ar().year
+    mes_corte = ahora_ar().month
+    cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    curso = curso_de_alumno(a, cursos)
+    pagos = db.query(PagoCuota).filter(
+        PagoCuota.alumno_id == alumno_id, PagoCuota.anio == anio
+    ).order_by(PagoCuota.fecha).all()
+    total = sum((Decimal(str(p.importe)) for p in pagos), Decimal("0"))
+    info = _estado_de(a, curso, total, mes_corte)
+    info["curso_param"] = {
+        "nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
+        "matricula": float(curso.matricula),
+    } if curso else None
+    info["pagos"] = [
+        {"fecha": str(p.fecha), "mes": p.mes, "importe": float(p.importe),
+         "canal": p.canal, "via": p.via}
+        for p in pagos
+    ]
+    return info
+
+
+@router.get("/estadisticas")
+def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = Depends(get_db)):
+    anio = anio or ahora_ar().year
+    mes_corte = mes or ahora_ar().month
+    filas = _calcular(db, anio, mes_corte)
+
+    def agrupar(clave):
+        g = {}
+        for f in filas:
+            k = f.get(clave) or "—"
+            d = g.setdefault(k, {"clave": k, "alumnos": 0, "esperado": 0.0, "cobrado": 0.0,
+                                 "deuda": 0.0, "al_dia": 0, "morosos": 0, "sin_pagos": 0})
+            d["alumnos"] += 1
+            d["esperado"] += f["esperado"]
+            d["cobrado"] += f["pagado"]
+            d["deuda"] += f["deuda"]
+            if f["estado"] == "Al día":
+                d["al_dia"] += 1
+            elif f["estado"] == "Moroso":
+                d["morosos"] += 1
+            elif f["estado"] == "Sin pagos":
+                d["sin_pagos"] += 1
+        for d in g.values():
+            d["cumplimiento"] = round(d["cobrado"] / d["esperado"] * 100, 1) if d["esperado"] else 0
+        return sorted(g.values(), key=lambda x: str(x["clave"]))
+
+    estados = {}
+    for f in filas:
+        estados[f["estado"]] = estados.get(f["estado"], 0) + 1
+
+    # Cobranza mensual del año
+    mensual = dict(
+        db.query(PagoCuota.mes, func.coalesce(func.sum(PagoCuota.importe), 0))
+        .filter(PagoCuota.anio == anio).group_by(PagoCuota.mes).all()
+    )
+    meses = [{"mes": m, "cobrado": float(mensual.get(m, 0))} for m in range(1, 13)]
+
+    morosos = sorted([f for f in filas if f["deuda"] > 0], key=lambda f: -f["deuda"])[:15]
+
+    tot_esp = sum(f["esperado"] for f in filas)
+    tot_cob = sum(f["pagado"] for f in filas)
+    return {
+        "anio": anio, "mes_corte": mes_corte,
+        "kpis": {
+            "alumnos": len(filas),
+            "esperado": tot_esp, "cobrado": tot_cob, "deuda": sum(f["deuda"] for f in filas),
+            "cumplimiento": round(tot_cob / tot_esp * 100, 1) if tot_esp else 0,
+        },
+        "por_estado": estados,
+        "por_area": agrupar("area"),
+        "por_nivel": agrupar("nivel"),
+        "por_division": agrupar("division"),
+        "por_modalidad": agrupar("modalidad"),
+        "cobranza_mensual": meses,
+        "top_morosos": morosos,
+    }

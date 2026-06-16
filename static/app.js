@@ -2340,11 +2340,152 @@ function cargarCuotasSec() {
 function cuotaTab(tab) {
     document.querySelectorAll('.cuota-tab').forEach(b =>
         b.classList.toggle('activo', b.dataset.tab === tab));
-    document.getElementById('cuotas-tab-pagos').style.display = tab === 'pagos' ? 'block' : 'none';
-    document.getElementById('cuotas-tab-cursos').style.display = tab === 'cursos' ? 'block' : 'none';
+    ['pagos', 'estado', 'stats', 'cursos'].forEach(t =>
+        document.getElementById('cuotas-tab-' + t).style.display = t === tab ? 'block' : 'none');
     if (tab === 'pagos') cargarPagosSiro();
-    else cargarCursos();
+    else if (tab === 'estado') cargarEstado();
+    else if (tab === 'stats') cargarStats();
+    else if (tab === 'cursos') cargarCursos();
 }
+
+// ---- Estado de cuenta ----
+let estadoCache = [];
+
+async function cargarEstado() {
+    try {
+        const p = new URLSearchParams();
+        const area = document.getElementById('estado-f-area').value;
+        const est = document.getElementById('estado-f-estado').value;
+        if (area) p.set('area', area);
+        if (est) p.set('estado', est);
+        const r = await api('/api/cuotas/estado?' + p.toString());
+        estadoCache = r.alumnos || [];
+        const tot = estadoCache.length;
+        const aldia = estadoCache.filter(x => x.estado === 'Al día').length;
+        const mor = estadoCache.filter(x => x.estado === 'Moroso').length;
+        const sinp = estadoCache.filter(x => x.estado === 'Sin pagos').length;
+        const deuda = estadoCache.reduce((s, x) => s + x.deuda, 0);
+        document.getElementById('estado-resumen').innerHTML = `
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">corte mes ${r.mes_corte}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:#d97706">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">$${gastoFmt(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
+        filtrarEstado();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function estadoBadge(e) {
+    const col = { 'Al día': 'var(--green)', 'Moroso': 'var(--red)', 'Sin pagos': '#d97706', 'Becado': 'var(--sky)', 'Exento': 'var(--sky)' }[e] || 'var(--text-muted)';
+    return `<span style="color:${col};font-weight:700">${escapeHtml(e)}</span>`;
+}
+
+function filtrarEstado() {
+    const q = (document.getElementById('buscar-estado').value || '').toLowerCase();
+    const lista = estadoCache.filter(x => !q ||
+        `${x.apellido} ${x.nombre} ${x.legajo}`.toLowerCase().includes(q));
+    document.getElementById('body-estado').innerHTML = lista.slice(0, 800).map(x => `
+        <tr>
+            <td>${escapeHtml(x.legajo)}</td>
+            <td>${escapeHtml(x.apellido)}, ${escapeHtml(x.nombre)}</td>
+            <td>${escapeHtml(x.curso || '-')}</td>
+            <td>${escapeHtml(x.area || '-')}</td>
+            <td style="text-align:right">$${gastoFmt(x.pagado)}</td>
+            <td style="text-align:right">$${gastoFmt(x.esperado)}</td>
+            <td style="text-align:right;${x.deuda > 0 ? 'color:var(--red)' : ''}">$${gastoFmt(x.deuda)}</td>
+            <td>${estadoBadge(x.estado)}</td>
+            <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
+        </tr>`).join('') ||
+        '<tr><td colspan="9" style="text-align:center;color:#94a3b8">Sin resultados</td></tr>';
+}
+
+async function verEstadoAlumno(id) {
+    try {
+        const e = await api(`/api/cuotas/estado/${id}`);
+        const pagos = (e.pagos || []).map(p =>
+            `<tr><td>${p.fecha.split('-').reverse().join('/')}</td><td>${MESES[p.mes - 1] || p.mes}</td>
+             <td>${escapeHtml(p.canal || '-')}</td><td style="text-align:right">$${gastoFmt(p.importe)}</td></tr>`).join('') ||
+            '<tr><td colspan="4" style="color:var(--text-muted)">Sin pagos registrados este año</td></tr>';
+        const cp = e.curso_param;
+        const html = `
+            <h2 style="margin-top:0">${escapeHtml(e.apellido)}, ${escapeHtml(e.nombre)}</h2>
+            <p style="color:var(--text-muted);margin-top:-.4rem">Legajo ${escapeHtml(e.legajo)} · ${escapeHtml(e.curso || '')} · ${escapeHtml(e.area || '')}
+              ${cp ? `· cuota $${gastoFmt(cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matríc. $' + gastoFmt(cp.matricula) : ''}` : ''}</p>
+            <div class="gasto-resumen">
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(e.pagado)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado al corte</div><div class="gasto-kpi-valor">$${gastoFmt(e.esperado)}</div></div>
+                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">$${gastoFmt(e.deuda)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Estado</div><div class="gasto-kpi-valor" style="font-size:1.1rem">${estadoBadge(e.estado)}</div></div>
+            </div>
+            <h3 style="margin:.8rem 0 .4rem">Pagos del año</h3>
+            <table><thead><tr><th>Fecha proceso</th><th>Mes</th><th>Canal</th><th style="text-align:right">Importe</th></tr></thead><tbody>${pagos}</tbody></table>
+            <div style="margin-top:1rem;text-align:right"><button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
+        document.getElementById('modal-content').innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+// ---- Estadisticas ----
+let chartCuotasMensual = null, chartCuotasArea = null;
+
+async function cargarStats() {
+    try {
+        const s = await api('/api/cuotas/estadisticas');
+        const k = s.kpis;
+        document.getElementById('stats-kpis').innerHTML = `
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${k.alumnos}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(k.cobrado)}</div></div>
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">$${gastoFmt(k.deuda)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cumplimiento</div><div class="gasto-kpi-valor">${k.cumplimiento}%</div><div class="gasto-kpi-sub">esperado $${gastoFmt(k.esperado)}</div></div>`;
+
+        // tablas por agrupacion
+        const tabla = (titulo, arr) => `
+            <div class="chart-card" style="overflow:auto">
+                <h4 style="margin:0 0 .5rem">${titulo}</h4>
+                <table style="font-size:.85rem"><thead><tr><th>${titulo}</th><th>Alu</th><th style="text-align:right">Cobrado</th><th style="text-align:right">Deuda</th><th style="text-align:right">% Cumpl.</th></tr></thead>
+                <tbody>${arr.map(d => `<tr><td>${escapeHtml(String(d.clave))}</td><td>${d.alumnos}</td><td style="text-align:right">$${gastoFmt(d.cobrado)}</td><td style="text-align:right">$${gastoFmt(d.deuda)}</td><td style="text-align:right">${d.cumplimiento}%</td></tr>`).join('')}</tbody></table>
+            </div>`;
+        document.getElementById('stats-tablas').innerHTML =
+            `<div class="reportes-charts">${tabla('Área', s.por_area)}${tabla('Nivel', s.por_nivel)}${tabla('División', s.por_division)}</div>`;
+
+        document.getElementById('body-morosos').innerHTML = (s.top_morosos || []).map(m => `
+            <tr><td>${escapeHtml(m.legajo)}</td><td>${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}</td>
+            <td>${escapeHtml(m.curso || '-')}</td><td>${escapeHtml(m.area || '-')}</td>
+            <td style="text-align:right;color:var(--red)">$${gastoFmt(m.deuda)}</td></tr>`).join('') ||
+            '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin morosos</td></tr>';
+
+        dibujarChartsCuotas(s);
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function dibujarChartsCuotas(s) {
+    if (typeof Chart === 'undefined') return;
+    const css = getComputedStyle(document.documentElement);
+    const cGreen = css.getPropertyValue('--green').trim() || '#16a34a';
+    const cSky = css.getPropertyValue('--sky').trim() || '#3d7fc4';
+    const cText = css.getPropertyValue('--text-muted').trim() || '#888';
+    if (chartCuotasMensual) chartCuotasMensual.destroy();
+    if (chartCuotasArea) chartCuotasArea.destroy();
+    const ctx1 = document.getElementById('chart-cuotas-mensual');
+    chartCuotasMensual = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: s.cobranza_mensual.map(m => MESES[m.mes - 1].slice(0, 3)),
+            datasets: [{ label: 'Cobrado', data: s.cobranza_mensual.map(m => m.cobrado), backgroundColor: cGreen }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: cText } }, y: { ticks: { color: cText } } } },
+    });
+    const ctx2 = document.getElementById('chart-cuotas-area');
+    chartCuotasArea = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+            labels: s.por_area.map(d => d.clave),
+            datasets: [{ label: '% Cumplimiento', data: s.por_area.map(d => d.cumplimiento), backgroundColor: cSky }],
+        },
+        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: cText }, max: 100 }, y: { ticks: { color: cText } } } },
+    });
+}
+
+// ---- Pagos SIRO ----
 
 // ---- Pagos SIRO ----
 let pagosSiroCache = [];
@@ -2622,6 +2763,8 @@ const _bco = document.getElementById('buscar-conc');
 if (_bco) _bco.addEventListener('input', filtrarConciliacion);
 const _bsi = document.getElementById('buscar-siro');
 if (_bsi) _bsi.addEventListener('input', filtrarSiro);
+const _bes = document.getElementById('buscar-estado');
+if (_bes) _bes.addEventListener('input', filtrarEstado);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();

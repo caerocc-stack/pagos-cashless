@@ -767,6 +767,8 @@
 
             <div class="cuotas-tabs">
                 <button class="cuota-tab activo" data-tab="pagos" onclick="cuotaTab('pagos')">Pagos (SIRO)</button>
+                <button class="cuota-tab" data-tab="estado" onclick="cuotaTab('estado')">Estado de cuenta</button>
+                <button class="cuota-tab" data-tab="stats" onclick="cuotaTab('stats')">Estadísticas</button>
                 <button class="cuota-tab" data-tab="cursos" onclick="cuotaTab('cursos')">Cursos y parámetros</button>
             </div>
 
@@ -807,6 +809,55 @@
                         </tr>
                     </thead>
                     <tbody id="body-siro"></tbody>
+                </table>
+            </div>
+
+            <!-- TAB: ESTADO DE CUENTA -->
+            <div id="cuotas-tab-estado" style="display:none">
+                <div class="gasto-resumen" id="estado-resumen"></div>
+                <div class="toolbar">
+                    <input type="text" id="buscar-estado" placeholder="Buscar alumno por nombre o legajo...">
+                    <select id="estado-f-area" onchange="cargarEstado()">
+                        <option value="">Todas las áreas</option>
+                        <option value="Ciclo Basico">Ciclo Básico</option>
+                        <option value="Avionica">Aviónica</option>
+                        <option value="Mecanica">Mecánica</option>
+                        <option value="Aeronavegantes">Aeronavegantes</option>
+                        <option value="Examenes">Exámenes</option>
+                    </select>
+                    <select id="estado-f-estado" onchange="cargarEstado()">
+                        <option value="">Todos los estados</option>
+                        <option value="Al día">Al día</option>
+                        <option value="Moroso">Moroso</option>
+                        <option value="Sin pagos">Sin pagos</option>
+                        <option value="Becado">Becado</option>
+                    </select>
+                </div>
+                <table id="tabla-estado">
+                    <thead>
+                        <tr>
+                            <th>Legajo</th><th>Alumno</th><th>Curso</th><th>Área</th>
+                            <th style="text-align:right">Pagado</th><th style="text-align:right">Esperado</th>
+                            <th style="text-align:right">Deuda</th><th>Estado</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="body-estado"></tbody>
+                </table>
+            </div>
+
+            <!-- TAB: ESTADISTICAS -->
+            <div id="cuotas-tab-stats" style="display:none">
+                <div class="gasto-resumen" id="stats-kpis"></div>
+                <div class="reportes-charts">
+                    <div class="chart-card"><h3>Cobranza mensual</h3><div class="chart-wrap"><canvas id="chart-cuotas-mensual"></canvas></div></div>
+                    <div class="chart-card"><h3>Cumplimiento por área</h3><div class="chart-wrap"><canvas id="chart-cuotas-area"></canvas></div></div>
+                </div>
+                <h3 style="margin:1.2rem 0 .6rem">Por área / nivel / división</h3>
+                <div id="stats-tablas"></div>
+                <h3 style="margin:1.4rem 0 .6rem">Top morosos</h3>
+                <table id="tabla-morosos">
+                    <thead><tr><th>Legajo</th><th>Alumno</th><th>Curso</th><th>Área</th><th style="text-align:right">Deuda</th></tr></thead>
+                    <tbody id="body-morosos"></tbody>
                 </table>
             </div>
 
