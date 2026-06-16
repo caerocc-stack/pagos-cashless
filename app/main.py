@@ -139,6 +139,12 @@ def favicon():
     return FileResponse(str(STATIC_DIR / "logo.png"))
 
 
+@app.get("/health")
+def health():
+    """Endpoint liviano para el keep-alive (no toca la base ni requiere sesion)."""
+    return {"ok": True}
+
+
 @app.get("/login")
 def login_page():
     return FileResponse(str(STATIC_DIR / "login.html"))
