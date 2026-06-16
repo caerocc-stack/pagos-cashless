@@ -22,6 +22,24 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     });
 });
 
+// Normaliza texto para búsquedas: minúsculas y sin acentos
+function normTxt(s) {
+    return (s == null ? '' : String(s)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// --- Menu lateral ---
+function toggleGrupo(head) {
+    head.parentElement.classList.toggle('collapsed');
+}
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('abierta');
+    document.getElementById('side-backdrop').classList.toggle('visible');
+}
+function cerrarSidebarMobile() {
+    document.getElementById('sidebar').classList.remove('abierta');
+    document.getElementById('side-backdrop').classList.remove('visible');
+}
+
 // --- Toast ---
 function toast(msg, tipo = 'success') {
     const el = document.getElementById('toast');
@@ -209,11 +227,12 @@ function poblarFiltroCursos() {
 }
 
 function filtrarAlumnos() {
-    const busq = document.getElementById('buscar-alumno').value.toLowerCase();
+    const busq = normTxt(document.getElementById('buscar-alumno').value.trim());
     const curso = document.getElementById('filtro-curso').value;
+    const terminos = busq.split(/\s+/).filter(Boolean);  // cada palabra debe aparecer
     const filtrados = alumnosCache.filter(a => {
-        const matchBusq = !busq || [a.nombre, a.apellido, a.legajo, a.dni]
-            .some(v => v.toLowerCase().includes(busq));
+        const texto = normTxt(`${a.apellido} ${a.nombre} ${a.legajo} ${a.dni || ''} ${a.curso || ''}`);
+        const matchBusq = terminos.every(t => texto.includes(t));
         const matchCurso = !curso || a.curso === curso;
         return matchBusq && matchCurso;
     });
@@ -2366,8 +2385,25 @@ function cuotaTab(tab) {
     else if (tab === 'cursos') cargarCursos();
 }
 
+// Ordenador genérico para tablas
+function ordenarLista(lista, sort, numericos, accessors) {
+    const dir = sort.asc ? 1 : -1;
+    const get = (o, c) => accessors && accessors[c] ? accessors[c](o) : o[c];
+    return lista.slice().sort((a, b) => {
+        const va = get(a, sort.campo), vb = get(b, sort.campo);
+        if (numericos.has(sort.campo)) return ((Number(va) || 0) - (Number(vb) || 0)) * dir;
+        return normTxt(va).localeCompare(normTxt(vb)) * dir;
+    });
+}
+
 // ---- Estado de cuenta ----
 let estadoCache = [];
+let estadoSort = { campo: 'deuda_total', asc: false };
+function sortEstado(campo) {
+    estadoSort.asc = estadoSort.campo === campo ? !estadoSort.asc : true;
+    estadoSort.campo = campo;
+    filtrarEstado();
+}
 
 async function cargarEstado() {
     try {
@@ -2398,9 +2434,12 @@ function estadoBadge(e) {
 }
 
 function filtrarEstado() {
-    const q = (document.getElementById('buscar-estado').value || '').toLowerCase();
-    const lista = estadoCache.filter(x => !q ||
-        `${x.apellido} ${x.nombre} ${x.legajo}`.toLowerCase().includes(q));
+    const q = normTxt(document.getElementById('buscar-estado').value);
+    let lista = estadoCache.filter(x => !q ||
+        normTxt(`${x.apellido} ${x.nombre} ${x.legajo}`).includes(q));
+    lista = ordenarLista(lista, estadoSort,
+        new Set(['legajo', 'pagado', 'esperado', 'deuda', 'deuda_total']),
+        { alumno: o => o.apellido });
     document.getElementById('body-estado').innerHTML = lista.slice(0, 800).map(x => `
         <tr>
             <td>${escapeHtml(x.legajo)}</td>
@@ -2443,7 +2482,44 @@ async function verEstadoAlumno(id) {
 }
 
 // ---- Estadisticas ----
-let chartCuotasMensual = null, chartCuotasArea = null;
+let chartCuotasMensual = null, chartCuotasArea = null, statsUltimo = null;
+
+function exportarEstadisticasPDF() {
+    if (!statsUltimo) { toast('Abrí primero las estadísticas', 'error'); return; }
+    if (typeof window.jspdf === 'undefined') { toast('No se pudo cargar el generador de PDF', 'error'); return; }
+    const s = statsUltimo;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const fmt = n => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    doc.setFontSize(15); doc.text('APAI Pay — Estadísticas de cuotas', 14, 16);
+    doc.setFontSize(10); doc.setTextColor(110);
+    doc.text(`Año ${s.anio} · corte mes ${s.mes_corte} · generado ${new Date().toLocaleDateString('es-AR')}`, 14, 22);
+    doc.setTextColor(20);
+    doc.autoTable({
+        startY: 28, theme: 'plain',
+        body: [['Alumnos', s.kpis.alumnos], ['Esperado', fmt(s.kpis.esperado)],
+            ['Cobrado', fmt(s.kpis.cobrado)], ['Deuda', fmt(s.kpis.deuda)],
+            ['Cumplimiento', s.kpis.cumplimiento + '%']],
+        styles: { fontSize: 10 }, columnStyles: { 0: { fontStyle: 'bold' } },
+    });
+    const seccion = (titulo, arr) => {
+        doc.autoTable({
+            startY: doc.lastAutoTable.finalY + 6,
+            head: [[titulo, 'Alu', 'Cobrado', 'Deuda', '% Cumpl.']],
+            body: arr.map(d => [d.clave, d.alumnos, fmt(d.cobrado), fmt(d.deuda), d.cumplimiento + '%']),
+            styles: { fontSize: 9 }, headStyles: { fillColor: [61, 127, 196] },
+        });
+    };
+    seccion('Área', s.por_area);
+    seccion('Nivel', s.por_nivel);
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 6,
+        head: [['Top morosos', 'Curso', 'Área', 'Deuda']],
+        body: (s.top_morosos || []).map(m => [`${m.apellido}, ${m.nombre}`, m.curso || '', m.area || '', fmt(m.deuda)]),
+        styles: { fontSize: 9 }, headStyles: { fillColor: [160, 30, 34] },
+    });
+    doc.save(`estadisticas_cuotas_${s.anio}.pdf`);
+}
 
 async function cargarStats() {
     try {
@@ -2463,7 +2539,8 @@ async function cargarStats() {
                 <tbody>${arr.map(d => `<tr><td>${escapeHtml(String(d.clave))}</td><td>${d.alumnos}</td><td style="text-align:right">$${gastoFmt(d.cobrado)}</td><td style="text-align:right">$${gastoFmt(d.deuda)}</td><td style="text-align:right">${d.cumplimiento}%</td></tr>`).join('')}</tbody></table>
             </div>`;
         document.getElementById('stats-tablas').innerHTML =
-            `<div class="reportes-charts">${tabla('Área', s.por_area)}${tabla('Nivel', s.por_nivel)}${tabla('División', s.por_division)}</div>`;
+            `<div class="reportes-charts">${tabla('Área', s.por_area)}${tabla('Nivel', s.por_nivel)}</div>`;
+        statsUltimo = s;
 
         document.getElementById('body-morosos').innerHTML = (s.top_morosos || []).map(m => `
             <tr><td>${escapeHtml(m.legajo)}</td><td>${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}</td>
@@ -2559,9 +2636,19 @@ async function cargarResumenSiro(mes, anio) {
     } catch (e) { /* sin datos */ }
 }
 
+let siroSort = { campo: 'fecha', asc: false };
+function sortSiro(campo) {
+    siroSort.asc = siroSort.campo === campo ? !siroSort.asc : true;
+    siroSort.campo = campo;
+    filtrarSiro();
+}
+
 function filtrarSiro() {
-    const q = (document.getElementById('buscar-siro').value || '').toLowerCase();
-    const lista = pagosSiroCache.filter(p => !q || (p.cliente_siro || '').toLowerCase().includes(q));
+    const q = normTxt(document.getElementById('buscar-siro').value);
+    let lista = pagosSiroCache.filter(p => !q || normTxt(
+        `${p.cliente_siro} ${p.alumno ? p.alumno.apellido + ' ' + p.alumno.nombre : ''}`).includes(q));
+    lista = ordenarLista(lista, siroSort, new Set(['importe']),
+        { alumno: o => o.alumno ? o.alumno.apellido : 'zzz', curso: o => o.alumno ? o.alumno.curso : '' });
     renderSiro(lista);
 }
 

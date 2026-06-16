@@ -12,7 +12,8 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <header>
+    <header class="topbar">
+        <button class="side-toggle" onclick="toggleSidebar()" aria-label="Menú">☰</button>
         <div class="header-brand">
             <div class="header-logo header-engine">
                 <img src="/static/motor.png" class="he-img" alt="APAI">
@@ -23,27 +24,56 @@
                 <span class="t2">Asociación de Padres y Alumnos del I.N.A.C</span>
             </div>
         </div>
-        <nav>
-            <button class="nav-btn active" data-section="inicio">Inicio</button>
-            <button class="nav-btn" data-section="cobrar">Cobrar</button>
-            <button class="nav-btn" data-section="alumnos">Alumnos</button>
-            <button class="nav-btn" data-section="operaciones">Operaciones</button>
-            <button class="nav-btn" data-section="tarjetas">Tarjetas</button>
-            <button class="nav-btn" data-section="proveedores" onclick="cargarProveedores()">Proveedores</button>
-            <button class="nav-btn" data-section="gastos" onclick="cargarGastos()">Gastos</button>
-            <button class="nav-btn" data-section="caja" onclick="cargarCaja()">Caja</button>
-            <button class="nav-btn" data-section="conciliacion" onclick="cargarConciliacion()">Conciliación</button>
-            <button class="nav-btn" data-section="cuotas" onclick="cargarCuotasSec()">Cuotas</button>
-            <button class="nav-btn" data-section="reportes" onclick="cargarReportes()">Reportes</button>
-            <button class="nav-btn" data-section="importar">Importar</button>
-        </nav>
         <div class="user-info">
             <span id="user-nombre"></span>
             <button class="btn btn-logout" id="btn-tema" onclick="toggleTema()" title="Cambiar tema claro/oscuro">🌙</button>
-            <button class="btn btn-logout" onclick="abrirMiCuenta()">Mi cuenta</button>
             <button class="btn btn-logout" onclick="cerrarSesion()">Salir</button>
         </div>
     </header>
+
+    <aside class="sidebar" id="sidebar">
+        <button class="nav-btn side-item side-home active" data-section="inicio" onclick="cerrarSidebarMobile()">🏠 Inicio</button>
+
+        <div class="side-group">
+            <button class="side-group-head" onclick="toggleGrupo(this)"><span>💳 ApaiCard</span><span class="side-caret">▾</span></button>
+            <div class="side-group-body">
+                <button class="nav-btn side-item" data-section="cobrar" onclick="cerrarSidebarMobile()">Cobrar</button>
+                <button class="nav-btn side-item" data-section="operaciones" onclick="cerrarSidebarMobile()">Operaciones</button>
+                <button class="nav-btn side-item" data-section="tarjetas" onclick="cerrarSidebarMobile()">Tarjetas</button>
+                <button class="nav-btn side-item" data-section="reportes" onclick="cargarReportes();cerrarSidebarMobile()">Reportes y consumo</button>
+            </div>
+        </div>
+
+        <div class="side-group">
+            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🧾 Gastos (contable)</span><span class="side-caret">▾</span></button>
+            <div class="side-group-body">
+                <button class="nav-btn side-item" data-section="gastos" onclick="cargarGastos();cerrarSidebarMobile()">Gastos</button>
+                <button class="nav-btn side-item" data-section="caja" onclick="cargarCaja();cerrarSidebarMobile()">Caja</button>
+                <button class="nav-btn side-item" data-section="proveedores" onclick="cargarProveedores();cerrarSidebarMobile()">Proveedores</button>
+                <button class="nav-btn side-item" data-section="conciliacion" onclick="cargarConciliacion();cerrarSidebarMobile()">Conciliación bancaria</button>
+            </div>
+        </div>
+
+        <div class="side-group">
+            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🎓 Cuotas y alumnos</span><span class="side-caret">▾</span></button>
+            <div class="side-group-body">
+                <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()">Cuotas y estado</button>
+                <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()">Alumnos (padrón)</button>
+                <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()">Importar padrón</button>
+            </div>
+        </div>
+
+        <div class="side-group">
+            <button class="side-group-head" onclick="toggleGrupo(this)"><span>⚙️ Configuración y cuenta</span><span class="side-caret">▾</span></button>
+            <div class="side-group-body">
+                <button class="side-item" onclick="abrirPlantillas();cerrarSidebarMobile()">Plantillas de email</button>
+                <button class="side-item" onclick="abrirMiCuenta();cerrarSidebarMobile()">Mi cuenta</button>
+                <button class="side-item" onclick="toggleTema()">Tema claro / oscuro</button>
+                <button class="side-item side-salir" onclick="cerrarSesion()">Salir</button>
+            </div>
+        </div>
+    </aside>
+    <div class="side-backdrop" id="side-backdrop" onclick="cerrarSidebarMobile()"></div>
 
     <main>
         <!-- INICIO (Dashboard) -->
@@ -86,11 +116,11 @@
                     <div class="dash-desc">Recargas, reintegros, transferencias y envío de cupones</div>
                     <div class="dash-badge dash-badge-on">Activo</div>
                 </div>
-                <div class="dash-card dash-soon" data-color="purple" data-tags="cuotas cuenta corriente deuda" onclick="dashProx('Cuenta corriente de cuotas')">
+                <div class="dash-card" data-color="purple" data-tags="cuotas cuenta corriente deuda siro estadisticas" onclick="dashIr('cuotas')">
                     <div class="dash-icon">📋</div>
-                    <div class="dash-nombre">Cuenta corriente</div>
-                    <div class="dash-desc">Estado de deuda y pagos de cuotas por alumno</div>
-                    <div class="dash-badge">Próximamente</div>
+                    <div class="dash-nombre">Cuotas</div>
+                    <div class="dash-desc">Pagos SIRO, estado de deuda y estadísticas por alumno</div>
+                    <div class="dash-badge dash-badge-on">Activo</div>
                 </div>
             </div>
 
@@ -792,7 +822,7 @@
                 <div class="gasto-resumen" id="siro-resumen"></div>
 
                 <div class="toolbar">
-                    <input type="text" id="buscar-siro" placeholder="Buscar por N° de cliente...">
+                    <input type="text" id="buscar-siro" placeholder="Buscar por N° de cliente o alumno...">
                     <select id="siro-f-estado" onchange="cargarPagosSiro()">
                         <option value="">Todos</option>
                         <option value="sin_asignar">Sin asignar</option>
@@ -804,9 +834,10 @@
 
                 <table id="tabla-siro">
                     <thead>
-                        <tr>
-                            <th>Fecha</th><th>N° Cliente</th><th>Alumno</th><th>Curso</th>
-                            <th>Canal</th><th style="text-align:right">Importe</th><th>Acciones</th>
+                        <tr class="th-sort">
+                            <th onclick="sortSiro('fecha')">Fecha ⇅</th><th onclick="sortSiro('cliente_siro')">N° Cliente ⇅</th>
+                            <th onclick="sortSiro('alumno')">Alumno ⇅</th><th onclick="sortSiro('curso')">Curso ⇅</th>
+                            <th onclick="sortSiro('canal')">Canal ⇅</th><th style="text-align:right" onclick="sortSiro('importe')">Importe ⇅</th><th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="body-siro"></tbody>
@@ -836,10 +867,13 @@
                 </div>
                 <table id="tabla-estado">
                     <thead>
-                        <tr>
-                            <th>Legajo</th><th>Alumno</th><th>Curso</th><th>Área</th>
-                            <th style="text-align:right">Pagado</th><th style="text-align:right">Esperado</th>
-                            <th style="text-align:right">Deuda</th><th>Estado</th><th></th>
+                        <tr class="th-sort">
+                            <th onclick="sortEstado('legajo')">Legajo ⇅</th><th onclick="sortEstado('alumno')">Alumno ⇅</th>
+                            <th onclick="sortEstado('curso')">Curso ⇅</th><th onclick="sortEstado('area')">Área ⇅</th>
+                            <th style="text-align:right" onclick="sortEstado('pagado')">Pagado ⇅</th>
+                            <th style="text-align:right" onclick="sortEstado('esperado')">Esperado ⇅</th>
+                            <th style="text-align:right" onclick="sortEstado('deuda_total')">Deuda ⇅</th>
+                            <th onclick="sortEstado('estado')">Estado ⇅</th><th></th>
                         </tr>
                     </thead>
                     <tbody id="body-estado"></tbody>
@@ -848,6 +882,9 @@
 
             <!-- TAB: ESTADISTICAS -->
             <div id="cuotas-tab-stats" style="display:none">
+                <div class="toolbar">
+                    <button class="btn btn-red" onclick="exportarEstadisticasPDF()">⬇ Exportar PDF</button>
+                </div>
                 <div class="gasto-resumen" id="stats-kpis"></div>
                 <div class="reportes-charts">
                     <div class="chart-card"><h3>Cobranza mensual</h3><div class="chart-wrap"><canvas id="chart-cuotas-mensual"></canvas></div></div>
