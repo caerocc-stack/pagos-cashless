@@ -16,6 +16,7 @@ class AlumnoCreate(BaseModel):
     fecha_nacimiento: date | None = None
     condicion: str | None = None
     modalidad: str | None = None
+    deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
 
@@ -33,6 +34,7 @@ class AlumnoUpdate(BaseModel):
     fecha_nacimiento: date | None = None
     condicion: str | None = None
     modalidad: str | None = None
+    deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool | None = None
     cuota_personalizada: Decimal | None = None
     activo: bool | None = None
@@ -52,6 +54,7 @@ class AlumnoResponse(BaseModel):
     fecha_nacimiento: date | None = None
     condicion: str | None = None
     modalidad: str | None = None
+    deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
     activo: bool

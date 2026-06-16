@@ -283,7 +283,7 @@ function mostrarFormAlumno() {
     document.getElementById('alumno-edit-id').value = '';
     ['al-legajo', 'al-dni', 'al-nombre', 'al-apellido', 'al-curso', 'al-division',
         'al-email', 'al-area', 'al-telefono', 'al-fecha-nac', 'al-modalidad',
-        'al-cuota-personalizada'].forEach(id => document.getElementById(id).value = '');
+        'al-deuda-ant', 'al-cuota-personalizada'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('al-condicion').value = 'Regular';
     document.getElementById('al-cuota-excluir').checked = false;
 }
@@ -310,6 +310,7 @@ function editarAlumno(id) {
     document.getElementById('al-modalidad').value = a.modalidad || '';
     document.getElementById('al-telefono').value = a.telefono || '';
     document.getElementById('al-fecha-nac').value = a.fecha_nacimiento || '';
+    document.getElementById('al-deuda-ant').value = a.deuda_anio_anterior || '';
     document.getElementById('al-cuota-personalizada').value = a.cuota_personalizada || '';
     document.getElementById('al-cuota-excluir').checked = !!a.cuota_excluir;
 }
@@ -330,6 +331,7 @@ async function guardarAlumno(e) {
         modalidad: document.getElementById('al-modalidad').value || null,
         telefono: document.getElementById('al-telefono').value || null,
         fecha_nacimiento: document.getElementById('al-fecha-nac').value || null,
+        deuda_anio_anterior: document.getElementById('al-deuda-ant').value || null,
         cuota_excluir: document.getElementById('al-cuota-excluir').checked,
         cuota_personalizada: document.getElementById('al-cuota-personalizada').value || null,
     };
@@ -2020,12 +2022,28 @@ function renderCaja(lista) {
             <td style="text-align:right;color:var(--red)">${esIng ? '' : '$' + gastoFmt(m.monto)}</td>
             <td style="text-align:right;font-weight:700">$${gastoFmt(m.saldo)}</td>
             <td>
+                ${esIng ? `<button class="btn btn-sm btn-primary" title="Imputar como pago de cuota" onclick="imputarCuotaDesdeCaja(${m.id}, ${m.monto})">→ Cuota</button>` : ''}
                 <button class="btn btn-sm" onclick="editarCaja(${m.id})">Editar</button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarCaja(${m.id})">Eliminar</button>
             </td>
         </tr>`;
     }).join('') ||
         '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos en este período</td></tr>';
+}
+
+async function imputarCuotaDesdeCaja(cajaMovId, monto) {
+    const leg = prompt(`Imputar este ingreso ($${gastoFmt(monto)}) como pago de cuota.\n\nLegajo del alumno:`);
+    if (!leg) return;
+    try {
+        if (!alumnosCache.length) await cargarAlumnos();
+        const a = alumnosCache.find(x => String(x.legajo) === String(leg).trim());
+        if (!a) { toast('No encontré un alumno con ese legajo', 'error'); return; }
+        if (!confirm(`¿Imputar $${gastoFmt(monto)} como pago de cuota de ${a.apellido}, ${a.nombre}?`)) return;
+        await api('/api/cuotas/efectivo', { method: 'POST', body: JSON.stringify({ alumno_id: a.id, caja_mov_id: cajaMovId }) });
+        toast(`Pago imputado a ${a.apellido}, ${a.nombre}`);
+    } catch (err) {
+        toast(err.message, 'error');
+    }
 }
 
 function mostrarFormCaja(tipo) {
@@ -2364,7 +2382,7 @@ async function cargarEstado() {
         const aldia = estadoCache.filter(x => x.estado === 'Al día').length;
         const mor = estadoCache.filter(x => x.estado === 'Moroso').length;
         const sinp = estadoCache.filter(x => x.estado === 'Sin pagos').length;
-        const deuda = estadoCache.reduce((s, x) => s + x.deuda, 0);
+        const deuda = estadoCache.reduce((s, x) => s + (x.deuda_total ?? x.deuda), 0);
         document.getElementById('estado-resumen').innerHTML = `
             <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">corte mes ${r.mes_corte}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
@@ -2391,7 +2409,7 @@ function filtrarEstado() {
             <td>${escapeHtml(x.area || '-')}</td>
             <td style="text-align:right">$${gastoFmt(x.pagado)}</td>
             <td style="text-align:right">$${gastoFmt(x.esperado)}</td>
-            <td style="text-align:right;${x.deuda > 0 ? 'color:var(--red)' : ''}">$${gastoFmt(x.deuda)}</td>
+            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">$${gastoFmt(x.deuda_total ?? x.deuda)}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. $${gastoFmt(x.deuda_anterior)} año ant.)</span>` : ''}</td>
             <td>${estadoBadge(x.estado)}</td>
             <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
         </tr>`).join('') ||
@@ -2413,7 +2431,7 @@ async function verEstadoAlumno(id) {
             <div class="gasto-resumen">
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(e.pagado)}</div></div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado al corte</div><div class="gasto-kpi-valor">$${gastoFmt(e.esperado)}</div></div>
-                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">$${gastoFmt(e.deuda)}</div></div>
+                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">$${gastoFmt(e.deuda_total ?? e.deuda)}</div><div class="gasto-kpi-sub">${e.deuda_anterior > 0 ? 'incl. $' + gastoFmt(e.deuda_anterior) + ' año ant.' : '&nbsp;'}</div></div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Estado</div><div class="gasto-kpi-valor" style="font-size:1.1rem">${estadoBadge(e.estado)}</div></div>
             </div>
             <h3 style="margin:.8rem 0 .4rem">Pagos del año</h3>

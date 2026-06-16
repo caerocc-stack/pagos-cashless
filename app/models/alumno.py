@@ -23,6 +23,7 @@ class Alumno(Base):
     condicion: Mapped[str | None] = mapped_column(String(20))   # Regular / Becado / Exento
     modalidad: Mapped[str | None] = mapped_column(String(20))   # Mensual / ...
     legajo_completo: Mapped[str | None] = mapped_column(String(20))  # 6 dig con verificador
+    deuda_anio_anterior: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
     cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)

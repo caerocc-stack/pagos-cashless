@@ -13,7 +13,8 @@ class PagoCuota(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     alumno_id: Mapped[int | None] = mapped_column(ForeignKey("alumnos.id"))  # NULL = sin asignar
     cliente_siro: Mapped[str | None] = mapped_column(String(20))
-    via: Mapped[str | None] = mapped_column(String(10))   # 'legajo' / 'dni' (como se asigno)
+    via: Mapped[str | None] = mapped_column(String(12))   # 'legajo' / 'dni' / 'efectivo' / 'manual'
+    caja_mov_id: Mapped[int | None] = mapped_column(ForeignKey("caja_movimientos.id"))  # pago en efectivo
 
     importe: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)        # Fecha de Proceso

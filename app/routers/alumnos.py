@@ -41,6 +41,7 @@ def _alumno_con_saldo(a: Alumno) -> dict:
         "fecha_nacimiento": a.fecha_nacimiento,
         "condicion": a.condicion,
         "modalidad": a.modalidad,
+        "deuda_anio_anterior": a.deuda_anio_anterior,
         "cuota_excluir": a.cuota_excluir,
         "cuota_personalizada": a.cuota_personalizada,
         "activo": a.activo,

@@ -1,9 +1,11 @@
 import re
 import hashlib
 from decimal import Decimal
+from datetime import date
 
 import xlrd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, extract
 
@@ -11,6 +13,7 @@ from app.database import get_db
 from app.models.pago_cuota import PagoCuota
 from app.models.alumno import Alumno
 from app.models.curso import Curso
+from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
@@ -192,6 +195,45 @@ def listar(estado: str | None = None, q: str | None = None,
     return query.order_by(PagoCuota.fecha.desc(), PagoCuota.id.desc()).limit(1000).all()
 
 
+class ImputarEfectivo(BaseModel):
+    alumno_id: int
+    caja_mov_id: int | None = None
+    importe: Decimal | None = None
+    fecha: date | None = None
+
+
+@router.post("/efectivo")
+def imputar_efectivo(data: ImputarEfectivo, db: Session = Depends(get_db)):
+    """Imputa un pago de cuota en efectivo a un alumno (opcionalmente desde un movimiento de caja)."""
+    a = db.get(Alumno, data.alumno_id)
+    if not a:
+        raise HTTPException(404, "Alumno no encontrado")
+    importe = data.importe
+    fecha = data.fecha
+    if data.caja_mov_id:
+        # Evitar imputar dos veces el mismo movimiento de caja
+        ya = db.query(PagoCuota).filter(PagoCuota.caja_mov_id == data.caja_mov_id).first()
+        if ya:
+            raise HTTPException(409, "Ese movimiento de caja ya está imputado a una cuota")
+        mov = db.get(MovimientoCaja, data.caja_mov_id)
+        if not mov:
+            raise HTTPException(404, "Movimiento de caja no encontrado")
+        importe = importe or Decimal(str(mov.monto))
+        fecha = fecha or mov.fecha
+    if not importe or not fecha:
+        raise HTTPException(400, "Faltan importe y/o fecha del pago")
+    importe = abs(Decimal(str(importe)))
+    h = hashlib.sha1(f"efectivo|{data.caja_mov_id}|{a.id}|{importe}|{fecha}".encode()).hexdigest()[:40]
+    pago = PagoCuota(
+        alumno_id=a.id, via="efectivo", canal="Efectivo", caja_mov_id=data.caja_mov_id,
+        cliente_siro=None, importe=importe, fecha=fecha, fecha_pago=fecha,
+        mes=fecha.month, anio=fecha.year, origen="caja/efectivo", hash=h,
+    )
+    db.add(pago)
+    db.commit()
+    return {"ok": True, "mensaje": f"Pago en efectivo imputado a {a.apellido}, {a.nombre}"}
+
+
 @router.post("/{pago_id}/asignar/{alumno_id}")
 def asignar_manual(pago_id: int, alumno_id: int, db: Session = Depends(get_db)):
     p = db.get(PagoCuota, pago_id)
@@ -224,34 +266,38 @@ def _nivel(curso: str) -> str:
 
 def _estado_de(alumno, curso, total_pagado: Decimal, mes_corte: int) -> dict:
     cond = (alumno.condicion or "").strip().lower()
+    deuda_ant = Decimal(str(alumno.deuda_anio_anterior or 0))
     base = {
         "id": alumno.id, "legajo": alumno.legajo,
         "apellido": alumno.apellido, "nombre": alumno.nombre,
         "curso": alumno.curso, "area": alumno.area,
         "division": alumno.division, "nivel": _nivel(alumno.curso),
         "modalidad": alumno.modalidad, "condicion": alumno.condicion,
-        "pagado": float(total_pagado),
+        "pagado": float(total_pagado), "deuda_anterior": float(deuda_ant),
     }
     if cond in ("becado", "exento"):
-        base.update(esperado=0, deuda=0, cuotas_pagas=0, estado=alumno.condicion)
+        base.update(esperado=0, deuda=0, deuda_total=float(deuda_ant),
+                    cuotas_pagas=0, estado=alumno.condicion)
         return base
     if not curso:
-        base.update(esperado=0, deuda=0, cuotas_pagas=0, estado="Sin curso")
+        base.update(esperado=0, deuda=0, deuda_total=float(deuda_ant),
+                    cuotas_pagas=0, estado="Sin curso")
         return base
     cuota = Decimal(str(curso.cuota or 0))
     matric = Decimal(str(curso.matricula or 0))
     devengadas = min(curso.n_cuotas, max(0, mes_corte - 2))
     esperado = matric + devengadas * cuota
-    deuda = max(Decimal("0"), esperado - total_pagado)
+    deuda_corriente = max(Decimal("0"), esperado - total_pagado)
+    deuda_total = deuda_corriente + deuda_ant
     cuotas_pagas = int(total_pagado / cuota) if cuota else 0
     if total_pagado <= 0:
         estado = "Sin pagos"
-    elif total_pagado >= esperado:
+    elif deuda_corriente <= 0:
         estado = "Al día"
     else:
         estado = "Moroso"
-    base.update(esperado=float(esperado), deuda=float(deuda),
-                cuotas_pagas=cuotas_pagas, estado=estado)
+    base.update(esperado=float(esperado), deuda=float(deuda_corriente),
+                deuda_total=float(deuda_total), cuotas_pagas=cuotas_pagas, estado=estado)
     return base
 
 
@@ -290,7 +336,7 @@ def estado(anio: int | None = None, mes: int | None = None,
     if q:
         t = q.strip().lower()
         filas = [f for f in filas if t in f"{f['apellido']} {f['nombre']} {f['legajo']}".lower()]
-    filas.sort(key=lambda f: (-f["deuda"], f["apellido"]))
+    filas.sort(key=lambda f: (-f["deuda_total"], f["apellido"]))
     return {"anio": anio, "mes_corte": mes_corte, "alumnos": filas}
 
 
@@ -335,7 +381,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = 
             d["alumnos"] += 1
             d["esperado"] += f["esperado"]
             d["cobrado"] += f["pagado"]
-            d["deuda"] += f["deuda"]
+            d["deuda"] += f["deuda_total"]
             if f["estado"] == "Al día":
                 d["al_dia"] += 1
             elif f["estado"] == "Moroso":
@@ -357,7 +403,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = 
     )
     meses = [{"mes": m, "cobrado": float(mensual.get(m, 0))} for m in range(1, 13)]
 
-    morosos = sorted([f for f in filas if f["deuda"] > 0], key=lambda f: -f["deuda"])[:15]
+    morosos = sorted([f for f in filas if f["deuda_total"] > 0], key=lambda f: -f["deuda_total"])[:15]
 
     tot_esp = sum(f["esperado"] for f in filas)
     tot_cob = sum(f["pagado"] for f in filas)
@@ -365,7 +411,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = 
         "anio": anio, "mes_corte": mes_corte,
         "kpis": {
             "alumnos": len(filas),
-            "esperado": tot_esp, "cobrado": tot_cob, "deuda": sum(f["deuda"] for f in filas),
+            "esperado": tot_esp, "cobrado": tot_cob, "deuda": sum(f["deuda_total"] for f in filas),
             "cumplimiento": round(tot_cob / tot_esp * 100, 1) if tot_esp else 0,
         },
         "por_estado": estados,
