@@ -1053,3 +1053,64 @@ main { margin-left: var(--sidebar-w); max-width: 1280px; }
 .side-group-head > span:first-child { color: var(--gc); flex: 1; }
 .side-group .side-item:hover { background: var(--surface-2); color: var(--gc); }
 .side-group .side-item.active { background: var(--gc); box-shadow: 0 3px 10px color-mix(in srgb, var(--gc) 40%, transparent); }
+
+/* =====================================================================
+   CAPA DE REFINAMIENTO PREMIUM (redesign skill) — aditiva, no rompe nada
+   ===================================================================== */
+html { scroll-behavior: smooth; }
+
+/* Números tabulares: que las columnas de plata y datos queden alineadas */
+body { font-variant-numeric: tabular-nums; }
+
+/* Selección de texto tintada */
+::selection { background: rgba(61,127,196,0.28); color: inherit; }
+
+/* Scrollbars finas y tintadas en toda la app */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Foco accesible (teclado) sin molestar al mouse */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, .nav-btn:focus-visible, .side-item:focus-visible,
+.side-group-head:focus-visible, .chip:focus-visible, th.sortable:focus-visible {
+    outline: 2px solid var(--sky);
+    outline-offset: 2px;
+    border-radius: 8px;
+}
+button:focus:not(:focus-visible), .nav-btn:focus:not(:focus-visible),
+.side-item:focus:not(:focus-visible) { outline: none; }
+
+/* Tablas: un poco más de aire y transición suave en las filas */
+td { padding-top: 0.72rem; padding-bottom: 0.72rem; line-height: 1.4; }
+tbody tr { transition: background 0.14s ease; }
+table { box-shadow: 0 1px 2px rgba(21,35,59,0.05), 0 10px 30px rgba(21,35,59,0.07); }
+
+/* KPIs: micro-refinamiento de borde al pasar el mouse y números nítidos */
+.gasto-kpi, .dash-kpi, .kpi-card { transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease; }
+.gasto-kpi:hover { border-color: color-mix(in srgb, var(--sky) 32%, var(--border)); }
+.gasto-kpi-valor, .dash-kpi-valor, .kpi-valor { letter-spacing: -0.02em; }
+
+/* KPI clickeable (ej. "Hs liquidadas ✎") se eleva al pasar el mouse */
+.gasto-kpi[onclick]:hover, .dash-kpi[onclick]:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    cursor: pointer;
+}
+
+/* Modales: un poco más de profundidad en el fondo */
+.modal-overlay { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* Inputs deshabilitados (ej. entrada/salida en días no normales) */
+input:disabled, select:disabled {
+    background: var(--surface-2); color: var(--text-muted);
+    cursor: not-allowed; opacity: 0.7;
+}
+
+/* Filas "sin datos": que respiren un poco más */
+tbody td[colspan] { padding: 1.6rem 1rem; }
+
+/* Botones chicos de acción en tablas: un toque más prolijos */
+.btn-sm { border-radius: 7px; }
