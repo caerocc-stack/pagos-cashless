@@ -27,6 +27,70 @@ function normTxt(s) {
     return (s == null ? '' : String(s)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+const _reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// --- Config global profesional de Chart.js (aplica a TODOS los gráficos) ---
+function configurarChartsGlobal() {
+    if (typeof Chart === 'undefined' || Chart.__apaiConfig) return;
+    Chart.__apaiConfig = true;
+    const css = getComputedStyle(document.documentElement);
+    const muted = css.getPropertyValue('--text-muted').trim() || '#5b6b80';
+    const border = css.getPropertyValue('--border').trim() || 'rgba(21,35,59,0.08)';
+    Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = muted;
+    Chart.defaults.animation = _reduceMotion ? false : { duration: 950, easing: 'easeOutQuart' };
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.plugins.legend.labels.boxWidth = 8;
+    Chart.defaults.plugins.legend.labels.padding = 14;
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(21,35,59,0.95)';
+    Chart.defaults.plugins.tooltip.padding = 11;
+    Chart.defaults.plugins.tooltip.cornerRadius = 10;
+    Chart.defaults.plugins.tooltip.titleFont = { weight: '700', size: 12 };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: 12 };
+    Chart.defaults.plugins.tooltip.boxPadding = 6;
+    Chart.defaults.plugins.tooltip.usePointStyle = true;
+    Chart.defaults.elements.bar.borderRadius = 7;
+    Chart.defaults.elements.bar.borderSkipped = false;
+    Chart.defaults.elements.line.tension = 0.38;
+    Chart.defaults.elements.line.borderWidth = 3;
+    Chart.defaults.elements.point.radius = 0;
+    Chart.defaults.elements.point.hoverRadius = 6;
+    Chart.defaults.elements.point.hitRadius = 12;
+    Chart.defaults.elements.arc.borderWidth = 0;
+    if (Chart.defaults.scale) {
+        Chart.defaults.scale.grid = { color: border, drawBorder: false, drawTicks: false };
+        Chart.defaults.scale.border = { display: false };
+        Chart.defaults.scale.ticks = { padding: 8 };
+    }
+}
+configurarChartsGlobal();
+
+// Crea un gradiente vertical para rellenos de gráficos
+function chartGradient(ctx, area, hex, opTop = 0.85, opBot = 0.12) {
+    if (!area) return hex;
+    const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), gg = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    g.addColorStop(0, `rgba(${r},${gg},${b},${opTop})`);
+    g.addColorStop(1, `rgba(${r},${gg},${b},${opBot})`);
+    return g;
+}
+
+// Anima un número de 0 al valor final (cuenta regresiva ascendente)
+function animarNumero(el, destino, { prefijo = '', sufijo = '', dec = 0, dur = 900 } = {}) {
+    if (_reduceMotion) { el.textContent = prefijo + Number(destino).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + sufijo; return; }
+    const t0 = performance.now();
+    function paso(t) {
+        const p = Math.min(1, (t - t0) / dur);
+        const e = 1 - Math.pow(1 - p, 3);  // easeOutCubic
+        const val = destino * e;
+        el.textContent = prefijo + val.toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + sufijo;
+        if (p < 1) requestAnimationFrame(paso);
+    }
+    requestAnimationFrame(paso);
+}
+
 // --- Menu lateral ---
 function toggleGrupo(head) {
     head.parentElement.classList.toggle('collapsed');
@@ -1284,20 +1348,21 @@ async function dashKPIs() {
         const hoy = await api('/api/operaciones/diario');
         movsHoy = hoy.length;
     } catch (e) { /* sin sesion o sin datos */ }
-    const fmt = n => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
     grid.innerHTML = `
         <div class="dash-kpi"><div class="dash-kpi-label">Saldo total en tarjetas</div>
-            <div class="dash-kpi-valor">$${fmt(saldoTotal)}</div>
+            <div class="dash-kpi-valor" data-num="${saldoTotal}" data-prefijo="$">$0</div>
             <div class="dash-kpi-sub">${conSaldo} alumnos con saldo</div></div>
         <div class="dash-kpi"><div class="dash-kpi-label">Alumnos registrados</div>
-            <div class="dash-kpi-valor">${fmt(total)}</div>
+            <div class="dash-kpi-valor" data-num="${total}">0</div>
             <div class="dash-kpi-sub">en el padrón</div></div>
         <div class="dash-kpi"><div class="dash-kpi-label">Movimientos de hoy</div>
-            <div class="dash-kpi-valor">${fmt(movsHoy)}</div>
+            <div class="dash-kpi-valor" data-num="${movsHoy}">0</div>
             <div class="dash-kpi-sub">operaciones</div></div>
         <div class="dash-kpi"><div class="dash-kpi-label">Estado del sistema</div>
-            <div class="dash-kpi-valor" style="color:var(--green)">●  En línea</div>
+            <div class="dash-kpi-valor" style="color:var(--green)"><span class="dash-online-dot"></span> En línea</div>
             <div class="dash-kpi-sub">conectado a la base</div></div>`;
+    grid.querySelectorAll('.dash-kpi-valor[data-num]').forEach(el =>
+        animarNumero(el, Number(el.dataset.num), { prefijo: el.dataset.prefijo || '' }));
 }
 
 function dashBuscador() {
@@ -2560,23 +2625,25 @@ function dibujarChartsCuotas(s) {
     const cText = css.getPropertyValue('--text-muted').trim() || '#888';
     if (chartCuotasMensual) chartCuotasMensual.destroy();
     if (chartCuotasArea) chartCuotasArea.destroy();
-    const ctx1 = document.getElementById('chart-cuotas-mensual');
-    chartCuotasMensual = new Chart(ctx1, {
+    const gradByCtx = hex => c => chartGradient(c.chart.ctx, c.chart.chartArea, hex);
+    chartCuotasMensual = new Chart(document.getElementById('chart-cuotas-mensual'), {
         type: 'bar',
         data: {
             labels: s.cobranza_mensual.map(m => MESES[m.mes - 1].slice(0, 3)),
-            datasets: [{ label: 'Cobrado', data: s.cobranza_mensual.map(m => m.cobrado), backgroundColor: cGreen }],
+            datasets: [{ label: 'Cobrado', data: s.cobranza_mensual.map(m => m.cobrado), backgroundColor: gradByCtx(cGreen), hoverBackgroundColor: cGreen, maxBarThickness: 38 }],
         },
-        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: cText } }, y: { ticks: { color: cText } } } },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { ticks: { callback: v => '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1000 ? (v / 1000) + 'k' : v) } } },
+        },
     });
-    const ctx2 = document.getElementById('chart-cuotas-area');
-    chartCuotasArea = new Chart(ctx2, {
+    chartCuotasArea = new Chart(document.getElementById('chart-cuotas-area'), {
         type: 'bar',
         data: {
             labels: s.por_area.map(d => d.clave),
-            datasets: [{ label: '% Cumplimiento', data: s.por_area.map(d => d.cumplimiento), backgroundColor: cSky }],
+            datasets: [{ label: '% Cumplimiento', data: s.por_area.map(d => d.cumplimiento), backgroundColor: gradByCtx(cSky), hoverBackgroundColor: cSky, maxBarThickness: 30 }],
         },
-        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: cText }, max: 100 }, y: { ticks: { color: cText } } } },
+        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { max: 100, ticks: { callback: v => v + '%' } } } },
     });
 }
 

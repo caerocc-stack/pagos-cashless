@@ -1053,6 +1053,9 @@ main { margin-left: var(--sidebar-w); max-width: 1280px; }
 .side-group-head > span:first-child { color: var(--gc); flex: 1; }
 .side-group .side-item:hover { background: var(--surface-2); color: var(--gc); }
 .side-group .side-item.active { background: var(--gc); box-shadow: 0 3px 10px color-mix(in srgb, var(--gc) 40%, transparent); }
+/* Item activo: al pasar el mouse mantiene texto blanco legible (fix) */
+.side-item.active:hover,
+.side-group .side-item.active:hover { background: var(--gc, var(--sky)); color: #fff; filter: brightness(1.08); }
 
 /* =====================================================================
    CAPA DE REFINAMIENTO PREMIUM (redesign skill) — aditiva, no rompe nada
@@ -1114,3 +1117,35 @@ tbody td[colspan] { padding: 1.6rem 1rem; }
 
 /* Botones chicos de acción en tablas: un toque más prolijos */
 .btn-sm { border-radius: 7px; }
+
+/* ===== Motion premium (emil-design-eng): easing fuerte + micro-vida ===== */
+:root { --ease-out: cubic-bezier(0.23,1,0.32,1); --ease-io: cubic-bezier(0.77,0,0.175,1); }
+
+/* Indicador "En línea" con pulso sutil */
+.dash-online-dot {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--green); vertical-align: middle; margin-right: 5px;
+    animation: pulseDot 2.2s var(--ease-out) infinite;
+}
+@keyframes pulseDot {
+    0% { box-shadow: 0 0 0 0 rgba(22,163,74,0.45); }
+    70% { box-shadow: 0 0 0 9px rgba(22,163,74,0); }
+    100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+}
+
+/* KPIs del inicio: se elevan al pasar el mouse, números tabulares */
+.dash-kpi { transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out); }
+.dash-kpi:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.dash-kpi-valor { font-variant-numeric: tabular-nums; }
+
+/* Tarjetas de gráfico con sombra al pasar el mouse */
+.chart-card { transition: box-shadow 0.2s var(--ease-out); }
+.chart-card:hover { box-shadow: var(--shadow); }
+
+/* Accesibilidad: menos movimiento si el sistema lo pide */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .dash-online-dot { animation: none; }
+    .dash-kpi, .chart-card { transition: none; }
+    .dash-kpi:hover { transform: none; }
+}

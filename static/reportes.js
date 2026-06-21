@@ -148,8 +148,9 @@ function renderChartCurso(datos) {
             datasets: [{
                 label: 'Consumo ($)',
                 data: top.map(d => d.total_consumo),
-                backgroundColor: COLORES.sky,
-                borderRadius: 5,
+                backgroundColor: (c) => (typeof chartGradient === 'function' ? chartGradient(c.chart.ctx, c.chart.chartArea, COLORES.sky) : COLORES.sky),
+                hoverBackgroundColor: COLORES.sky,
+                maxBarThickness: 28,
             }],
         },
         options: {
@@ -171,10 +172,12 @@ function renderChartOps(r) {
             datasets: [{
                 data: [r.consumos.monto, r.recargas.monto, r.reintegros.monto, r.transferencias.monto],
                 backgroundColor: [COLORES.red, COLORES.green, COLORES.amber, COLORES.sky],
+                borderRadius: 6, spacing: 3, hoverOffset: 10,
             }],
         },
         options: {
             responsive: true, maintainAspectRatio: false,
+            cutout: '64%',
             plugins: { legend: { position: 'bottom' } },
         },
     });
@@ -194,8 +197,8 @@ function renderChartDiario(datos) {
                 label: 'Consumo diario ($)',
                 data: datos.map(d => d.total),
                 borderColor: COLORES.red,
-                backgroundColor: 'rgba(160,30,34,0.1)',
-                fill: true, tension: 0.3, pointRadius: 3,
+                backgroundColor: (c) => (typeof chartGradient === 'function' ? chartGradient(c.chart.ctx, c.chart.chartArea, COLORES.red, 0.32, 0) : 'rgba(160,30,34,0.12)'),
+                fill: true,
             }],
         },
         options: {
