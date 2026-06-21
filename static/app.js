@@ -58,11 +58,7 @@ function configurarChartsGlobal() {
     Chart.defaults.elements.point.hoverRadius = 6;
     Chart.defaults.elements.point.hitRadius = 12;
     Chart.defaults.elements.arc.borderWidth = 0;
-    if (Chart.defaults.scale) {
-        Chart.defaults.scale.grid = { color: border, drawBorder: false, drawTicks: false };
-        Chart.defaults.scale.border = { display: false };
-        Chart.defaults.scale.ticks = { padding: 8 };
-    }
+    // (No se tocan los defaults de 'scale': en Chart.js v4 reemplazarlos rompe el layout de los gráficos)
 }
 configurarChartsGlobal();
 
