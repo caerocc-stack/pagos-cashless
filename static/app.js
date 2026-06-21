@@ -68,7 +68,8 @@ configurarChartsGlobal();
 
 // Crea un gradiente vertical para rellenos de gráficos
 function chartGradient(ctx, area, hex, opTop = 0.85, opBot = 0.12) {
-    if (!area) return hex;
+    // En el primer render el área aún no está calculada (top/bottom no-finitos): usar color sólido
+    if (!area || !isFinite(area.top) || !isFinite(area.bottom)) return hex;
     const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
     const h = hex.replace('#', '');
     const r = parseInt(h.slice(0, 2), 16), gg = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
