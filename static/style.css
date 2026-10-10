@@ -380,6 +380,9 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 tbody tr:hover td { background: var(--row-hover); }
 tbody td[colspan] { padding: 1.75rem 1rem; text-align: center; color: var(--text-muted); }
 td .btn + .btn, td .btn + select { margin-left: 0.3rem; }
+/* Celdas con botones: todo en una sola línea y la columna se ajusta a su contenido */
+td:has(> .btn), td:has(> button), td:has(> .pago-ok) { white-space: nowrap; width: 1%; }
+td > .btn, td > button.btn { vertical-align: middle; }
 /* Dentro de las tablas los botones son livianos: el protagonista es el dato */
 td .btn { min-height: 32px; padding: 0.3rem 0.65rem; font-size: 0.82rem; }
 td .btn-primary { background: var(--primary-soft); border-color: transparent; color: var(--primary); }
@@ -427,10 +430,11 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .cuota-tab.activo { color: var(--primary); border-bottom-color: var(--primary); }
 
 /* ---------- 11. Indicadores (KPI) ---------- */
-.kpi-grid, .gasto-resumen, .dash-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.85rem; margin-bottom: 1.25rem; }
+.kpi-grid, .gasto-resumen, .dash-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.85rem; margin-bottom: 1.25rem; }
 .kpi-card, .gasto-kpi, .dash-kpi {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 0.95rem 1.1rem; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+    container-type: inline-size;  /* el número se achica según el ancho de su tarjeta: nunca se corta */
 }
 .kpi-card::before, .gasto-kpi-total::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary); }
 .kpi-card.kpi-red::before, .gasto-kpi-total::before { background: var(--red); }
@@ -438,7 +442,7 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .kpi-card.kpi-amber::before { background: var(--warning); }
 .kpi-card.kpi-navy::before { background: var(--navy); }
 .kpi-label, .gasto-kpi-label, .dash-kpi-label { font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.kpi-valor, .gasto-kpi-valor, .dash-kpi-valor { font-family: var(--font-head); font-size: 1.45rem; font-weight: 600; color: var(--heading); margin-top: 0.2rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.kpi-valor, .gasto-kpi-valor, .dash-kpi-valor { font-family: var(--font-head); font-size: clamp(0.95rem, 10cqi, 1.45rem); white-space: nowrap; font-weight: 600; color: var(--heading); margin-top: 0.2rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .gasto-kpi-total .gasto-kpi-valor { color: var(--red); }
 [data-theme="dark"] .gasto-kpi-total .gasto-kpi-valor { color: #ff8a8a; }
 .kpi-sub, .gasto-kpi-sub, .dash-kpi-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }

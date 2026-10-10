@@ -92,7 +92,10 @@ function configurarChartsGlobal() {
     Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
     Chart.defaults.font.size = 12;
     Chart.defaults.color = muted;
-    Chart.defaults.animation = _reduceMotion ? false : { duration: 950, easing: 'easeOutQuart' };
+    // Ajustar propiedades sueltas: reemplazar el objeto 'animation' entero borra la configuración interna
+    // de Chart.js y cada gráfico animado falla ("this._fn is not a function"), dejando TODOS en blanco.
+    Chart.defaults.animation.duration = _reduceMotion ? 0 : 900;
+    Chart.defaults.animation.easing = 'easeOutQuart';
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
     Chart.defaults.plugins.legend.labels.boxWidth = 8;
     Chart.defaults.plugins.legend.labels.padding = 14;
@@ -1765,11 +1768,11 @@ async function cargarResumenGastos(mes, anio) {
         const cont = document.getElementById('gasto-resumen');
         const cats = (r.por_categoria || []).map(c =>
             `<div class="gasto-kpi"><div class="gasto-kpi-label">${escapeHtml(c.categoria)}</div>
-                <div class="gasto-kpi-valor">$${gastoFmt(c.total)}</div>
+                <div class="gasto-kpi-valor">${fmtMoneda(c.total)}</div>
                 <div class="gasto-kpi-sub">${c.cantidad} comprob.</div></div>`).join('');
         cont.innerHTML =
             `<div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total del período</div>
-                <div class="gasto-kpi-valor">$${gastoFmt(r.total)}</div>
+                <div class="gasto-kpi-valor">${fmtMoneda(r.total)}</div>
                 <div class="gasto-kpi-sub">${r.cantidad} comprobantes</div></div>` + cats;
     } catch (err) { /* sin datos */ }
 }
@@ -1812,7 +1815,7 @@ function renderGastos(lista) {
             <td>${escapeHtml(g.concepto || '-')}</td>
             <td>${selCat}</td>
             <td>${pago}</td>
-            <td style="text-align:right;${neg ? 'color:var(--red)' : ''}">$${gastoFmt(g.importe)}</td>
+            <td style="text-align:right;${neg ? 'color:var(--red)' : ''}">${fmtMoneda(g.importe)}</td>
             <td>
                 <button class="btn btn-sm" onclick="editarGasto(${g.id})">Editar</button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarGasto(${g.id})">Eliminar</button>
@@ -1844,20 +1847,20 @@ async function abrirVincularPago(id) {
         const fBanco = (c.banco || []).map(b => {
             const f = b.fecha ? b.fecha.split('-').reverse().join('/') : '';
             return `<tr><td>${f}</td><td>${escapeHtml(b.razon_social || b.descripcion || '')}</td>
-                <td style="text-align:right">$${gastoFmt(b.importe)}</td>
+                <td style="text-align:right">${fmtMoneda(b.importe)}</td>
                 <td>${tag(b.coincide_cuit, b.coincide_monto)}</td>
                 <td><button class="btn btn-sm btn-primary" onclick="pagoBanco(${id},${b.id})">Vincular</button></td></tr>`;
         }).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">Sin movimientos de banco que coincidan.</td></tr>';
         const fCaja = (c.caja || []).map(k => {
             const f = k.fecha ? k.fecha.split('-').reverse().join('/') : '';
             return `<tr><td>${f}</td><td>${escapeHtml(k.concepto || '')}</td>
-                <td style="text-align:right">$${gastoFmt(k.importe)}</td>
+                <td style="text-align:right">${fmtMoneda(k.importe)}</td>
                 <td><button class="btn btn-sm btn-primary" onclick="pagoCaja(${id},${k.id})">Vincular</button></td></tr>`;
         }).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">Sin egresos de caja que coincidan.</td></tr>';
         const html = `
             <h2 style="margin-top:0">Vincular el pago</h2>
             <p style="color:var(--text-muted);margin-top:-0.4rem">
-                ${g ? `${escapeHtml(g.razon_social || '')} · $${gastoFmt(g.importe)}` : ''}</p>
+                ${g ? `${escapeHtml(g.razon_social || '')} · ${fmtMoneda(g.importe)}` : ''}</p>
             <h3 style="margin-bottom:.4rem">🏦 Transferencia (extracto del banco)</h3>
             <table><thead><tr><th>Fecha</th><th>Destinatario</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
             <tbody>${fBanco}</tbody></table>
@@ -1940,7 +1943,7 @@ function gastoLlenarNCde() {
         facturas.map(g => {
             const f = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
             const nro = [g.punto_venta, g.numero].filter(Boolean).join('-');
-            return `<option value="${g.id}">${f} · ${nro || 's/n'} · $${gastoFmt(g.importe)} · ${escapeHtml(g.concepto || '')}</option>`;
+            return `<option value="${g.id}">${f} · ${nro || 's/n'} · ${fmtMoneda(g.importe)} · ${escapeHtml(g.concepto || '')}</option>`;
         }).join('');
 }
 
@@ -2311,16 +2314,16 @@ async function cargarResumenCaja(mes, anio) {
         const r = await api('/api/caja/resumen?' + p.toString());
         document.getElementById('caja-resumen').innerHTML = `
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Saldo actual en caja</div>
-                <div class="gasto-kpi-valor">$${gastoFmt(r.saldo_actual)}</div>
-                <div class="gasto-kpi-sub">inicial: $${gastoFmt(r.saldo_inicial)}</div></div>
+                <div class="gasto-kpi-valor">${fmtMoneda(r.saldo_actual)}</div>
+                <div class="gasto-kpi-sub">inicial: ${fmtMoneda(r.saldo_inicial)}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Ingresos del período</div>
-                <div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(r.ingresos_periodo)}</div>
+                <div class="gasto-kpi-valor" style="color:var(--green)">${fmtMoneda(r.ingresos_periodo)}</div>
                 <div class="gasto-kpi-sub">${r.cantidad} movimientos</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Egresos del período</div>
-                <div class="gasto-kpi-valor" style="color:var(--red)">$${gastoFmt(r.egresos_periodo)}</div>
+                <div class="gasto-kpi-valor" style="color:var(--red)">${fmtMoneda(r.egresos_periodo)}</div>
                 <div class="gasto-kpi-sub">&nbsp;</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Neto del período</div>
-                <div class="gasto-kpi-valor" style="color:${r.neto_periodo < 0 ? 'var(--red)' : 'var(--green)'}">$${gastoFmt(r.neto_periodo)}</div>
+                <div class="gasto-kpi-valor" style="color:${r.neto_periodo < 0 ? 'var(--red)' : 'var(--green)'}">${fmtMoneda(r.neto_periodo)}</div>
                 <div class="gasto-kpi-sub">ingresos − egresos</div></div>`;
     } catch (err) { /* sin datos */ }
 }
@@ -2342,7 +2345,7 @@ function renderCaja(lista) {
             <td>${escapeHtml(m.tipo_movimiento || '-')}</td>
             <td style="text-align:right;color:var(--green)">${esIng ? '$' + gastoFmt(m.monto) : ''}</td>
             <td style="text-align:right;color:var(--red)">${esIng ? '' : '$' + gastoFmt(m.monto)}</td>
-            <td style="text-align:right;font-weight:700">$${gastoFmt(m.saldo)}</td>
+            <td style="text-align:right;font-weight:700">${fmtMoneda(m.saldo)}</td>
             <td>
                 ${esIng ? `<button class="btn btn-sm btn-primary" title="Imputar como pago de cuota" onclick="imputarCuotaDesdeCaja(${m.id}, ${m.monto})">→ Cuota</button>` : ''}
                 <button class="btn btn-sm" onclick="editarCaja(${m.id})">Editar</button>
@@ -2354,13 +2357,13 @@ function renderCaja(lista) {
 }
 
 async function imputarCuotaDesdeCaja(cajaMovId, monto) {
-    const leg = prompt(`Imputar este ingreso ($${gastoFmt(monto)}) como pago de cuota.\n\nLegajo del alumno:`);
+    const leg = prompt(`Imputar este ingreso (${fmtMoneda(monto)}) como pago de cuota.\n\nLegajo del alumno:`);
     if (!leg) return;
     try {
         if (!alumnosCache.length) await cargarAlumnos();
         const a = alumnosCache.find(x => String(x.legajo) === String(leg).trim());
         if (!a) { toast('No encontré un alumno con ese legajo', 'error'); return; }
-        if (!confirm(`¿Imputar $${gastoFmt(monto)} como pago de cuota de ${a.apellido}, ${a.nombre}?`)) return;
+        if (!confirm(`¿Imputar ${fmtMoneda(monto)} como pago de cuota de ${a.apellido}, ${a.nombre}?`)) return;
         await api('/api/cuotas/efectivo', { method: 'POST', body: JSON.stringify({ alumno_id: a.id, caja_mov_id: cajaMovId }) });
         toast(`Pago imputado a ${a.apellido}, ${a.nombre}`);
     } catch (err) {
@@ -2487,7 +2490,7 @@ async function cajaRapida(tipo) {
     };
     try {
         await api('/api/caja/', { method: 'POST', body: JSON.stringify(body) });
-        toast(`${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de $${gastoFmt(monto)} registrado`);
+        toast(`${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de ${fmtMoneda(monto)} registrado`);
         montoEl.value = '';          // se limpia el importe pero se mantiene el concepto
         montoEl.focus();             // listo para cargar el siguiente al instante
         cargarCaja();
@@ -2535,13 +2538,13 @@ async function cargarResumenConc() {
         document.getElementById('conc-resumen').innerHTML = `
             <div class="gasto-kpi"><div class="gasto-kpi-label">Movimientos del banco</div>
                 <div class="gasto-kpi-valor">${r.total}</div>
-                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_total)}</div></div>
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_total)}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados</div>
                 <div class="gasto-kpi-valor" style="color:var(--green)">${r.conciliados}</div>
                 <div class="gasto-kpi-sub">cruzados con factura</div></div>
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pendientes</div>
                 <div class="gasto-kpi-valor">${r.pendientes}</div>
-                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_pendiente)} sin factura</div></div>`;
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>`;
     } catch (err) { /* sin datos */ }
 }
 
@@ -2573,7 +2576,7 @@ function renderConciliacion(lista) {
             <td>${tipo}</td>
             <td>${escapeHtml(m.cuit || '-')}</td>
             <td>${escapeHtml(m.razon_social || '—')}</td>
-            <td style="text-align:right">$${gastoFmt(Math.abs(m.importe))}</td>
+            <td style="text-align:right">${fmtMoneda(Math.abs(m.importe))}</td>
             <td>${estado}</td>
             <td>${acciones}</td>
         </tr>`;
@@ -2625,7 +2628,7 @@ async function abrirCandidatos(movId) {
                 <td>${f}</td>
                 <td>${escapeHtml(c.razon_social || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(c.concepto || '')}</small></td>
                 <td>${escapeHtml(c.cuit || '-')}</td>
-                <td style="text-align:right">$${gastoFmt(c.importe)}</td>
+                <td style="text-align:right">${fmtMoneda(c.importe)}</td>
                 <td>${tags}</td>
                 <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id})">Vincular</button></td>
             </tr>`;
@@ -2634,7 +2637,7 @@ async function abrirCandidatos(movId) {
         const html = `
             <h2 style="margin-top:0">Vincular movimiento con una factura</h2>
             <p style="color:var(--text-muted);margin-top:-0.4rem">
-                ${mov ? `${escapeHtml(mov.razon_social || mov.descripcion || '')} · CUIT ${escapeHtml(mov.cuit || '-')} · $${gastoFmt(Math.abs(mov.importe))}` : ''}
+                ${mov ? `${escapeHtml(mov.razon_social || mov.descripcion || '')} · CUIT ${escapeHtml(mov.cuit || '-')} · ${fmtMoneda(Math.abs(mov.importe))}` : ''}
             </p>
             <div style="max-height:50vh;overflow:auto">
             <table><thead><tr><th>Fecha</th><th>Factura</th><th>CUIT</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
@@ -2726,7 +2729,7 @@ async function cargarEstado() {
             <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">corte mes ${r.mes_corte}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:var(--warning)">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
-            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">$${gastoFmt(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">${fmtMoneda(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
         filtrarEstado();
     } catch (err) { toast(err.message, 'error'); }
 }
@@ -2749,9 +2752,9 @@ function filtrarEstado() {
             <td>${escapeHtml(x.apellido)}, ${escapeHtml(x.nombre)}</td>
             <td>${escapeHtml(x.curso || '-')}</td>
             <td>${escapeHtml(x.area || '-')}</td>
-            <td style="text-align:right">$${gastoFmt(x.pagado)}</td>
-            <td style="text-align:right">$${gastoFmt(x.esperado)}</td>
-            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">$${gastoFmt(x.deuda_total ?? x.deuda)}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. $${gastoFmt(x.deuda_anterior)} año ant.)</span>` : ''}</td>
+            <td style="text-align:right">${fmtMoneda(x.pagado)}</td>
+            <td style="text-align:right">${fmtMoneda(x.esperado)}</td>
+            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">${fmtMoneda(x.deuda_total ?? x.deuda)}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. ${fmtMoneda(x.deuda_anterior)} año ant.)</span>` : ''}</td>
             <td>${estadoBadge(x.estado)}</td>
             <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
         </tr>`).join('') ||
@@ -2763,17 +2766,17 @@ async function verEstadoAlumno(id) {
         const e = await api(`/api/cuotas/estado/${id}`);
         const pagos = (e.pagos || []).map(p =>
             `<tr><td>${p.fecha.split('-').reverse().join('/')}</td><td>${MESES[p.mes - 1] || p.mes}</td>
-             <td>${escapeHtml(p.canal || '-')}</td><td style="text-align:right">$${gastoFmt(p.importe)}</td></tr>`).join('') ||
+             <td>${escapeHtml(p.canal || '-')}</td><td style="text-align:right">${fmtMoneda(p.importe)}</td></tr>`).join('') ||
             '<tr><td colspan="4" style="color:var(--text-muted)">Sin pagos registrados este año</td></tr>';
         const cp = e.curso_param;
         const html = `
             <h2 style="margin-top:0">${escapeHtml(e.apellido)}, ${escapeHtml(e.nombre)}</h2>
             <p style="color:var(--text-muted);margin-top:-.4rem">Legajo ${escapeHtml(e.legajo)} · ${escapeHtml(e.curso || '')} · ${escapeHtml(e.area || '')}
-              ${cp ? `· cuota $${gastoFmt(cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matríc. $' + gastoFmt(cp.matricula) : ''}` : ''}</p>
+              ${cp ? `· cuota ${fmtMoneda(cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matríc. $' + gastoFmt(cp.matricula) : ''}` : ''}</p>
             <div class="gasto-resumen">
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(e.pagado)}</div></div>
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado al corte</div><div class="gasto-kpi-valor">$${gastoFmt(e.esperado)}</div></div>
-                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">$${gastoFmt(e.deuda_total ?? e.deuda)}</div><div class="gasto-kpi-sub">${e.deuda_anterior > 0 ? 'incl. $' + gastoFmt(e.deuda_anterior) + ' año ant.' : '&nbsp;'}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--green)">${fmtMoneda(e.pagado)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado al corte</div><div class="gasto-kpi-valor">${fmtMoneda(e.esperado)}</div></div>
+                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">${fmtMoneda(e.deuda_total ?? e.deuda)}</div><div class="gasto-kpi-sub">${e.deuda_anterior > 0 ? 'incl. $' + gastoFmt(e.deuda_anterior) + ' año ant.' : '&nbsp;'}</div></div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Estado</div><div class="gasto-kpi-valor" style="font-size:1.1rem">${estadoBadge(e.estado)}</div></div>
             </div>
             <h3 style="margin:.8rem 0 .4rem">Pagos del año</h3>
@@ -2830,16 +2833,16 @@ async function cargarStats() {
         const k = s.kpis;
         document.getElementById('stats-kpis').innerHTML = `
             <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${k.alumnos}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor" style="color:var(--green)">$${gastoFmt(k.cobrado)}</div></div>
-            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">$${gastoFmt(k.deuda)}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Cumplimiento</div><div class="gasto-kpi-valor">${k.cumplimiento}%</div><div class="gasto-kpi-sub">esperado $${gastoFmt(k.esperado)}</div></div>`;
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor" style="color:var(--green)">${fmtMoneda(k.cobrado)}</div></div>
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">${fmtMoneda(k.deuda)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cumplimiento</div><div class="gasto-kpi-valor">${k.cumplimiento}%</div><div class="gasto-kpi-sub">esperado ${fmtMoneda(k.esperado)}</div></div>`;
 
         // tablas por agrupacion
         const tabla = (titulo, arr) => `
             <div class="chart-card" style="overflow:auto">
                 <h4 style="margin:0 0 .5rem">${titulo}</h4>
                 <table style="font-size:.85rem"><thead><tr><th>${titulo}</th><th>Alu</th><th style="text-align:right">Cobrado</th><th style="text-align:right">Deuda</th><th style="text-align:right">% Cumpl.</th></tr></thead>
-                <tbody>${arr.map(d => `<tr><td>${escapeHtml(String(d.clave))}</td><td>${d.alumnos}</td><td style="text-align:right">$${gastoFmt(d.cobrado)}</td><td style="text-align:right">$${gastoFmt(d.deuda)}</td><td style="text-align:right">${d.cumplimiento}%</td></tr>`).join('')}</tbody></table>
+                <tbody>${arr.map(d => `<tr><td>${escapeHtml(String(d.clave))}</td><td>${d.alumnos}</td><td style="text-align:right">${fmtMoneda(d.cobrado)}</td><td style="text-align:right">${fmtMoneda(d.deuda)}</td><td style="text-align:right">${d.cumplimiento}%</td></tr>`).join('')}</tbody></table>
             </div>`;
         document.getElementById('stats-tablas').innerHTML =
             `<div class="reportes-charts">${tabla('Área', s.por_area)}${tabla('Nivel', s.por_nivel)}</div>`;
@@ -2848,7 +2851,7 @@ async function cargarStats() {
         document.getElementById('body-morosos').innerHTML = (s.top_morosos || []).map(m => `
             <tr><td>${escapeHtml(m.legajo)}</td><td>${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}</td>
             <td>${escapeHtml(m.curso || '-')}</td><td>${escapeHtml(m.area || '-')}</td>
-            <td style="text-align:right;color:var(--red)">$${gastoFmt(m.deuda)}</td></tr>`).join('') ||
+            <td style="text-align:right;color:var(--red)">${fmtMoneda(m.deuda)}</td></tr>`).join('') ||
             '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin morosos</td></tr>';
 
         dibujarChartsCuotas(s);
@@ -2931,13 +2934,13 @@ async function cargarResumenSiro(mes, anio) {
         document.getElementById('siro-resumen').innerHTML = `
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pagos importados</div>
                 <div class="gasto-kpi-valor">${r.total}</div>
-                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_total)}</div></div>
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_total)}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Asignados</div>
                 <div class="gasto-kpi-valor" style="color:var(--green)">${r.asignados}</div>
                 <div class="gasto-kpi-sub">a un alumno</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Sin asignar</div>
                 <div class="gasto-kpi-valor" style="color:var(--warning)">${r.sin_asignar}</div>
-                <div class="gasto-kpi-sub">$${gastoFmt(r.monto_sin_asignar)}</div></div>`;
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_asignar)}</div></div>`;
     } catch (e) { /* sin datos */ }
 }
 
@@ -2975,7 +2978,7 @@ function renderSiro(lista) {
             <td>${alumno}</td>
             <td>${p.alumno ? escapeHtml(p.alumno.curso || '-') : '-'}</td>
             <td>${escapeHtml(p.canal || '-')}</td>
-            <td style="text-align:right">$${gastoFmt(p.importe)}</td>
+            <td style="text-align:right">${fmtMoneda(p.importe)}</td>
             <td>${acciones}</td>
         </tr>`;
     }).join('') ||
@@ -3054,7 +3057,7 @@ function renderCursos() {
             <td><b>${escapeHtml(c.nombre)}</b>${c.patron ? ` <span style="color:var(--text-muted);font-size:.8rem">(${escapeHtml(c.patron)})</span>` : ''}</td>
             <td>${escapeHtml(c.area || '-')}</td>
             <td>${escapeHtml(c.divisiones || '-')}</td>
-            <td style="text-align:right">$${gastoFmt(c.cuota)}</td>
+            <td style="text-align:right">${fmtMoneda(c.cuota)}</td>
             <td style="text-align:right">${c.n_cuotas}</td>
             <td style="text-align:right">${Number(c.matricula) ? '$' + gastoFmt(c.matricula) : '—'}</td>
             <td>${c.cobra_cuotas_viejas ? 'Sí' : 'No'}</td>

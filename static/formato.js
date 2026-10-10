@@ -47,9 +47,10 @@ function ahoraAR(conSegundos = false) { return fmtFechaHora(new Date(), conSegun
 function fmtNumero(n, dec = 2) {
     return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
+// $1.234,56 · negativos: -$1.234,56 (nunca "$-1.234,56")
 function fmtMoneda(n, dec = 2) {
     const v = Number(n || 0);
-    return (v < 0 ? '-$ ' : '$ ') + fmtNumero(Math.abs(v), dec);
+    return (v < 0 ? '-$' : '$') + fmtNumero(Math.abs(v), dec);
 }
 
 // Texto escrito por el usuario ('1.234,5' / '1234.5' / '$ 1.234') -> número JS, o NaN
