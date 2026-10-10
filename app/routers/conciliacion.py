@@ -114,14 +114,27 @@ def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
     g.fecha_pago = mov.fecha
 
 
+_PALABRAS_VACIAS = {"S.A.", "S.R.L.", "SRL", "SA", "SAS", "S.A.S.", "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y",
+                    "DEBITO", "DIRECTO", "INTERNET", "SERVICIOS", "GRUPO"}
+
+
+def _palabras(texto: str | None) -> set[str]:
+    return {p for p in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]{4,}", (texto or "").upper()) if p not in _PALABRAS_VACIAS}
+
+
 def _intentar_match(mov: MovimientoBanco, libres: list[Gasto]) -> bool:
-    """Concilia solo si hay UNA factura libre con el mismo CUIT y el mismo importe (±$1)."""
-    if mov.conciliado or not mov.cuit:
+    """Concilia solo si hay UNA factura libre con el mismo importe (±$1) y el mismo CUIT;
+    si el banco no informa CUIT (ej. débitos directos), con el nombre del proveedor."""
+    if mov.conciliado:
         return False
     objetivo = abs(Decimal(str(mov.importe)))
-    cuit = _solo_digitos(mov.cuit)
-    cand = [g for g in libres if _solo_digitos(g.cuit) == cuit
-            and abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
+    mismo_monto = [g for g in libres if abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
+    if mov.cuit:
+        cuit = _solo_digitos(mov.cuit)
+        cand = [g for g in mismo_monto if _solo_digitos(g.cuit) == cuit]
+    else:
+        nombre_banco = _palabras(f"{mov.razon_social or ''} {mov.descripcion or ''}")
+        cand = [g for g in mismo_monto if nombre_banco & _palabras(g.razon_social)] if nombre_banco else []
     if len(cand) == 1:
         _vincular(mov, cand[0], manual=False)
         libres.remove(cand[0])
