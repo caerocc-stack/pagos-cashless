@@ -110,7 +110,7 @@ def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
     mov.conciliado = True
     mov.conciliado_manual = manual
     g.conciliado = True
-    g.forma_pago = "Débito" if mov.concepto in ("146", "880100") else "Transferencia"
+    g.forma_pago = "Débito" if mov.concepto == "146" else "Transferencia"
     g.fecha_pago = mov.fecha
 
 
@@ -162,7 +162,8 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
         extracto.resumen = json.dumps(resumen)
         db.add(extracto)
         db.flush()
-        movimientos = [m for m in datos["movimientos"] if m["categoria"] in ("pago", "otro_egreso")]
+        # Solo transferencias, DEBIN y débitos directos se concilian (haberes y pagos automáticos no)
+        movimientos = [m for m in datos["movimientos"] if m["categoria"] == "pago"]
         info = {"periodo": [str(desde), str(hasta)] if desde else None, "cierra": extracto.cierra,
                 "diferencia": float(datos["diferencia"]) if datos["diferencia"] is not None else None,
                 "movimientos_leidos": extracto.movimientos, "resumen": resumen, "extracto_id": extracto.id}

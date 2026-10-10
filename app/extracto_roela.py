@@ -26,12 +26,16 @@ IGNORAR = ("Extracto de Cuenta", "entre el ", "Página", "P�gina", "Fecha Comp
            "1° Titular", "1� Titular", "C.B.U.", "Nro.")
 
 # Clasificación por código de concepto
+# Solo estos egresos se concilian con facturas de proveedores
 EGRESOS_CONCILIABLES = {
     "190100": "Transferencia a terceros",
     "F30100": "DEBIN (débito inmediato)",
     "146": "Débito directo",
-    "256": "Pago de haberes",
-    "880100": "Pago automático",
+}
+# Egresos que NO son gastos a conciliar (no llevan factura): se informan aparte en el resumen
+EGRESOS_NO_CONCILIABLES = {
+    "256": "haberes",            # Pago de haberes (sueldos)
+    "880100": "pago_automatico",  # Pago automático (sin CUIT)
 }
 COMISIONES_IMPUESTOS = {"148", "130", "127", "288", "169", "170", "178", "181", "193", "194", "214",
                         "222", "248", "249", "254"}
@@ -51,6 +55,8 @@ def _fecha(txt: str) -> date:
 def categoria_de(concepto: str, importe: Decimal) -> str:
     if concepto in EGRESOS_CONCILIABLES:
         return "pago"
+    if concepto in EGRESOS_NO_CONCILIABLES:
+        return EGRESOS_NO_CONCILIABLES[concepto]
     if concepto in COMISIONES_IMPUESTOS:
         return "comision"
     if concepto in INGRESOS_SIRO:

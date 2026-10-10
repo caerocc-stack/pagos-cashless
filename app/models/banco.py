@@ -15,8 +15,6 @@ CONCEPTOS_CONCILIABLES = {
     "190100": "Transferencia a terceros",
     "F30100": "DEBIN (débito inmediato)",
     "146": "Débito directo",
-    "256": "Pago de haberes",
-    "880100": "Pago automático",
 }
 
 

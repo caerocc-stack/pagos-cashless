@@ -2566,11 +2566,12 @@ function filtrarConciliacion() {
 
 const TIPOS_BANCO = {
     '190': 'Transferencia', '190100': 'Transferencia', 'F30': 'DEBIN', 'F30100': 'DEBIN',
-    '146': 'Débito directo', '256': 'Pago de haberes', '880100': 'Pago automático',
+    '146': 'Débito directo',
 };
 const CATEG_EXTRACTO = [
     ['ingreso_siro', 'Cobros por SIRO', 'success'], ['ingreso_qr', 'Cobros por QR', 'success'],
     ['otro_ingreso', 'Otros ingresos', 'success'], ['pago', 'Pagos (a conciliar)', 'danger'],
+    ['haberes', 'Pagos de haberes (no se concilian)', 'danger'], ['pago_automatico', 'Pagos automáticos (no se concilian)', 'danger'],
     ['otro_egreso', 'Otros egresos', 'danger'], ['comision', 'Comisiones e impuestos', 'warning'],
 ];
 
@@ -2619,7 +2620,7 @@ async function registrarComisiones(id) {
     } catch (err) { toast(err.message, 'error'); }
 }
 
-// Pagos sin factura de proveedor (sueldos, AFIP, seguros…): crear el gasto desde el banco
+// Pagos sin factura de proveedor (AFIP, seguros, servicios): crear el gasto desde el banco
 async function crearGastoDesdePago(movId) {
     const m = concCache.find(x => x.id === movId);
     if (!m) return;
@@ -2629,7 +2630,7 @@ async function crearGastoDesdePago(movId) {
         <h3>Crear gasto desde este pago</h3>
         <p class="muted" style="margin-top:-0.4rem">${fmtFecha(m.fecha)} · ${escapeHtml(TIPOS_BANCO[m.concepto] || 'Pago')} ·
             <b>${fmtMoneda(Math.abs(m.importe))}</b><br>${escapeHtml(m.descripcion || '')}</p>
-        <p class="muted">Usalo para pagos que no tienen factura de proveedor (sueldos, AFIP, seguros, servicios con débito).
+        <p class="muted">Usalo para pagos que no tienen factura de proveedor (AFIP, seguros, servicios con débito directo).
             Si hay factura, cargala en Gastos y usá <b>Vincular factura</b>.</p>
         <form onsubmit="confirmarGastoDesdePago(event, ${movId})">
             <label class="mc-lbl" for="cg-razon">Nombre / razón social</label>
@@ -2637,7 +2638,7 @@ async function crearGastoDesdePago(movId) {
             <label class="mc-lbl" for="cg-concepto">Concepto</label>
             <input id="cg-concepto" class="mc-inp" value="${escapeHtml(TIPOS_BANCO[m.concepto] || '')}" required>
             <div class="form-grid">
-                <div><label class="mc-lbl" for="cg-rubro">Rubro</label><input id="cg-rubro" class="mc-inp" placeholder="ej: Sueldos, Impuestos, Seguros"></div>
+                <div><label class="mc-lbl" for="cg-rubro">Rubro</label><input id="cg-rubro" class="mc-inp" placeholder="ej: Impuestos, Seguros, Servicios"></div>
                 <div><label class="mc-lbl" for="cg-cat">Categoría</label><select id="cg-cat" class="mc-inp"><option value="">—</option>${cats}</select></div>
             </div>
             <div class="form-actions"><button type="submit" class="btn btn-primary">Crear gasto y conciliar</button>
@@ -2712,7 +2713,7 @@ async function importarExtracto(input) {
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados solos</div><div class="gasto-kpi-valor" style="color:var(--success)">${data.conciliados_automaticamente}</div><div class="gasto-kpi-sub">CUIT + importe</div></div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Para revisar</div><div class="gasto-kpi-valor" style="color:var(--warning)">${data.pendientes}</div><div class="gasto-kpi-sub">vinculá la factura o creá el gasto</div></div>
             </div>
-            <p class="muted">En los pendientes usá <b>Vincular factura</b> si la factura ya está cargada, o <b>Crear gasto</b> para pagos sin factura (sueldos, AFIP, seguros).</p>`;
+            <p class="muted">En los pendientes usá <b>Vincular factura</b> si la factura ya está cargada, o <b>Crear gasto</b> para pagos sin factura (AFIP, seguros, servicios).</p>`;
         document.getElementById('modal-overlay').style.display = 'flex';
         cargarConciliacion();
     } catch (err) {

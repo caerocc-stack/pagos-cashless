@@ -56,6 +56,13 @@ MIGRACIONES = [
     "CREATE INDEX IF NOT EXISTS ix_gasto_fecha ON gastos (fecha)",
     "CREATE INDEX IF NOT EXISTS ix_gasto_proveedor ON gastos (proveedor_id)",
     "CREATE INDEX IF NOT EXISTS ix_banco_fecha ON banco_movimientos (fecha)",
+    # Haberes (256) y pagos automáticos (880100) NO se concilian: sacarlos de la conciliación.
+    # Si un gasto real estaba vinculado, queda pendiente de pago; los creados desde el extracto se borran.
+    "UPDATE gastos SET conciliado = FALSE, forma_pago = NULL, fecha_pago = NULL WHERE id IN "
+    "(SELECT gasto_id FROM banco_movimientos WHERE concepto IN ('256','880100') AND gasto_id IS NOT NULL) "
+    "AND (notas IS NULL OR notas NOT LIKE 'Creado desde el extracto:%')",
+    "WITH m AS (DELETE FROM banco_movimientos WHERE concepto IN ('256','880100') RETURNING gasto_id) "
+    "DELETE FROM gastos WHERE id IN (SELECT gasto_id FROM m) AND notas LIKE 'Creado desde el extracto:%'",
 ]
 
 
