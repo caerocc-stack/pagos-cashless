@@ -50,6 +50,12 @@ MIGRACIONES = [
     "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS debe_cambiar_password BOOLEAN DEFAULT FALSE",
     "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS version_sesion INTEGER DEFAULT 0",
     "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_ingreso TIMESTAMP",
+    # Conciliación con extracto PDF de Banco Roela (oct 2026)
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS categoria VARCHAR(20)",
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS extracto_id INTEGER REFERENCES extractos_bancarios(id)",
+    "CREATE INDEX IF NOT EXISTS ix_gasto_fecha ON gastos (fecha)",
+    "CREATE INDEX IF NOT EXISTS ix_gasto_proveedor ON gastos (proveedor_id)",
+    "CREATE INDEX IF NOT EXISTS ix_banco_fecha ON banco_movimientos (fecha)",
 ]
 
 

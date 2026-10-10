@@ -171,6 +171,7 @@ function cerrarModal() {
     const ov = document.getElementById('modal-overlay');
     if (ov.dataset.bloqueado) return;
     ov.style.display = 'none';
+    ov.querySelector('.modal').classList.remove('modal-ancho');
 }
 
 // --- API helpers ---
@@ -1596,10 +1597,12 @@ function dashBuscador() {
 // --- PROVEEDORES ---
 // =========================================================
 let proveedoresCache = [];
+let totalesProveedores = {};
 
 async function cargarProveedores() {
     try {
-        proveedoresCache = await api('/api/proveedores/');
+        [proveedoresCache, totalesProveedores] = await Promise.all([
+            api('/api/proveedores/'), api('/api/gastos/totales-proveedores').catch(() => ({}))]);
         filtrarProveedores();
     } catch (err) {
         toast(err.message, 'error');
@@ -1614,19 +1617,24 @@ function filtrarProveedores() {
 }
 
 function renderProveedores(lista) {
-    document.getElementById('body-proveedores').innerHTML = lista.map(p => `
-        <tr>
+    document.getElementById('body-proveedores').innerHTML = lista.map(p => {
+        const t = totalesProveedores[p.id] || { total: 0, cantidad: 0, ultima: null };
+        return `<tr>
             <td>${escapeHtml(p.cuit)}</td>
-            <td>${escapeHtml(p.razon_social)}</td>
-            <td>${escapeHtml(p.nombre_fantasia || '-')}</td>
-            <td>${escapeHtml(p.rubro || '-')}</td>
-            <td>${escapeHtml(p.contacto || p.telefono || '-')}</td>
+            <td>${escapeHtml(p.razon_social)}${p.contacto || p.telefono ? `<br><small class="muted">${escapeHtml([p.contacto, p.telefono].filter(Boolean).join(' · '))}</small>` : ''}</td>
+            <td>${escapeHtml(p.nombre_fantasia || '—')}</td>
+            <td>${escapeHtml(p.rubro || '—')}</td>
+            <td class="num">${t.cantidad || '—'}</td>
+            <td class="num">${t.cantidad ? `<b>${fmtMoneda(t.total)}</b>` : '—'}</td>
+            <td>${t.ultima ? fmtFecha(t.ultima) : '—'}</td>
             <td>
+                ${t.cantidad ? `<button class="btn btn-sm btn-primary" onclick="verFacturasProveedor(${p.id})">Facturas</button>` : ''}
                 <button class="btn btn-sm" onclick="editarProveedor(${p.id})">Editar</button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarProveedor(${p.id})">Eliminar</button>
             </td>
-        </tr>`).join('') ||
-        '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Sin proveedores</td></tr>';
+        </tr>`;
+    }).join('') ||
+        '<tr><td colspan="8">Sin proveedores</td></tr>';
 }
 
 function mostrarFormProveedor() {
@@ -2527,6 +2535,7 @@ async function cargarConciliacion() {
         concCache = await api('/api/conciliacion/?' + p.toString());
         filtrarConciliacion();
         cargarResumenConc();
+        cargarPanelExtracto();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -2555,10 +2564,104 @@ function filtrarConciliacion() {
     renderConciliacion(lista);
 }
 
+const TIPOS_BANCO = {
+    '190': 'Transferencia', '190100': 'Transferencia', 'F30': 'DEBIN', 'F30100': 'DEBIN',
+    '146': 'Débito directo', '256': 'Pago de haberes', '880100': 'Pago automático',
+};
+const CATEG_EXTRACTO = [
+    ['ingreso_siro', 'Cobros por SIRO', 'success'], ['ingreso_qr', 'Cobros por QR', 'success'],
+    ['otro_ingreso', 'Otros ingresos', 'success'], ['pago', 'Pagos (a conciliar)', 'danger'],
+    ['otro_egreso', 'Otros egresos', 'danger'], ['comision', 'Comisiones e impuestos', 'warning'],
+];
+
+// Resumen del último extracto importado: saldos, control de cierre y totales
+async function cargarPanelExtracto() {
+    const cont = document.getElementById('conc-extracto');
+    try {
+        const lista = await api('/api/conciliacion/extractos');
+        if (!lista.length) { cont.innerHTML = ''; return; }
+        const e = lista[0];
+        const filas = CATEG_EXTRACTO.filter(([k]) => e.resumen[k]).map(([k, nombre, color]) => `
+            <tr><td>${nombre}</td><td class="num">${e.resumen[k].cantidad}</td>
+                <td class="num" style="color:var(--${color});font-weight:600">${fmtMoneda(e.resumen[k].total)}</td></tr>`).join('');
+        const comis = e.resumen.comision;
+        cont.innerHTML = `<div class="card extracto-card">
+            <div class="extracto-head">
+                <div><div class="page-miga">${escapeHtml(e.banco)} · último extracto importado</div>
+                    <h3 style="margin:0.15rem 0 0">Del ${fmtFecha(e.desde)} al ${fmtFecha(e.hasta)}</h3>
+                    <small class="muted">${escapeHtml(e.archivo || '')} · ${e.movimientos} movimientos leídos</small></div>
+                ${e.cierra ? '<span class="badge badge-activa">✓ Los saldos cierran</span>'
+                           : '<span class="badge badge-inactiva">⚠ Los saldos no cierran: revisá el archivo</span>'}
+            </div>
+            <div class="extracto-cuerpo">
+                <div class="extracto-saldos">
+                    <div><span class="muted">Saldo inicial</span><b>${fmtMoneda(e.saldo_inicial)}</b></div>
+                    <div><span class="muted">Saldo final</span><b>${fmtMoneda(e.saldo_final)}</b></div>
+                    <div><span class="muted">Variación</span><b style="color:var(--${e.saldo_final >= e.saldo_inicial ? 'success' : 'danger'})">${fmtMoneda(e.saldo_final - e.saldo_inicial)}</b></div>
+                </div>
+                <table><thead><tr><th>Tipo de movimiento</th><th class="num">Cant.</th><th class="num">Total</th></tr></thead><tbody>${filas}</tbody></table>
+            </div>
+            ${comis ? `<div class="extracto-pie">
+                ${e.comisiones_gasto_id
+                    ? `<span class="pago-ok">✓ Comisiones e impuestos del mes ya registrados como gasto (${fmtMoneda(Math.abs(comis.total))})</span>`
+                    : `<span class="muted">${comis.cantidad} débitos de comisiones, IVA e impuesto al cheque por <b>${fmtMoneda(Math.abs(comis.total))}</b>.</span>
+                       <button class="btn btn-sm btn-primary" onclick="registrarComisiones(${e.id})">Registrarlos como un gasto bancario</button>`}
+            </div>` : ''}
+        </div>`;
+    } catch (err) { cont.innerHTML = ''; }
+}
+
+async function registrarComisiones(id) {
+    try {
+        const r = await api(`/api/conciliacion/extractos/${id}/registrar-comisiones`, { method: 'POST' });
+        toast(r.mensaje);
+        cargarPanelExtracto();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+// Pagos sin factura de proveedor (sueldos, AFIP, seguros…): crear el gasto desde el banco
+async function crearGastoDesdePago(movId) {
+    const m = concCache.find(x => x.id === movId);
+    if (!m) return;
+    await cargarGastosMeta().catch(() => {});
+    const cats = (gastosMeta ? gastosMeta.categorias : CATEGORIAS_GASTO).map(c => `<option>${escapeHtml(c)}</option>`).join('');
+    document.getElementById('modal-content').innerHTML = `
+        <h3>Crear gasto desde este pago</h3>
+        <p class="muted" style="margin-top:-0.4rem">${fmtFecha(m.fecha)} · ${escapeHtml(TIPOS_BANCO[m.concepto] || 'Pago')} ·
+            <b>${fmtMoneda(Math.abs(m.importe))}</b><br>${escapeHtml(m.descripcion || '')}</p>
+        <p class="muted">Usalo para pagos que no tienen factura de proveedor (sueldos, AFIP, seguros, servicios con débito).
+            Si hay factura, cargala en Gastos y usá <b>Vincular factura</b>.</p>
+        <form onsubmit="confirmarGastoDesdePago(event, ${movId})">
+            <label class="mc-lbl" for="cg-razon">Nombre / razón social</label>
+            <input id="cg-razon" class="mc-inp" value="${escapeHtml(m.razon_social || '')}">
+            <label class="mc-lbl" for="cg-concepto">Concepto</label>
+            <input id="cg-concepto" class="mc-inp" value="${escapeHtml(TIPOS_BANCO[m.concepto] || '')}" required>
+            <div class="form-grid">
+                <div><label class="mc-lbl" for="cg-rubro">Rubro</label><input id="cg-rubro" class="mc-inp" placeholder="ej: Sueldos, Impuestos, Seguros"></div>
+                <div><label class="mc-lbl" for="cg-cat">Categoría</label><select id="cg-cat" class="mc-inp"><option value="">—</option>${cats}</select></div>
+            </div>
+            <div class="form-actions"><button type="submit" class="btn btn-primary">Crear gasto y conciliar</button>
+                <button type="button" class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>
+        </form>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function confirmarGastoDesdePago(e, movId) {
+    e.preventDefault();
+    const v = id => document.getElementById(id).value.trim() || null;
+    try {
+        const r = await api(`/api/conciliacion/${movId}/crear-gasto`, { method: 'POST',
+            body: JSON.stringify({ razon_social: v('cg-razon'), concepto: v('cg-concepto'), rubro: v('cg-rubro'), categoria: v('cg-cat') }) });
+        toast(r.mensaje);
+        cerrarModal();
+        cargarConciliacion();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
 function renderConciliacion(lista) {
     document.getElementById('body-conc').innerHTML = lista.map(m => {
-        const fecha = m.fecha ? m.fecha.split('-').reverse().join('/') : '-';
-        const tipo = m.concepto === 'F30' ? 'DEBIN' : 'Transf.';
+        const fecha = fmtFecha(m.fecha);
+        const tipo = TIPOS_BANCO[m.concepto] || m.concepto || '—';
         let estado, acciones;
         if (m.conciliado && m.gasto) {
             const g = m.gasto;
@@ -2569,7 +2672,8 @@ function renderConciliacion(lista) {
             acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
-            acciones = `<button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})">Vincular factura</button>`;
+            acciones = `<button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
+                <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -2596,8 +2700,20 @@ async function importarExtracto(input) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Error al importar');
-        toast(`Listo: ${data.nuevos} nuevos, ${data.conciliados_automaticamente} conciliados solos, ${data.pendientes} pendientes` +
-            (data.duplicados ? ` (${data.duplicados} ya estaban)` : ''), 'success');
+        const cierre = data.cierra === undefined ? ''
+            : data.cierra ? '<p class="mc-ok">✓ Los saldos del extracto cierran: se leyeron todos los movimientos.</p>'
+                          : `<p style="color:var(--danger);font-weight:600">⚠ Los saldos no cierran (diferencia ${fmtMoneda(data.diferencia)}). Revisá que el PDF sea el extracto completo.</p>`;
+        document.getElementById('modal-content').innerHTML = `
+            <h3>Extracto importado</h3>
+            ${data.periodo ? `<p class="muted" style="margin-top:-0.4rem">Período del ${fmtFecha(data.periodo[0])} al ${fmtFecha(data.periodo[1])} · ${data.movimientos_leidos} movimientos leídos</p>` : ''}
+            ${cierre}
+            <div class="gasto-resumen">
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagos nuevos</div><div class="gasto-kpi-valor">${data.nuevos}</div><div class="gasto-kpi-sub">${data.duplicados ? data.duplicados + ' ya estaban cargados' : 'para conciliar'}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados solos</div><div class="gasto-kpi-valor" style="color:var(--success)">${data.conciliados_automaticamente}</div><div class="gasto-kpi-sub">CUIT + importe</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Para revisar</div><div class="gasto-kpi-valor" style="color:var(--warning)">${data.pendientes}</div><div class="gasto-kpi-sub">vinculá la factura o creá el gasto</div></div>
+            </div>
+            <p class="muted">En los pendientes usá <b>Vincular factura</b> si la factura ya está cargada, o <b>Crear gasto</b> para pagos sin factura (sueldos, AFIP, seguros).</p>`;
+        document.getElementById('modal-overlay').style.display = 'flex';
         cargarConciliacion();
     } catch (err) {
         toast(err.message, 'error');
@@ -2619,7 +2735,8 @@ async function reconciliarAuto() {
 async function abrirCandidatos(movId) {
     const mov = concCache.find(m => m.id === movId);
     try {
-        const cands = await api(`/api/conciliacion/${movId}/candidatos`);
+        const resp = await api(`/api/conciliacion/${movId}/candidatos`);
+        const cands = resp.facturas || [];
         const filas = cands.map(c => {
             const f = c.fecha ? c.fecha.split('-').reverse().join('/') : '';
             const tags = [c.coincide_cuit ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
@@ -2633,7 +2750,9 @@ async function abrirCandidatos(movId) {
                 <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id})">Vincular</button></td>
             </tr>`;
         }).join('') ||
-            '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No hay facturas con ese CUIT ni ese importe. Cargá la factura en Gastos primero.</td></tr>';
+            `<tr><td colspan="6">No hay facturas libres con ese CUIT ni ese importe.
+                ${resp.proveedor ? `El proveedor <b>${escapeHtml(resp.proveedor)}</b> está cargado: falta su factura en Gastos.` : 'Cargá la factura en Gastos'}
+                o usá <b>Crear gasto</b> si es un pago sin factura.</td></tr>`;
         const html = `
             <h2 style="margin-top:0">Vincular movimiento con una factura</h2>
             <p style="color:var(--text-muted);margin-top:-0.4rem">
@@ -3576,6 +3695,206 @@ async function accionUsuario(id, accion) {
         toast((r && r.mensaje) || 'Listo');
         cargarUsuarios();
     } catch (err) { toast(err.message, 'error'); }
+}
+
+// =========================================================
+// --- GASTOS: ANÁLISIS Y POR PROVEEDOR ---
+// =========================================================
+const PALETA = ['#1f5fa8', '#a01e22', '#15803d', '#b45309', '#6d4ec7', '#0e7490', '#94a3b8'];
+let gaDatos = null, gaRangoActual = 'mes';
+let chartGaRubro = null, chartGaMes = null, chartGaProv = null;
+
+function gastosTab(tab) {
+    document.querySelectorAll('.gasto-tab').forEach(b => b.classList.toggle('activo', b.dataset.tab === tab));
+    ['facturas', 'analisis', 'proveedores'].forEach(t =>
+        document.getElementById('gastos-tab-' + t).style.display = t === tab ? 'block' : 'none');
+    if (tab === 'facturas') cargarGastos();
+    else if (!gaDatos) gaRango(gaRangoActual);
+    else if (tab === 'analisis') dibujarAnalisisGastos();
+    else renderGastosProveedores();
+}
+
+// Rangos rápidos (calculados en fecha argentina)
+function gaRango(r) {
+    gaRangoActual = r;
+    document.querySelectorAll('.ga-rango').forEach(b => b.classList.toggle('chip-activo', b.dataset.rango === r));
+    if (r !== 'custom') {
+        const hoy = hoyISO();
+        const [a, m] = hoy.split('-').map(Number);
+        const primero = (aa, mm) => `${aa}-${String(mm).padStart(2, '0')}-01`;
+        const ultimo = (aa, mm) => isoDeFecha(new Date(aa, mm, 0, 12));
+        let desde = '', hasta = '';
+        if (r === 'mes') { desde = primero(a, m); hasta = hoy; }
+        else if (r === 'mesant') { const mm = m === 1 ? 12 : m - 1, aa = m === 1 ? a - 1 : a; desde = primero(aa, mm); hasta = ultimo(aa, mm); }
+        else if (r === 'anio') { desde = `${a}-01-01`; hasta = hoy; }
+        else if (r === '12m') { const d = new Date(a, m - 12, 1, 12); desde = primero(d.getFullYear(), d.getMonth() + 1); hasta = hoy; }
+        document.getElementById('ga-desde').value = desde;
+        document.getElementById('ga-hasta').value = hasta;
+    }
+    cargarAnalisisGastos();
+}
+
+function gaPeriodoTexto() {
+    const d = document.getElementById('ga-desde').value, h = document.getElementById('ga-hasta').value;
+    if (!d && !h) return 'Todo el historial';
+    return `Del ${d ? fmtFecha(d) : 'inicio'} al ${h ? fmtFecha(h) : 'hoy'}`;
+}
+
+async function cargarAnalisisGastos() {
+    try {
+        await cargarGastosMeta();
+        const sel = document.getElementById('ga-categoria');
+        if (sel.options.length <= 1) gastoOpts('ga-categoria', gastosMeta.categorias, 'Todas las categorías');
+        const p = new URLSearchParams();
+        const d = document.getElementById('ga-desde').value, h = document.getElementById('ga-hasta').value;
+        if (d) p.set('desde', d);
+        if (h) p.set('hasta', h);
+        if (sel.value) p.set('categoria', sel.value);
+        gaDatos = await api('/api/gastos/estadisticas?' + p.toString());
+        dibujarAnalisisGastos();
+        renderGastosProveedores();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function tablaPorcentajes(filas, etiqueta) {
+    if (!filas.length) return '<p class="muted">Sin datos en el período.</p>';
+    return `<table><thead><tr><th>${etiqueta}</th><th class="num">Cant.</th><th class="num">Total</th><th style="width:34%">% del total</th></tr></thead><tbody>` +
+        filas.map(f => `<tr><td>${escapeHtml(f.nombre)}</td><td class="num">${f.cantidad}</td><td class="num">${fmtMoneda(f.total)}</td>
+            <td><div class="barra-pct"><span style="width:${Math.max(0, Math.min(100, f.porcentaje))}%"></span><b>${fmtNumero(f.porcentaje, 1)}%</b></div></td></tr>`).join('') +
+        '</tbody></table>';
+}
+
+function dibujarAnalisisGastos() {
+    const s = gaDatos;
+    if (!s || document.getElementById('gastos-tab-analisis').style.display === 'none') return;
+    const k = s.kpis;
+    document.getElementById('ga-kpis').innerHTML = `
+        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total gastado</div><div class="gasto-kpi-valor">${fmtMoneda(k.total)}</div><div class="gasto-kpi-sub">${gaPeriodoTexto()}</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Facturas</div><div class="gasto-kpi-valor">${k.facturas}</div><div class="gasto-kpi-sub">promedio ${fmtMoneda(k.promedio)}</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Proveedores</div><div class="gasto-kpi-valor">${k.proveedores}</div><div class="gasto-kpi-sub">con compras en el período</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Pendiente de pago</div><div class="gasto-kpi-valor" style="color:var(--warning)">${fmtMoneda(k.pendiente_pago)}</div><div class="gasto-kpi-sub">${k.facturas - k.pagadas} factura(s) sin pago</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliadas con banco</div><div class="gasto-kpi-valor">${k.conciliadas}</div><div class="gasto-kpi-sub">de ${k.facturas} facturas</div></div>`;
+
+    // Torta por rubro: los 6 principales + "Otros"
+    const top = s.por_rubro.slice(0, 6);
+    const otros = s.por_rubro.slice(6).reduce((a, x) => a + x.total, 0);
+    const etiquetas = top.map(x => x.nombre).concat(otros > 0 ? ['Otros'] : []);
+    const valores = top.map(x => x.total).concat(otros > 0 ? [otros] : []);
+    const total = valores.reduce((a, v) => a + v, 0) || 1;
+    if (chartGaRubro) chartGaRubro.destroy();
+    chartGaRubro = new Chart(document.getElementById('chart-ga-rubro'), {
+        type: 'doughnut',
+        data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: PALETA.slice(0, valores.length), borderWidth: 2, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() }] },
+        options: {
+            cutout: '62%', maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { generateLabels: ch => ch.data.labels.map((l, i) => ({
+                    text: `${l}  ${fmtNumero(valores[i] / total * 100, 1)}%`, fillStyle: PALETA[i], strokeStyle: PALETA[i], pointStyle: 'circle', index: i,
+                    fontColor: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() })) } },
+                tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtMoneda(c.raw)} (${fmtNumero(c.raw / total * 100, 1)}%)` } },
+            },
+        },
+    });
+
+    if (chartGaMes) chartGaMes.destroy();
+    chartGaMes = new Chart(document.getElementById('chart-ga-mes'), {
+        type: 'bar',
+        data: { labels: s.por_mes.map(x => `${MESES[x.mes - 1].slice(0, 3)} ${String(x.anio).slice(2)}`),
+                datasets: [{ label: 'Gastos', data: s.por_mes.map(x => x.total), backgroundColor: '#a01e22', maxBarThickness: 40 }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + fmtMoneda(c.raw) } } },
+                   scales: { y: { ticks: { callback: v => '$' + (v >= 1e6 ? fmtNumero(v / 1e6, 1) + ' M' : v >= 1000 ? fmtNumero(v / 1000, 0) + ' mil' : v) } } } },
+    });
+
+    const provs = s.por_proveedor.slice(0, 10);
+    document.getElementById('ga-prov-wrap').style.height = Math.max(160, provs.length * 34 + 40) + 'px';
+    if (chartGaProv) chartGaProv.destroy();
+    chartGaProv = new Chart(document.getElementById('chart-ga-prov'), {
+        type: 'bar',
+        data: { labels: provs.map(p => p.razon_social.length > 32 ? p.razon_social.slice(0, 31) + '…' : p.razon_social),
+                datasets: [{ data: provs.map(p => p.total), backgroundColor: '#1f5fa8', maxBarThickness: 22 }] },
+        options: { indexAxis: 'y', maintainAspectRatio: false,
+                   onClick: (e, el) => { if (el.length && provs[el[0].index].proveedor_id) verFacturasProveedor(provs[el[0].index].proveedor_id, true); },
+                   plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${fmtMoneda(c.raw)} · ${fmtNumero(provs[c.dataIndex].porcentaje, 1)}% · ${provs[c.dataIndex].cantidad} factura(s)` } } },
+                   scales: { x: { ticks: { callback: v => '$' + (v >= 1e6 ? fmtNumero(v / 1e6, 1) + ' M' : v >= 1000 ? fmtNumero(v / 1000, 0) + ' mil' : v) } } } },
+    });
+
+    document.getElementById('ga-tabla-rubro').innerHTML = tablaPorcentajes(s.por_rubro, 'Rubro');
+    document.getElementById('ga-tabla-categoria').innerHTML = tablaPorcentajes(s.por_categoria, 'Categoría');
+    document.getElementById('ga-tabla-destino').innerHTML = tablaPorcentajes(s.por_destino, 'Destino');
+    document.getElementById('ga-tabla-pago').innerHTML = tablaPorcentajes(s.por_forma_pago, 'Forma de pago');
+}
+
+function renderGastosProveedores() {
+    if (!gaDatos) return;
+    document.getElementById('gp-periodo').textContent = gaPeriodoTexto() + ' · el período se elige en "Análisis y gráficos"';
+    const q = normTxt(document.getElementById('gp-buscar').value);
+    const lista = gaDatos.por_proveedor.filter(p => !q || normTxt(`${p.razon_social} ${p.cuit} ${p.rubro}`).includes(q));
+    document.getElementById('body-gp').innerHTML = lista.map(p => `<tr>
+        <td><b>${escapeHtml(p.razon_social)}</b><br><small class="muted">${escapeHtml(p.cuit || 'sin CUIT')}</small></td>
+        <td>${escapeHtml(p.rubro || '—')}</td>
+        <td class="num">${p.cantidad}</td>
+        <td class="num"><b>${fmtMoneda(p.total)}</b></td>
+        <td class="num">${fmtNumero(p.porcentaje, 1)}%</td>
+        <td class="num" style="${p.pendiente > 0 ? 'color:var(--warning);font-weight:600' : ''}">${p.pendiente > 0 ? fmtMoneda(p.pendiente) : '—'}</td>
+        <td>${fmtFecha(p.ultima)}</td>
+        <td>${p.proveedor_id ? `<button class="btn btn-sm btn-primary" onclick="verFacturasProveedor(${p.proveedor_id}, true)">Ver facturas</button>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="8">No hay gastos en el período.</td></tr>';
+}
+
+// Detalle de un proveedor: todas sus facturas, total, pagado y pendiente
+async function verFacturasProveedor(pid, usarPeriodo = false) {
+    try {
+        const p = new URLSearchParams();
+        if (usarPeriodo) {
+            const d = document.getElementById('ga-desde').value, h = document.getElementById('ga-hasta').value;
+            if (d) p.set('desde', d);
+            if (h) p.set('hasta', h);
+        }
+        const r = await api(`/api/gastos/por-proveedor/${pid}?` + p.toString());
+        const pr = r.proveedor;
+        const filas = r.facturas.map(f => `<tr>
+            <td>${fmtFecha(f.fecha)}</td>
+            <td>${escapeHtml(f.tipo || '')} ${escapeHtml(f.numero || '')}</td>
+            <td>${escapeHtml(f.concepto || '—')}<br><small class="muted">${escapeHtml([f.categoria, f.destino].filter(Boolean).join(' · '))}</small></td>
+            <td class="num" style="${f.importe < 0 ? 'color:var(--danger)' : ''}">${fmtMoneda(f.importe)}</td>
+            <td>${f.forma_pago ? `<span class="pago-ok">${escapeHtml(f.forma_pago)} · ${fmtFecha(f.fecha_pago)}</span>${f.conciliado ? ' <span class="conc-tag-ok">banco ✓</span>' : ''}`
+                               : (f.importe > 0 ? '<span class="conc-pend">Pendiente</span>' : '—')}</td>
+            <td>${f.adjunto_url ? `<a class="btn btn-sm" href="${escapeHtml(f.adjunto_url)}" target="_blank" rel="noopener">Ver</a>` : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="6">Sin facturas en el período.</td></tr>';
+        document.getElementById('modal-content').innerHTML = `
+            <h3>${escapeHtml(pr.razon_social)}</h3>
+            <p class="muted" style="margin-top:-0.4rem">CUIT ${escapeHtml(pr.cuit)} · ${escapeHtml(pr.rubro || 'sin rubro')}
+               ${pr.telefono ? ' · Tel. ' + escapeHtml(pr.telefono) : ''}${pr.email ? ' · ' + escapeHtml(pr.email) : ''}
+               ${usarPeriodo ? '<br>' + gaPeriodoTexto() : '<br>Todo el historial'}</p>
+            <div class="gasto-resumen" style="margin-top:0.75rem">
+                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total facturado</div><div class="gasto-kpi-valor">${fmtMoneda(r.total)}</div><div class="gasto-kpi-sub">${r.cantidad} comprobante(s)</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(r.pagado)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pendiente</div><div class="gasto-kpi-valor" style="color:var(--warning)">${fmtMoneda(r.pendiente)}</div></div>
+            </div>
+            <table><thead><tr><th>Fecha</th><th>Comprobante</th><th>Concepto</th><th class="num">Importe</th><th>Pago</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
+        document.querySelector('#modal-overlay .modal').classList.add('modal-ancho');
+        document.getElementById('modal-overlay').style.display = 'flex';
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function exportarAnalisisGastos() {
+    if (!gaDatos) return;
+    const n = v => fmtNumero(v, 2);
+    const sep = ';';
+    const lineas = [`Análisis de gastos APAI;${gaPeriodoTexto()}`, '', 'RUBRO;Cantidad;Total;% del total',
+        ...gaDatos.por_rubro.map(x => [x.nombre, x.cantidad, n(x.total), n(x.porcentaje)].join(sep)), '',
+        'PROVEEDOR;CUIT;Rubro;Facturas;Total;% del total;Pendiente de pago;Última factura',
+        ...gaDatos.por_proveedor.map(x => [x.razon_social, x.cuit || '', x.rubro || '', x.cantidad, n(x.total), n(x.porcentaje), n(x.pendiente), fmtFecha(x.ultima)].join(sep)), '',
+        'CATEGORÍA;Cantidad;Total;% del total', ...gaDatos.por_categoria.map(x => [x.nombre, x.cantidad, n(x.total), n(x.porcentaje)].join(sep)), '',
+        'DESTINO;Cantidad;Total;% del total', ...gaDatos.por_destino.map(x => [x.nombre, x.cantidad, n(x.total), n(x.porcentaje)].join(sep)), '',
+        'MES;Total', ...gaDatos.por_mes.map(x => [`${MESES[x.mes - 1]} ${x.anio}`, n(x.total)].join(sep))];
+    const csv = lineas.map(l => l.replace(/"/g, "'")).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `analisis_gastos_${hoyISO()}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 // --- INIT ---

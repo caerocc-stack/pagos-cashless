@@ -677,7 +677,7 @@
             <table id="tabla-proveedores">
                 <thead>
                     <tr>
-                        <th>CUIT</th><th>Razón social</th><th>Nombre fantasía</th><th>Rubro</th><th>Contacto</th><th>Acciones</th>
+                        <th>CUIT</th><th>Razón social</th><th>Nombre fantasía</th><th>Rubro</th><th class="num">Facturas</th><th class="num">Total facturado</th><th>Última</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="body-proveedores"></tbody>
@@ -687,6 +687,14 @@
         <!-- GASTOS -->
         <section id="sec-gastos" class="section">
             <div class="section-titulo">Gastos</div>
+
+            <div class="cuotas-tabs" role="tablist">
+                <button class="cuota-tab gasto-tab activo" data-tab="facturas" onclick="gastosTab('facturas')">Facturas</button>
+                <button class="cuota-tab gasto-tab" data-tab="analisis" onclick="gastosTab('analisis')">Análisis y gráficos</button>
+                <button class="cuota-tab gasto-tab" data-tab="proveedores" onclick="gastosTab('proveedores')">Por proveedor</button>
+            </div>
+
+            <div id="gastos-tab-facturas">
 
             <div class="toolbar">
                 <input type="text" id="buscar-gasto" placeholder="Buscar por proveedor, CUIT, concepto, rubro, destino o N° ...">
@@ -758,6 +766,53 @@
                 </thead>
                 <tbody id="body-gastos"></tbody>
             </table>
+                    </div><!-- /tab facturas -->
+
+            <!-- ANALISIS -->
+            <div id="gastos-tab-analisis" style="display:none">
+                <div class="toolbar">
+                    <div class="concept-chips" style="margin:0" role="group" aria-label="Período">
+                        <button type="button" class="chip ga-rango chip-activo" data-rango="mes" onclick="gaRango('mes')">Este mes</button>
+                        <button type="button" class="chip ga-rango" data-rango="mesant" onclick="gaRango('mesant')">Mes anterior</button>
+                        <button type="button" class="chip ga-rango" data-rango="anio" onclick="gaRango('anio')">Este año</button>
+                        <button type="button" class="chip ga-rango" data-rango="12m" onclick="gaRango('12m')">Últimos 12 meses</button>
+                        <button type="button" class="chip ga-rango" data-rango="todo" onclick="gaRango('todo')">Todo</button>
+                    </div>
+                </div>
+                <div class="toolbar">
+                    <label for="ga-desde">Desde</label><input type="date" id="ga-desde" onchange="gaRango('custom')">
+                    <label for="ga-hasta">Hasta</label><input type="date" id="ga-hasta" onchange="gaRango('custom')">
+                    <select id="ga-categoria" onchange="cargarAnalisisGastos()" aria-label="Categoría"><option value="">Todas las categorías</option></select>
+                    <span style="flex:1"></span>
+                    <button class="btn btn-outline" onclick="exportarAnalisisGastos()"><svg class="ic"><use href="#i-sheet"/></svg>Exportar a Excel</button>
+                </div>
+                <div class="gasto-resumen" id="ga-kpis"></div>
+                <div class="reportes-charts">
+                    <div class="chart-card"><h3>Distribución por rubro</h3><div class="chart-wrap"><canvas id="chart-ga-rubro" aria-label="Gráfico de torta: gastos por rubro"></canvas></div></div>
+                    <div class="chart-card"><h3>Evolución mensual</h3><div class="chart-wrap"><canvas id="chart-ga-mes" aria-label="Gráfico de barras: gastos por mes"></canvas></div></div>
+                </div>
+                <div class="chart-card" style="margin-bottom:1.25rem"><h3>Proveedores con más gasto</h3>
+                    <div class="chart-wrap" id="ga-prov-wrap" style="height:320px"><canvas id="chart-ga-prov" aria-label="Gráfico: proveedores con más gasto"></canvas></div></div>
+                <div class="reportes-charts">
+                    <div class="chart-card"><h3>Por rubro</h3><div id="ga-tabla-rubro"></div></div>
+                    <div class="chart-card"><h3>Por categoría</h3><div id="ga-tabla-categoria"></div>
+                        <h3 style="margin-top:1.25rem">Por destino en la escuela</h3><div id="ga-tabla-destino"></div>
+                        <h3 style="margin-top:1.25rem">Por forma de pago</h3><div id="ga-tabla-pago"></div></div>
+                </div>
+            </div>
+
+            <!-- POR PROVEEDOR -->
+            <div id="gastos-tab-proveedores" style="display:none">
+                <div class="toolbar">
+                    <input type="search" id="gp-buscar" placeholder="Buscar proveedor, CUIT o rubro…" oninput="renderGastosProveedores()" aria-label="Buscar proveedor">
+                    <span class="muted" id="gp-periodo"></span>
+                </div>
+                <table id="tabla-gp">
+                    <thead><tr><th>Proveedor</th><th>Rubro</th><th class="num">Facturas</th><th class="num">Total</th>
+                        <th class="num">% del total</th><th class="num">Pendiente de pago</th><th>Última factura</th><th></th></tr></thead>
+                    <tbody id="body-gp"></tbody>
+                </table>
+            </div>
         </section>
 
         <!-- LIBRO DE CAJA -->
@@ -857,16 +912,18 @@
             <div class="conc-importar">
                 <div class="conc-importar-txt">
                     <strong>Importar extracto de cuenta</strong>
-                    <span>Subí el <b>.xls</b> del extracto del banco. El sistema toma solo los egresos
-                    (transferencias <b>190</b> y débitos <b>F30</b>) y los cruza con tus facturas por <b>CUIT + importe</b>.</span>
+                    <span>Subí el <b>PDF del extracto de Banco Roela</b> (también acepta el .xls). El sistema controla que los saldos
+                    cierren, toma los <b>pagos</b> (transferencias, DEBIN, débitos y haberes) y los cruza solo con tus facturas por
+                    <b>CUIT + importe</b>. Las comisiones e impuestos del banco se agrupan en un único gasto mensual.</span>
                 </div>
                 <div class="conc-importar-acc">
-                    <input type="file" id="conc-archivo" accept=".xls" style="display:none" onchange="importarExtracto(this)">
+                    <input type="file" id="conc-archivo" accept=".pdf,.xls" style="display:none" onchange="importarExtracto(this)">
                     <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir extracto</button>
                     <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas"><svg class="ic"><use href="#i-refresh"/></svg>Reintentar cruce</button>
                 </div>
             </div>
 
+            <div id="conc-extracto"></div>
             <div class="gasto-resumen" id="conc-resumen"></div>
 
             <div class="toolbar">

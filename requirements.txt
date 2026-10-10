@@ -11,3 +11,4 @@ alembic==1.18.4
 pyjwt[crypto]==2.13.0
 bcrypt==5.0.0
 segno==1.6.6
+pdfplumber==0.11.10

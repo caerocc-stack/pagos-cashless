@@ -1,19 +1,27 @@
 import re
+import json
 import hashlib
 from decimal import Decimal
 from datetime import date
 
 import xlrd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, extract
 
 from app.database import get_db
-from app.models.banco import MovimientoBanco, CONCEPTOS_CONCILIABLES
+from app.models.banco import MovimientoBanco, ExtractoBancario, CONCEPTOS_CONCILIABLES
 from app.models.gasto import Gasto
+from app.models.proveedor import Proveedor
 from app.schemas.banco import BancoMovResponse
+from app import extracto_roela
 
 router = APIRouter(prefix="/api/conciliacion", tags=["Conciliacion"])
+
+TOLERANCIA = Decimal("1.00")  # diferencia de redondeo aceptada entre factura y pago
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+         "septiembre", "octubre", "noviembre", "diciembre"]
 
 
 def _solo_digitos(s) -> str:
@@ -36,16 +44,15 @@ def _hash_mov(fecha, comprobante, concepto, importe, desc) -> str:
     return hashlib.sha1(base.encode("utf-8")).hexdigest()[:40]
 
 
-def _parsear_extracto(contenido: bytes):
+def _parsear_extracto_xls(contenido: bytes):
     """Lee el .xls del extracto y devuelve solo los egresos conciliables (190 / F30)."""
     try:
         wb = xlrd.open_workbook(file_contents=contenido)
     except Exception:
-        raise HTTPException(400, "No se pudo leer el archivo. Tiene que ser el .xls del extracto de cuenta.")
+        raise HTTPException(400, "No se pudo leer el archivo. Subí el PDF del extracto o el .xls del banco.")
     sh = wb.sheet_by_index(0)
     datemode = wb.datemode
 
-    # Ubicar la fila de encabezados (la que contiene 'Concepto' e 'Importe')
     fila_cab = None
     for r in range(min(8, sh.nrows)):
         textos = [str(sh.cell_value(r, c)).strip().lower() for c in range(sh.ncols)]
@@ -56,12 +63,9 @@ def _parsear_extracto(contenido: bytes):
         raise HTTPException(400, "El archivo no parece un extracto de cuenta (no encuentro las columnas).")
 
     cab = {str(sh.cell_value(fila_cab, c)).strip().lower(): c for c in range(sh.ncols)}
-    c_fecha = cab.get("fecha")
-    c_comp = cab.get("comprobante")
-    c_concepto = cab.get("concepto")
+    c_fecha, c_comp, c_concepto = cab.get("fecha"), cab.get("comprobante"), cab.get("concepto")
     c_desc = next((c for t, c in cab.items() if t.startswith("descrip")), None)
-    c_importe = cab.get("importe")
-    c_cuenta = cab.get("cuenta")
+    c_importe, c_cuenta = cab.get("importe"), cab.get("cuenta")
     if None in (c_fecha, c_concepto, c_desc, c_importe):
         raise HTTPException(400, "Faltan columnas esperadas en el extracto (Fecha/Concepto/Descripción/Importe).")
 
@@ -74,13 +78,10 @@ def _parsear_extracto(contenido: bytes):
             importe = Decimal(str(sh.cell_value(r, c_importe)))
         except Exception:
             continue
-        if importe >= 0:  # solo egresos (pagos), no créditos
+        if importe >= 0:
             continue
-        # Fecha (serial de Excel)
-        bruto = sh.cell_value(r, c_fecha)
         try:
-            fdt = xlrd.xldate.xldate_as_datetime(float(bruto), datemode)
-            fecha = fdt.date()
+            fecha = xlrd.xldate.xldate_as_datetime(float(sh.cell_value(r, c_fecha)), datemode).date()
         except Exception:
             continue
         desc = str(sh.cell_value(r, c_desc)).strip()
@@ -88,83 +89,162 @@ def _parsear_extracto(contenido: bytes):
         cuit, razon = _parsear_descripcion(desc)
         cuenta = str(sh.cell_value(r, c_cuenta)).strip() if c_cuenta is not None else None
         movimientos.append({
-            "fecha": fecha, "cuenta": cuenta, "comprobante": comp or None,
-            "concepto": concepto, "descripcion": desc, "cuit": cuit,
-            "razon_social": razon, "importe": importe,
+            "fecha": fecha, "cuenta": cuenta, "comprobante": comp or None, "concepto": concepto,
+            "categoria": "pago", "descripcion": desc, "cuit": cuit, "razon_social": razon, "importe": importe,
             "hash": _hash_mov(fecha, comp, concepto, importe, desc),
         })
     return movimientos
 
 
-def _intentar_match(mov: MovimientoBanco, db: Session) -> bool:
-    """Busca una factura no conciliada con el mismo CUIT e importe. Si hay 1 sola, la vincula."""
+# ---------------------------------------------------------------- cruce automático
+
+def _facturas_libres(db: Session) -> list[Gasto]:
+    """Facturas (importe positivo) que todavía no tienen pago vinculado."""
+    usados = {g for (g,) in db.query(MovimientoBanco.gasto_id).filter(MovimientoBanco.gasto_id.isnot(None))}
+    return [g for g in db.query(Gasto).filter(Gasto.importe > 0, Gasto.caja_mov_id.is_(None)).all()
+            if g.id not in usados]
+
+
+def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
+    mov.gasto_id = g.id
+    mov.conciliado = True
+    mov.conciliado_manual = manual
+    g.conciliado = True
+    g.forma_pago = "Débito" if mov.concepto in ("146", "880100") else "Transferencia"
+    g.fecha_pago = mov.fecha
+
+
+def _intentar_match(mov: MovimientoBanco, libres: list[Gasto]) -> bool:
+    """Concilia solo si hay UNA factura libre con el mismo CUIT y el mismo importe (±$1)."""
     if mov.conciliado or not mov.cuit:
         return False
-    objetivo = abs(mov.importe)
-    # Facturas (positivas) con ese CUIT que aún no están conciliadas con otro movimiento
-    candidatos = [
-        g for g in db.query(Gasto).filter(Gasto.importe > 0).all()
-        if _solo_digitos(g.cuit) == _solo_digitos(mov.cuit)
-        and abs(Decimal(str(g.importe))) == objetivo
-        and not db.query(MovimientoBanco).filter(
-            MovimientoBanco.gasto_id == g.id, MovimientoBanco.id != mov.id
-        ).first()
-    ]
-    if len(candidatos) == 1:
-        g = candidatos[0]
-        mov.gasto_id = g.id
-        mov.conciliado = True
-        mov.conciliado_manual = False
-        g.conciliado = True
-        g.forma_pago = "Transferencia"
-        g.fecha_pago = mov.fecha
+    objetivo = abs(Decimal(str(mov.importe)))
+    cuit = _solo_digitos(mov.cuit)
+    cand = [g for g in libres if _solo_digitos(g.cuit) == cuit
+            and abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
+    if len(cand) == 1:
+        _vincular(mov, cand[0], manual=False)
+        libres.remove(cand[0])
         return True
     return False
 
 
+def _nombre_proveedor(db: Session, cuit: str | None) -> str | None:
+    if not cuit:
+        return None
+    p = db.query(Proveedor).filter(Proveedor.cuit == _solo_digitos(cuit)).first()
+    return p.razon_social if p else None
+
+
+# ---------------------------------------------------------------- importar
+
 @router.post("/importar")
 async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
     contenido = await archivo.read()
-    movimientos = _parsear_extracto(contenido)
+    nombre = (archivo.filename or "").lower()
+    extracto = None
+    info = {}
+    if nombre.endswith(".pdf") or contenido[:4] == b"%PDF":
+        try:
+            datos = extracto_roela.leer_pdf(contenido)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        desde, hasta = datos["periodo"] or (None, None)
+        resumen = extracto_roela.resumen(datos)
+        # Si ya se importó este mismo período, se actualiza ese registro (no se duplica)
+        extracto = (db.query(ExtractoBancario).filter(ExtractoBancario.desde == desde, ExtractoBancario.hasta == hasta).first()
+                    if desde else None) or ExtractoBancario()
+        extracto.archivo = archivo.filename
+        extracto.desde, extracto.hasta = desde, hasta
+        extracto.saldo_inicial, extracto.saldo_final = datos["saldo_inicial"], datos["saldo_final"]
+        extracto.cierra = bool(datos["cierra"])
+        extracto.movimientos = len(datos["movimientos"])
+        extracto.resumen = json.dumps(resumen)
+        db.add(extracto)
+        db.flush()
+        movimientos = [m for m in datos["movimientos"] if m["categoria"] in ("pago", "otro_egreso")]
+        info = {"periodo": [str(desde), str(hasta)] if desde else None, "cierra": extracto.cierra,
+                "diferencia": float(datos["diferencia"]) if datos["diferencia"] is not None else None,
+                "movimientos_leidos": extracto.movimientos, "resumen": resumen, "extracto_id": extracto.id}
+    else:
+        movimientos = _parsear_extracto_xls(contenido)
 
-    nuevos = 0
-    duplicados = 0
-    nuevos_objs = []
+    nuevos, duplicados, nuevos_objs = 0, 0, []
     for m in movimientos:
-        if db.query(MovimientoBanco).filter(MovimientoBanco.hash == m["hash"]).first():
+        if db.query(MovimientoBanco.id).filter(MovimientoBanco.hash == m["hash"]).first():
             duplicados += 1
             continue
-        obj = MovimientoBanco(origen=archivo.filename, **m)
+        datos_mov = {k: m.get(k) for k in ("fecha", "cuenta", "comprobante", "concepto", "categoria",
+                                           "descripcion", "cuit", "razon_social", "importe", "hash")}
+        datos_mov["razon_social"] = _nombre_proveedor(db, m.get("cuit")) or m.get("razon_social")
+        obj = MovimientoBanco(origen=archivo.filename, extracto_id=extracto.id if extracto else None, **datos_mov)
         db.add(obj)
         nuevos_objs.append(obj)
         nuevos += 1
     db.flush()
 
-    # Auto-conciliar los nuevos
-    conciliados = 0
-    for obj in nuevos_objs:
-        if _intentar_match(obj, db):
-            conciliados += 1
+    libres = _facturas_libres(db)
+    conciliados = sum(1 for obj in nuevos_objs if _intentar_match(obj, libres))
     db.commit()
-
-    return {
-        "ok": True,
-        "leidos": len(movimientos),
-        "nuevos": nuevos,
-        "duplicados": duplicados,
-        "conciliados_automaticamente": conciliados,
-        "pendientes": nuevos - conciliados,
-    }
+    return {"ok": True, "leidos": len(movimientos), "nuevos": nuevos, "duplicados": duplicados,
+            "conciliados_automaticamente": conciliados, "pendientes": nuevos - conciliados, **info}
 
 
 @router.post("/auto")
 def re_conciliar(db: Session = Depends(get_db)):
-    """Reintenta conciliar automáticamente los movimientos pendientes (útil tras cargar facturas)."""
+    """Reintenta conciliar automáticamente los pendientes (útil después de cargar facturas)."""
     pendientes = db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False).all()  # noqa: E712
-    nuevos = sum(1 for m in pendientes if _intentar_match(m, db))
+    libres = _facturas_libres(db)
+    for m in pendientes:  # de paso, completar nombres con los proveedores cargados
+        m.razon_social = _nombre_proveedor(db, m.cuit) or m.razon_social
+    nuevos = sum(1 for m in pendientes if _intentar_match(m, libres))
     db.commit()
     return {"ok": True, "conciliados": nuevos, "pendientes": len(pendientes) - nuevos}
 
+
+# ---------------------------------------------------------------- extractos importados
+
+def _dto_extracto(e: ExtractoBancario) -> dict:
+    return {
+        "id": e.id, "banco": e.banco, "archivo": e.archivo,
+        "desde": str(e.desde) if e.desde else None, "hasta": str(e.hasta) if e.hasta else None,
+        "saldo_inicial": float(e.saldo_inicial) if e.saldo_inicial is not None else None,
+        "saldo_final": float(e.saldo_final) if e.saldo_final is not None else None,
+        "cierra": e.cierra, "movimientos": e.movimientos,
+        "resumen": json.loads(e.resumen or "{}"), "comisiones_gasto_id": e.comisiones_gasto_id,
+    }
+
+
+@router.get("/extractos")
+def extractos(db: Session = Depends(get_db)):
+    return [_dto_extracto(e) for e in db.query(ExtractoBancario).order_by(ExtractoBancario.desde.desc()).all()]
+
+
+@router.post("/extractos/{ext_id}/registrar-comisiones")
+def registrar_comisiones(ext_id: int, db: Session = Depends(get_db)):
+    """Registra las comisiones e impuestos bancarios del período como un único gasto (ya pagado por débito)."""
+    e = db.get(ExtractoBancario, ext_id)
+    if not e:
+        raise HTTPException(404, "Extracto no encontrado")
+    if e.comisiones_gasto_id and db.get(Gasto, e.comisiones_gasto_id):
+        raise HTTPException(409, "Las comisiones de este extracto ya están registradas como gasto.")
+    total = abs(Decimal(str(json.loads(e.resumen or "{}").get("comision", {}).get("total", 0))))
+    if not total:
+        raise HTTPException(400, "Este extracto no tiene comisiones ni impuestos bancarios.")
+    periodo = f"{MESES[e.hasta.month - 1]} {e.hasta.year}" if e.hasta else "período"
+    g = Gasto(fecha=e.hasta or date.today(), tipo_comprobante="Comprobante", razon_social=e.banco,
+              importe=total, concepto=f"Comisiones, IVA e impuesto a los débitos y créditos — {periodo}",
+              rubro="Gastos bancarios", categoria="Oficina", forma_pago="Débito",
+              fecha_pago=e.hasta, conciliado=True, notas=f"Generado desde el extracto {e.archivo or ''}".strip())
+    db.add(g)
+    db.flush()
+    e.comisiones_gasto_id = g.id
+    db.commit()
+    return {"ok": True, "mensaje": f"Gasto bancario de {periodo} registrado por ${total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "gasto_id": g.id}
+
+
+# ---------------------------------------------------------------- listado y acciones
 
 @router.get("/resumen")
 def resumen(db: Session = Depends(get_db)):
@@ -173,13 +253,8 @@ def resumen(db: Session = Depends(get_db)):
     monto_total = db.query(func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)).scalar() or 0
     monto_pend = db.query(func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)).filter(
         MovimientoBanco.conciliado == False).scalar() or 0  # noqa: E712
-    return {
-        "total": total,
-        "conciliados": conc,
-        "pendientes": total - conc,
-        "monto_total": float(monto_total),
-        "monto_pendiente": float(monto_pend),
-    }
+    return {"total": total, "conciliados": conc, "pendientes": total - conc,
+            "monto_total": float(monto_total), "monto_pendiente": float(monto_pend)}
 
 
 @router.get("/", response_model=list[BancoMovResponse])
@@ -193,11 +268,8 @@ def listar(estado: str | None = None, q: str | None = None,
         query = query.filter(MovimientoBanco.conciliado == False)  # noqa: E712
     if q:
         t = f"%{q.strip()}%"
-        query = query.filter(or_(
-            MovimientoBanco.descripcion.ilike(t),
-            MovimientoBanco.cuit.ilike(t),
-            MovimientoBanco.razon_social.ilike(t),
-        ))
+        query = query.filter(or_(MovimientoBanco.descripcion.ilike(t), MovimientoBanco.cuit.ilike(t),
+                                 MovimientoBanco.razon_social.ilike(t)))
     if anio:
         query = query.filter(extract("year", MovimientoBanco.fecha) == anio)
     if mes:
@@ -207,54 +279,79 @@ def listar(estado: str | None = None, q: str | None = None,
 
 @router.get("/{mov_id}/candidatos")
 def candidatos(mov_id: int, db: Session = Depends(get_db)):
-    """Facturas sugeridas para conciliar manualmente este movimiento."""
+    """Facturas sugeridas para conciliar manualmente este movimiento (mismo CUIT o importe parecido)."""
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")
-    objetivo = abs(mov.importe)
+    objetivo = abs(Decimal(str(mov.importe)))
     cuit = _solo_digitos(mov.cuit)
-    usados = {b.gasto_id for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id.isnot(None)).all()}
+    libres = _facturas_libres(db)
+    if mov.gasto_id:
+        actual = db.get(Gasto, mov.gasto_id)
+        if actual:
+            libres.append(actual)
     salida = []
-    for g in db.query(Gasto).filter(Gasto.importe > 0).all():
-        if g.id in usados and g.id != mov.gasto_id:
-            continue
-        mismo_cuit = cuit and _solo_digitos(g.cuit) == cuit
-        mismo_monto = abs(Decimal(str(g.importe))) == objetivo
+    for g in libres:
+        mismo_cuit = bool(cuit) and _solo_digitos(g.cuit) == cuit
+        dif = abs(abs(Decimal(str(g.importe))) - objetivo)
+        mismo_monto = dif <= TOLERANCIA
         if not (mismo_cuit or mismo_monto):
             continue
         salida.append({
-            "id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social,
-            "cuit": g.cuit, "importe": float(g.importe), "concepto": g.concepto,
-            "numero": g.numero, "coincide_cuit": bool(mismo_cuit), "coincide_monto": mismo_monto,
+            "id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "cuit": g.cuit,
+            "importe": float(g.importe), "concepto": g.concepto, "numero": g.numero,
+            "coincide_cuit": mismo_cuit, "coincide_monto": mismo_monto, "diferencia": float(dif),
         })
-    # Primero los que coinciden en CUIT y monto
-    salida.sort(key=lambda x: (x["coincide_cuit"] and x["coincide_monto"]), reverse=True)
-    return salida
+    salida.sort(key=lambda x: (not (x["coincide_cuit"] and x["coincide_monto"]), not x["coincide_monto"], x["diferencia"]))
+    return {"facturas": salida, "proveedor": _nombre_proveedor(db, mov.cuit)}
 
 
 @router.post("/{mov_id}/match/{gasto_id}")
 def match_manual(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
     mov = db.get(MovimientoBanco, mov_id)
-    if not mov:
-        raise HTTPException(404, "Movimiento no encontrado")
     g = db.get(Gasto, gasto_id)
-    if not g:
-        raise HTTPException(404, "Factura no encontrada")
-    # Liberar el gasto anterior de este movimiento, si tenía
+    if not mov or not g:
+        raise HTTPException(404, "Movimiento o factura no encontrados")
     if mov.gasto_id and mov.gasto_id != gasto_id:
         anterior = db.get(Gasto, mov.gasto_id)
         if anterior:
             anterior.conciliado = False
             anterior.forma_pago = None
             anterior.fecha_pago = None
-    mov.gasto_id = g.id
-    mov.conciliado = True
-    mov.conciliado_manual = True
-    g.conciliado = True
-    g.forma_pago = "Transferencia"
-    g.fecha_pago = mov.fecha
+    _vincular(mov, g, manual=True)
     db.commit()
     return {"ok": True, "mensaje": "Movimiento conciliado con la factura"}
+
+
+class GastoDesdePago(BaseModel):
+    razon_social: str | None = None
+    concepto: str | None = None
+    rubro: str | None = None
+    categoria: str | None = None
+
+
+@router.post("/{mov_id}/crear-gasto")
+def crear_gasto(mov_id: int, data: GastoDesdePago, db: Session = Depends(get_db)):
+    """Para pagos sin factura de proveedor (sueldos, AFIP, seguros, servicios): crea el gasto
+    con los datos del banco y lo deja conciliado con este movimiento."""
+    mov = db.get(MovimientoBanco, mov_id)
+    if not mov:
+        raise HTTPException(404, "Movimiento no encontrado")
+    if mov.conciliado:
+        raise HTTPException(409, "Este movimiento ya está conciliado.")
+    cuit = _solo_digitos(mov.cuit) or None
+    prov = db.query(Proveedor).filter(Proveedor.cuit == cuit).first() if cuit else None
+    tipo = CONCEPTOS_CONCILIABLES.get(mov.concepto or "", "Pago bancario")
+    g = Gasto(fecha=mov.fecha, tipo_comprobante="Comprobante", proveedor_id=prov.id if prov else None,
+              razon_social=(data.razon_social or (prov.razon_social if prov else None) or mov.razon_social or tipo)[:160],
+              cuit=cuit, importe=abs(Decimal(str(mov.importe))),
+              concepto=(data.concepto or tipo)[:200], rubro=data.rubro or (prov.rubro if prov else None),
+              categoria=data.categoria, notas=f"Creado desde el extracto: {mov.descripcion or ''}"[:400])
+    db.add(g)
+    db.flush()
+    _vincular(mov, g, manual=True)
+    db.commit()
+    return {"ok": True, "mensaje": "Gasto creado y conciliado con el pago", "gasto_id": g.id}
 
 
 @router.post("/{mov_id}/unmatch")

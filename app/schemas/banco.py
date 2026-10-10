@@ -21,6 +21,7 @@ class BancoMovResponse(BaseModel):
     cuenta: str | None = None
     comprobante: str | None = None
     concepto: str | None = None
+    categoria: str | None = None
     descripcion: str | None = None
     cuit: str | None = None
     razon_social: str | None = None

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from app.database import get_db
 from app.models.gasto import Gasto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE
 from app.models.proveedor import Proveedor
 from app.models.caja import MovimientoCaja
-from app.models.banco import MovimientoBanco
+from app.models.banco import MovimientoBanco, ExtractoBancario
 from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
 from app.storage_util import subir_comprobante, crear_subida_firmada, storage_configurado
 from app.tz import ahora_ar
@@ -128,6 +129,129 @@ def resumen(mes: int | None = None, anio: int | None = None, db: Session = Depen
             for c, t, n in por_cat
         ],
     }
+
+
+def _filtrar_periodo(query, desde: str | None, hasta: str | None, categoria: str | None = None):
+    if desde:
+        query = query.filter(Gasto.fecha >= date.fromisoformat(desde))
+    if hasta:
+        query = query.filter(Gasto.fecha <= date.fromisoformat(hasta))
+    if categoria:
+        query = query.filter(Gasto.categoria == categoria)
+    return query
+
+
+def _agrupar(gastos: list[Gasto], clave, total_general: Decimal) -> list[dict]:
+    g = {}
+    for x in gastos:
+        k = clave(x) or "Sin especificar"
+        d = g.setdefault(k, {"nombre": k, "total": Decimal("0"), "cantidad": 0})
+        d["total"] += Decimal(str(x.importe))
+        d["cantidad"] += 1
+    salida = sorted(g.values(), key=lambda d: -d["total"])
+    for d in salida:
+        d["porcentaje"] = round(float(d["total"] / total_general * 100), 1) if total_general else 0
+        d["total"] = float(d["total"])
+    return salida
+
+
+@router.get("/estadisticas")
+def estadisticas(desde: str | None = None, hasta: str | None = None, categoria: str | None = None,
+                 db: Session = Depends(get_db)):
+    """Análisis de gastos del período: por rubro, proveedor, categoría, destino y mes (con %)."""
+    gastos = _filtrar_periodo(db.query(Gasto), desde, hasta, categoria).all()
+    total = sum((Decimal(str(x.importe)) for x in gastos), Decimal("0"))
+    facturas = [x for x in gastos if Decimal(str(x.importe)) > 0]
+    pagados = [x for x in facturas if x.forma_pago]
+    pendiente = sum((Decimal(str(x.importe)) for x in facturas if not x.forma_pago), Decimal("0"))
+
+    # Proveedores: total, cantidad, % y última factura
+    provs = {}
+    for x in gastos:
+        k = x.proveedor_id or f"cuit:{x.cuit or x.razon_social or '-'}"
+        d = provs.setdefault(k, {"proveedor_id": x.proveedor_id, "razon_social": x.razon_social or "Sin proveedor",
+                                 "cuit": x.cuit, "rubro": x.rubro, "total": Decimal("0"), "cantidad": 0,
+                                 "ultima": None, "pendiente": Decimal("0")})
+        imp = Decimal(str(x.importe))
+        d["total"] += imp
+        d["cantidad"] += 1
+        if imp > 0 and not x.forma_pago:
+            d["pendiente"] += imp
+        if not d["ultima"] or x.fecha > d["ultima"]:
+            d["ultima"] = x.fecha
+    por_proveedor = sorted(provs.values(), key=lambda d: -d["total"])
+    for d in por_proveedor:
+        d["porcentaje"] = round(float(d["total"] / total * 100), 1) if total else 0
+        d["total"], d["pendiente"] = float(d["total"]), float(d["pendiente"])
+        d["ultima"] = str(d["ultima"]) if d["ultima"] else None
+
+    # Evolución mensual (incluye meses sin gastos dentro del rango)
+    meses = {}
+    for x in gastos:
+        k = (x.fecha.year, x.fecha.month)
+        meses[k] = meses.get(k, Decimal("0")) + Decimal(str(x.importe))
+    if meses:
+        (a, m), fin = min(meses), max(meses)
+        serie = []
+        while (a, m) <= fin:
+            serie.append({"anio": a, "mes": m, "total": float(meses.get((a, m), 0))})
+            a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+    else:
+        serie = []
+
+    return {
+        "kpis": {
+            "total": float(total), "cantidad": len(gastos), "facturas": len(facturas),
+            "promedio": float(total / len(facturas)) if facturas else 0,
+            "proveedores": len(provs), "pagadas": len(pagados), "pendiente_pago": float(pendiente),
+            "conciliadas": sum(1 for x in facturas if x.conciliado),
+        },
+        "por_rubro": _agrupar(gastos, lambda x: x.rubro, total),
+        "por_categoria": _agrupar(gastos, lambda x: x.categoria, total),
+        "por_destino": _agrupar(gastos, lambda x: x.destino, total),
+        "por_forma_pago": _agrupar(gastos, lambda x: x.forma_pago or "Pendiente de pago", total),
+        "por_proveedor": por_proveedor,
+        "por_mes": serie,
+    }
+
+
+@router.get("/por-proveedor/{proveedor_id}")
+def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: str | None = None,
+                          db: Session = Depends(get_db)):
+    """Todas las facturas de un proveedor con totales (pagado, pendiente) y evolución mensual."""
+    p = db.get(Proveedor, proveedor_id)
+    if not p:
+        raise HTTPException(404, "Proveedor no encontrado")
+    q = db.query(Gasto).filter(or_(Gasto.proveedor_id == p.id, Gasto.cuit == p.cuit))
+    gastos = _filtrar_periodo(q, desde, hasta).order_by(Gasto.fecha.desc()).all()
+    total = sum((Decimal(str(x.importe)) for x in gastos), Decimal("0"))
+    pagado = sum((Decimal(str(x.importe)) for x in gastos if x.forma_pago or Decimal(str(x.importe)) < 0), Decimal("0"))
+    meses = {}
+    for x in gastos:
+        k = f"{x.fecha.year}-{x.fecha.month:02d}"
+        meses[k] = meses.get(k, 0) + float(x.importe)
+    return {
+        "proveedor": {"id": p.id, "razon_social": p.razon_social, "cuit": p.cuit, "rubro": p.rubro,
+                      "contacto": p.contacto, "telefono": p.telefono, "email": p.email, "cbu": p.cbu},
+        "total": float(total), "pagado": float(pagado), "pendiente": float(total - pagado),
+        "cantidad": len(gastos),
+        "por_mes": [{"periodo": k, "total": v} for k, v in sorted(meses.items())],
+        "facturas": [{
+            "id": x.id, "fecha": str(x.fecha), "tipo": x.tipo_comprobante,
+            "numero": f"{x.punto_venta or ''}-{x.numero or ''}".strip("-"), "concepto": x.concepto,
+            "categoria": x.categoria, "destino": x.destino, "importe": float(x.importe),
+            "forma_pago": x.forma_pago, "fecha_pago": str(x.fecha_pago) if x.fecha_pago else None,
+            "conciliado": bool(x.conciliado), "adjunto_url": x.adjunto_url,
+        } for x in gastos],
+    }
+
+
+@router.get("/totales-proveedores")
+def totales_proveedores(db: Session = Depends(get_db)):
+    """Total facturado, cantidad y última factura por proveedor (para la tabla de proveedores)."""
+    filas = (db.query(Gasto.proveedor_id, func.coalesce(func.sum(Gasto.importe), 0), func.count(Gasto.id), func.max(Gasto.fecha))
+             .filter(Gasto.proveedor_id.isnot(None)).group_by(Gasto.proveedor_id).all())
+    return {str(pid): {"total": float(t), "cantidad": n, "ultima": str(u) if u else None} for pid, t, n, u in filas}
 
 
 @router.get("/{gasto_id}", response_model=GastoResponse)
@@ -297,6 +421,13 @@ def eliminar(gasto_id: int, db: Session = Depends(get_db)):
     g = db.get(Gasto, gasto_id)
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
+    # Liberar lo que apunta a este gasto (si no, la base rechaza el borrado)
+    for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).all():
+        b.gasto_id, b.conciliado, b.conciliado_manual = None, False, False
+    for e in db.query(ExtractoBancario).filter(ExtractoBancario.comisiones_gasto_id == g.id).all():
+        e.comisiones_gasto_id = None
+    for nc in db.query(Gasto).filter(Gasto.nc_de_id == g.id).all():
+        nc.nc_de_id = None
     db.delete(g)
     db.commit()
     return {"ok": True, "mensaje": "Gasto eliminado"}
