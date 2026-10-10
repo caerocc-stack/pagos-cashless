@@ -30,7 +30,7 @@ def test_email(data: TestEmailRequest, user=Depends(get_current_user)):
         raise HTTPException(
             400,
             "El envío de email no está configurado todavía. Cargá SMTP_USER y SMTP_PASS "
-            "en las variables de entorno de Render.",
+            "en las variables de entorno del servidor (Vercel).",
         )
     destino = (data.destino or "").strip() or os.getenv("SMTP_USER")
     cuerpo = """

@@ -13,13 +13,66 @@ function escapeHtml(s) {
 }
 
 // --- Navegacion ---
-document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('sec-' + btn.dataset.section).classList.add('active');
+// Encabezado de cada pantalla: [grupo del menú, título, para qué sirve]
+const PAGINAS = {
+    cuotas: ['Cobranzas y alumnos', 'Cuotas y estado de cuenta', 'Pagos recibidos por SIRO, deuda de cada alumno, estadísticas y valores de cada curso.'],
+    alumnos: ['Cobranzas y alumnos', 'Alumnos', 'Padrón completo: datos personales, curso, condición y saldo de la tarjeta.'],
+    importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
+    cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
+    operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
+    tarjetas: ['Tarjeta APAI', 'Tarjetas', 'Emitir tarjetas nuevas, consultar una tarjeta o darla de baja.'],
+    reportes: ['Tarjeta APAI', 'Consumos y reportes', 'Uso de la tarjeta por curso y por día, ranking de consumo y exportación a Excel o PDF.'],
+    gastos: ['Finanzas', 'Gastos y facturas', 'Facturas de proveedores. Con una foto del QR de AFIP los datos se completan solos.'],
+    proveedores: ['Finanzas', 'Proveedores', 'CUIT, rubro y datos de contacto de cada proveedor.'],
+    caja: ['Finanzas', 'Libro de caja', 'Ingresos y egresos en efectivo con el saldo siempre al día.'],
+    conciliacion: ['Finanzas', 'Conciliación bancaria', 'Cruzá los pagos del extracto del banco con las facturas cargadas.'],
+    horario: ['Personal', 'Control horario', 'Entradas, salidas, horas extras y liquidación mensual del personal.'],
+    usuarios: ['Administración', 'Usuarios y seguridad', 'Quién puede entrar al sistema, con qué permisos, y el registro de actividad.'],
+};
+
+function mostrarSeccion(seccion) {
+    const sec = document.getElementById('sec-' + seccion);
+    if (!sec) return;
+    document.querySelectorAll('.nav-btn').forEach(b => {
+        const activo = b.dataset.section === seccion;
+        b.classList.toggle('active', activo);
+        if (activo) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    sec.classList.add('active');
+    const info = PAGINAS[seccion];
+    const head = document.getElementById('page-head');
+    head.hidden = !info;
+    if (info) {
+        document.getElementById('page-miga').textContent = info[0];
+        document.getElementById('page-titulo').textContent = info[1];
+        document.getElementById('page-desc').textContent = info[2];
+        document.title = `${info[1]} · APAI Pay`;
+    } else {
+        document.title = 'APAI Pay';
+    }
+    // Enlace directo (se puede guardar en favoritos y el botón "Atrás" funciona)
+    const hash = seccion === 'inicio' ? '' : '#' + seccion;
+    if (location.hash !== hash) history.pushState(null, '', hash || location.pathname);
+    window.scrollTo({ top: 0 });
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => mostrarSeccion(btn.dataset.section));
+});
+
+// Abrir la sección del enlace (#gastos, #caja, ...) y responder al botón Atrás/Adelante
+function irAlHash() {
+    const s = location.hash.slice(1) || 'inicio';
+    const btn = document.querySelector(`.nav-btn[data-section="${s}"]`);
+    if (btn && !btn.classList.contains('active') && btn.style.display !== 'none') btn.click();
+    else if (!btn) mostrarSeccion('inicio');
+}
+window.addEventListener('popstate', irAlHash);
+
+// Esc cierra el modal abierto
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('modal-overlay').style.display !== 'none') cerrarModal();
 });
 
 // Normaliza texto para búsquedas: minúsculas y sin acentos
@@ -176,7 +229,7 @@ function crearBuscador(config) {
         }
         drop.innerHTML = lista.map((a, i) => {
             const saldo = Number(a.saldo);
-            const saldoColor = saldo > 0 ? '#16a34a' : '#ef4444';
+            const saldoColor = saldo > 0 ? 'var(--success)' : 'var(--danger)';
             const saldoHtml = config.mostrarSaldo !== false
                 ? `<span class="buscador-saldo" style="color:${saldoColor}">$${saldo.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>`
                 : '';
@@ -491,8 +544,8 @@ async function verAlumno(id) {
 
         let html = `<h3>${escapeHtml(a.apellido)}, ${escapeHtml(a.nombre)}</h3>
             <p><strong>Legajo:</strong> ${escapeHtml(a.legajo)} | <strong>DNI:</strong> ${escapeHtml(a.dni)} | <strong>Curso:</strong> ${escapeHtml(a.curso)}</p>
-            <p><strong>Área:</strong> ${escapeHtml(a.area || '-')} | <strong>Email:</strong> ${a.email ? escapeHtml(a.email) : '<span style="color:#94a3b8">sin email</span>'} | <strong>Cód. SIRO:</strong> ${escapeHtml(a.codigo_siro || '-')}</p>
-            <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:#a01e22">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
+            <p><strong>Área:</strong> ${escapeHtml(a.area || '-')} | <strong>Email:</strong> ${a.email ? escapeHtml(a.email) : '<span style="color:var(--text-muted)">sin email</span>'} | <strong>Cód. SIRO:</strong> ${escapeHtml(a.codigo_siro || '-')}</p>
+            <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:var(--danger)">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
             <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
@@ -503,7 +556,7 @@ async function verAlumno(id) {
 
         html += '<h4>Tarjetas</h4>';
         if (tarjetas.length === 0) {
-            html += '<p style="color:#94a3b8">Sin tarjetas asignadas</p>';
+            html += '<p style="color:var(--text-muted)">Sin tarjetas asignadas</p>';
         } else {
             html += tarjetas.map(t =>
                 `<span class="badge ${t.activa ? 'badge-activa' : 'badge-inactiva'}">${escapeHtml(t.uid)} — ${t.activa ? 'Activa' : 'Inactiva'}</span> `
@@ -512,16 +565,16 @@ async function verAlumno(id) {
 
         html += '<h4 style="margin-top:1rem">Ultimos movimientos</h4>';
         if (movs.length === 0) {
-            html += '<p style="color:#94a3b8">Sin movimientos</p>';
+            html += '<p style="color:var(--text-muted)">Sin movimientos</p>';
         } else {
             html += '<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripcion</th></tr></thead><tbody>';
             html += movs.map(m => {
-                const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
+                const fecha = fmtFechaHora(m.created_at);
                 const monto = Number(m.monto);
                 return `<tr>
                     <td>${fecha}</td>
                     <td class="tipo-${escapeHtml(m.tipo)}">${escapeHtml(m.tipo)}</td>
-                    <td class="${monto >= 0 ? 'saldo-positivo' : ''}" style="${monto < 0 ? 'color:#ef4444' : ''}">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
+                    <td class="${monto >= 0 ? 'saldo-positivo' : ''}" style="${monto < 0 ? 'color:var(--danger)' : ''}">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
                     <td>${escapeHtml(m.descripcion || '')}</td>
                 </tr>`;
             }).join('');
@@ -707,9 +760,9 @@ async function vistaPreviaEmail() {
         });
         const html = `
             <h3>Vista previa del email</h3>
-            <p style="color:#5b6b80;font-size:0.85rem"><strong>Asunto:</strong> ${res.asunto}</p>
+            <p style="color:var(--text-muted);font-size:0.85rem"><strong>Asunto:</strong> ${res.asunto}</p>
             <div style="border:1px solid #e2e8f0;border-radius:8px;padding:0.5rem;background:#f7f9fc">${res.html}</div>
-            <p style="color:#94a3b8;font-size:0.8rem;margin-top:0.5rem">Datos de ejemplo. El cupón de pago real se adjunta cuando SIRO esté conectado.</p>`;
+            <p style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem">Datos de ejemplo. El cupón de pago real se adjunta cuando SIRO esté conectado.</p>`;
         document.getElementById('modal-content').innerHTML = html;
         document.getElementById('modal-overlay').style.display = 'flex';
     } catch (err) {
@@ -720,18 +773,18 @@ async function vistaPreviaEmail() {
 async function abrirPlantillas() {
     try {
         const cfg = await api('/api/config/plantillas');
-        const lbl = 'display:block;margin:0.6rem 0 0.25rem;font-size:0.85rem;color:#5b6b80;font-weight:600';
+        const lbl = 'display:block;margin:0.6rem 0 0.25rem;font-size:0.85rem;color:var(--text-muted);font-weight:600';
         const inp = 'width:100%;padding:0.6rem;border:1px solid #e2e8f0;border-radius:8px';
         const esc = s => (s || '').replace(/"/g, '&quot;');
         const html = `
             <h3>Plantillas de email</h3>
-            <p style="color:#5b6b80;font-size:0.83rem;margin-bottom:0.5rem">
+            <p style="color:var(--text-muted);font-size:0.83rem;margin-bottom:0.5rem">
                 Comodines: <code>{alumno}</code> <code>{nombre}</code> <code>{apellido}</code>
                 <code>{monto}</code> <code>{legajo}</code> <code>{curso}</code>
                 <code>{mes}</code> <code>{anio}</code>
             </p>
             <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1rem">
-                <p style="font-weight:600;color:#a01e22">Cuota mensual</p>
+                <p style="font-weight:600;color:var(--danger)">Cuota mensual</p>
                 <label style="${lbl}">Monto de la cuota ($)</label>
                 <input type="number" id="pl-cuota-monto" style="${inp}" value="${esc(cfg.cuota_monto)}">
                 <label style="${lbl}">Asunto</label>
@@ -740,7 +793,7 @@ async function abrirPlantillas() {
                 <textarea id="pl-cuota-mensaje" style="${inp};min-height:150px;font-family:inherit;resize:vertical">${cfg.cuota_mensaje || ''}</textarea>
             </div>
             <div style="background:#f7f9fc;border-radius:10px;padding:1rem;margin-bottom:1rem">
-                <p style="font-weight:600;color:#a01e22">Recarga ApaiCard</p>
+                <p style="font-weight:600;color:var(--danger)">Recarga ApaiCard</p>
                 <label style="${lbl}">Asunto</label>
                 <input type="text" id="pl-recarga-asunto" style="${inp}" value="${esc(cfg.recarga_asunto)}">
                 <label style="${lbl}">Mensaje</label>
@@ -793,7 +846,7 @@ async function ejecutarTransferencia(e) {
 // Render generico de movimientos (incluye datos del alumno)
 function renderMovimientos(movs) {
     document.getElementById('body-historial').innerHTML = movs.map(m => {
-        const fecha = new Date(m.created_at).toLocaleString('es-AR', {hour12: false});
+        const fecha = fmtFechaHora(m.created_at);
         const monto = Number(m.monto);
         const alumno = m.apellido ? `${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}` : '';
         return `<tr>
@@ -801,11 +854,11 @@ function renderMovimientos(movs) {
             <td>${alumno}</td>
             <td>${escapeHtml(m.curso || '')}</td>
             <td class="tipo-${escapeHtml(m.tipo)}">${escapeHtml(m.tipo)}</td>
-            <td style="color:${monto >= 0 ? '#16a34a' : '#a01e22'};font-weight:600">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
+            <td style="color:${monto >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:600">$${monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
             <td>${escapeHtml(m.descripcion || '')}</td>
             <td>${escapeHtml(m.operador || '')}</td>
         </tr>`;
-    }).join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Sin movimientos</td></tr>';
 }
 
 // Por defecto: ultimos 10 movimientos del sistema
@@ -823,7 +876,7 @@ async function cargarMovimientosGenerales() {
 async function cargarHistorialDia() {
     try {
         const movs = await api('/api/operaciones/diario');
-        const hoy = new Date().toLocaleDateString('es-AR');
+        const hoy = fmtFecha(hoyISO());
         document.getElementById('hist-indicador').textContent =
             `Movimientos del día ${hoy} — ${movs.length} operación(es)`;
         renderMovimientos(movs);
@@ -912,7 +965,7 @@ async function cargarTarjetasDesactivar(alumnoId) {
     try {
         const tarjetas = await api(`/api/tarjetas/alumno/${alumnoId}`);
         if (tarjetas.length === 0) {
-            div.innerHTML = '<p style="margin-top:1rem;color:#94a3b8">Sin tarjetas</p>';
+            div.innerHTML = '<p style="margin-top:1rem;color:var(--text-muted)">Sin tarjetas</p>';
             return;
         }
         div.innerHTML = tarjetas.map(t =>
@@ -1019,7 +1072,7 @@ function cobroMostrarAlumno(info, uid) {
     document.getElementById('cobro-legajo').textContent = 'Legajo: ' + info.legajo;
     const saldo = Number(info.saldo);
     document.getElementById('cobro-saldo').textContent = '$' + saldo.toLocaleString('es-AR', {minimumFractionDigits: 2});
-    document.getElementById('cobro-saldo').style.color = saldo > 0 ? '#16a34a' : '#ef4444';
+    document.getElementById('cobro-saldo').style.color = saldo > 0 ? 'var(--success)' : 'var(--danger)';
     document.getElementById('cobro-info').style.display = 'block';
 
     document.getElementById('cobro-uid-actual').value = uid || '';
@@ -1189,7 +1242,7 @@ const buscadorCupon = crearBuscador({
         const info = document.getElementById('cupon-info');
         const email = alumno.email
             ? alumno.email
-            : '<span style="color:#a01e22">sin email cargado</span>';
+            : '<span style="color:var(--danger)">sin email cargado</span>';
         info.innerHTML = `Email: <strong>${email}</strong> &nbsp;·&nbsp; Cód. SIRO: <strong>${alumno.codigo_siro || '-'}</strong>`;
     },
     onClear: () => { document.getElementById('cupon-info').innerHTML = ''; },
@@ -1203,6 +1256,8 @@ async function cargarUsuario() {
         const user = await api('/api/auth/me');
         usuarioActual = user;
         document.getElementById('user-nombre').textContent = user.nombre;
+        document.getElementById('user-rol').textContent = user.rol_nombre || '';
+        document.getElementById('user-avatar').textContent = ((user.nombre || 'U').trim()[0] || 'U').toUpperCase();
         const esAdmin = user.rol === 'admin';
         document.body.classList.toggle('rol-lectura', !esAdmin);
         document.querySelectorAll('.solo-admin').forEach(el => el.style.display = esAdmin ? '' : 'none');
@@ -1210,6 +1265,7 @@ async function cargarUsuario() {
         if (typeof dashSaludoYFecha === 'function') dashSaludoYFecha();
         if (user.debe_cambiar_password) abrirCambioObligatorio();
         else if (esAdmin && !user.totp_activo) avisoActivar2FA();
+        irAlHash();  // con los permisos ya aplicados, abrir la sección del enlace
     } catch {
         window.location.href = '/login';
     }
@@ -1249,6 +1305,7 @@ function abrirCambioObligatorio() {
     ov.style.display = 'flex';
     ov.dataset.bloqueado = '1';  // no se cierra tocando afuera
     ov.querySelector('.btn-cerrar-modal').style.display = 'none';
+    ov.querySelector('.modal-x').style.display = 'none';
 }
 
 async function cerrarSesion() {
@@ -1480,14 +1537,14 @@ async function dashNuevaFactura() {
 function dashSaludoYFecha() {
     const u = usuarioActual || {};
     const nombre = (u.nombre || 'Hola').split(' ')[0];
-    const hora = new Date().getHours();
+    const hora = Number(new Intl.DateTimeFormat('es-AR', { timeZone: TZ_AR, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
     const saludo = hora < 13 ? 'Buen día' : (hora < 20 ? 'Buenas tardes' : 'Buenas noches');
     const sal = document.getElementById('dash-saludo');
-    if (sal) sal.textContent = `${saludo}, ${nombre} 👋`;
+    if (sal) sal.textContent = `${saludo}, ${nombre}`;
     const fecha = document.getElementById('dash-fecha');
     if (fecha) {
         fecha.textContent = new Date().toLocaleDateString('es-AR', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            timeZone: TZ_AR, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
         });
     }
 }
@@ -1566,7 +1623,7 @@ function renderProveedores(lista) {
                 <button class="btn btn-sm btn-danger" onclick="eliminarProveedor(${p.id})">Eliminar</button>
             </td>
         </tr>`).join('') ||
-        '<tr><td colspan="6" style="text-align:center;color:#94a3b8">Sin proveedores</td></tr>';
+        '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Sin proveedores</td></tr>';
 }
 
 function mostrarFormProveedor() {
@@ -1762,7 +1819,7 @@ function renderGastos(lista) {
             </td>
         </tr>`;
     }).join('') ||
-        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin gastos en este período</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Sin gastos en este período</td></tr>';
 }
 
 async function cambiarCategoriaGasto(id, valor) {
@@ -2092,7 +2149,7 @@ async function gastoChequearStorage() {
     try {
         const r = await api('/api/gastos/storage-estado');
         if (!r.configurado) {
-            est.textContent = '⚠ Falta conectar Supabase Storage: vas a poder leer el QR, pero la foto no se guardará hasta cargar las claves en Render.';
+            est.textContent = '⚠ Falta conectar Supabase Storage: vas a poder leer el QR, pero la foto no se guardará hasta cargar las claves de Supabase en Vercel (Settings → Environment Variables).';
             est.className = 'gasto-lector-estado error';
         }
     } catch (e) { /* sin sesión */ }
@@ -2105,7 +2162,7 @@ function mostrarFormGasto() {
     ['gasto-pv', 'gasto-numero', 'gasto-razon', 'gasto-cuit', 'gasto-importe',
         'gasto-rubro', 'gasto-concepto', 'gasto-destino', 'gasto-adjunto',
         'gasto-notas'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('gasto-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('gasto-fecha').value = hoyISO();
     document.getElementById('gasto-tipo').value = '';
     document.getElementById('gasto-proveedor').value = '';
     document.getElementById('gasto-es-nc').checked = false;
@@ -2293,7 +2350,7 @@ function renderCaja(lista) {
             </td>
         </tr>`;
     }).join('') ||
-        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Sin movimientos en este período</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Sin movimientos en este período</td></tr>';
 }
 
 async function imputarCuotaDesdeCaja(cajaMovId, monto) {
@@ -2318,7 +2375,7 @@ function mostrarFormCaja(tipo) {
     document.getElementById('caja-edit-id').value = '';
     document.getElementById('caja-tipo').value = tipo;
     ['caja-monto', 'caja-concepto', 'caja-notas'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('caja-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('caja-fecha').value = hoyISO();
     document.getElementById('caja-tipomov').value = '';
     document.getElementById('form-caja').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -2422,7 +2479,7 @@ async function cajaRapida(tipo) {
     if (!concepto) { toast('Elegí o escribí un concepto', 'error'); return; }
     if (isNaN(monto) || monto <= 0) { toast('Ingresá un importe válido', 'error'); montoEl.focus(); return; }
     const body = {
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha: hoyISO(),
         concepto: concepto,
         tipo_movimiento: tipo === 'ingreso' ? 'Venta' : concepto,
         tipo: tipo,
@@ -2521,7 +2578,7 @@ function renderConciliacion(lista) {
             <td>${acciones}</td>
         </tr>`;
     }).join('') ||
-        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">No hay movimientos. Subí un extracto para empezar.</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No hay movimientos. Subí un extracto para empezar.</td></tr>';
 }
 
 async function importarExtracto(input) {
@@ -2668,7 +2725,7 @@ async function cargarEstado() {
         document.getElementById('estado-resumen').innerHTML = `
             <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">corte mes ${r.mes_corte}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:#d97706">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:var(--warning)">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">$${gastoFmt(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
         filtrarEstado();
     } catch (err) { toast(err.message, 'error'); }
@@ -2698,7 +2755,7 @@ function filtrarEstado() {
             <td>${estadoBadge(x.estado)}</td>
             <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
         </tr>`).join('') ||
-        '<tr><td colspan="9" style="text-align:center;color:#94a3b8">Sin resultados</td></tr>';
+        '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">Sin resultados</td></tr>';
 }
 
 async function verEstadoAlumno(id) {
@@ -2739,7 +2796,7 @@ function exportarEstadisticasPDF() {
     const fmt = n => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
     doc.setFontSize(15); doc.text('APAI Pay — Estadísticas de cuotas', 14, 16);
     doc.setFontSize(10); doc.setTextColor(110);
-    doc.text(`Año ${s.anio} · corte mes ${s.mes_corte} · generado ${new Date().toLocaleDateString('es-AR')}`, 14, 22);
+    doc.text(`Año ${s.anio} · corte mes ${s.mes_corte} · generado ${fmtFecha(hoyISO())}`, 14, 22);
     doc.setTextColor(20);
     doc.autoTable({
         startY: 28, theme: 'plain',
@@ -2792,7 +2849,7 @@ async function cargarStats() {
             <tr><td>${escapeHtml(m.legajo)}</td><td>${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}</td>
             <td>${escapeHtml(m.curso || '-')}</td><td>${escapeHtml(m.area || '-')}</td>
             <td style="text-align:right;color:var(--red)">$${gastoFmt(m.deuda)}</td></tr>`).join('') ||
-            '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin morosos</td></tr>';
+            '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin morosos</td></tr>';
 
         dibujarChartsCuotas(s);
     } catch (err) { toast(err.message, 'error'); }
@@ -2879,7 +2936,7 @@ async function cargarResumenSiro(mes, anio) {
                 <div class="gasto-kpi-valor" style="color:var(--green)">${r.asignados}</div>
                 <div class="gasto-kpi-sub">a un alumno</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Sin asignar</div>
-                <div class="gasto-kpi-valor" style="color:#d97706">${r.sin_asignar}</div>
+                <div class="gasto-kpi-valor" style="color:var(--warning)">${r.sin_asignar}</div>
                 <div class="gasto-kpi-sub">$${gastoFmt(r.monto_sin_asignar)}</div></div>`;
     } catch (e) { /* sin datos */ }
 }
@@ -2922,7 +2979,7 @@ function renderSiro(lista) {
             <td>${acciones}</td>
         </tr>`;
     }).join('') ||
-        '<tr><td colspan="7" style="text-align:center;color:#94a3b8">No hay pagos. Subí un listado de cobranzas SIRO.</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No hay pagos. Subí un listado de cobranzas SIRO.</td></tr>';
 }
 
 async function importarSiro(input) {
@@ -3006,7 +3063,7 @@ function renderCursos() {
                 <button class="btn btn-sm btn-danger" onclick="eliminarCurso(${c.id})">Eliminar</button>
             </td>
         </tr>`).join('') ||
-        '<tr><td colspan="8" style="text-align:center;color:#94a3b8">Sin cursos cargados</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sin cursos cargados</td></tr>';
 }
 
 function mostrarFormCurso() {
@@ -3157,7 +3214,7 @@ function renderHorarioDias(regs) {
             </td>
         </tr>`;
     }).join('') ||
-        '<tr><td colspan="8" style="text-align:center;color:#94a3b8">Sin fichadas este mes. Usá "+ Registrar día".</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sin fichadas este mes. Usá "+ Registrar día".</td></tr>';
 }
 
 async function cargarHorarioAnual(emp, anio) {
@@ -3252,7 +3309,7 @@ function mostrarFormDia() {
     document.getElementById('form-dia').style.display = 'block';
     document.getElementById('form-dia-titulo').textContent = 'Registrar día';
     document.getElementById('dia-edit-id').value = '';
-    document.getElementById('dia-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('dia-fecha').value = hoyISO();
     document.getElementById('dia-tipo').value = 'Normal';
     ['dia-entrada', 'dia-salida', 'dia-notas'].forEach(id => document.getElementById(id).value = '');
     diaToggleHoras();
@@ -3376,7 +3433,12 @@ function aplicarTema(t) {
     document.documentElement.setAttribute('data-theme', t);
     try { localStorage.setItem('tema', t); } catch (e) {}
     const b = document.getElementById('btn-tema');
-    if (b) b.textContent = t === 'dark' ? '☀️' : '🌙';
+    if (b) {
+        b.innerHTML = `<svg class="ic"><use href="#i-${t === 'dark' ? 'sun' : 'moon'}"/></svg>`;
+        b.title = t === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+    }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = t === 'dark' ? '#0b1220' : '#15233b';
 }
 function toggleTema() {
     const actual = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';

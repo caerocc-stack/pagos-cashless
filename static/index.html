@@ -8,12 +8,58 @@
     <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#15233b">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <a href="#contenido" class="skip-link">Saltar al contenido</a>
+
+    <!-- Íconos (estilo Lucide, trazo 2px) -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+        <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+        <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+        <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></symbol>
+        <symbol id="i-banknote" viewBox="0 0 24 24"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></symbol>
+        <symbol id="i-card" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></symbol>
+        <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></symbol>
+        <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></symbol>
+        <symbol id="i-building" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/></symbol>
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></symbol>
+        <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2l8 5H4z"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></symbol>
+        <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+        <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+        <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+        <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+        <symbol id="i-sheet" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2M14 13h2M8 17h2M14 17h2"/></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8M16 13H8M16 17H8"/></symbol>
+        <symbol id="i-arrows" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+        <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></symbol>
+        <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    </svg>
+
     <header class="topbar">
-        <button class="side-toggle" onclick="toggleSidebar()" aria-label="Menú">☰</button>
+        <button class="side-toggle" onclick="toggleSidebar()" aria-label="Abrir menú"><svg class="ic ic-lg"><use href="#i-menu"/></svg></button>
         <div class="header-brand">
             <div class="header-logo header-engine">
                 <img src="/static/motor.png" class="he-img" alt="APAI">
@@ -25,65 +71,74 @@
             </div>
         </div>
         <div class="user-info">
-            <span id="user-nombre"></span>
-            <button class="btn btn-logout" id="btn-tema" onclick="toggleTema()" title="Cambiar tema claro/oscuro">🌙</button>
-            <button class="btn btn-logout" onclick="cerrarSesion()">Salir</button>
+            <button class="btn-icono-top" id="btn-tema" onclick="toggleTema()" title="Cambiar a modo oscuro" aria-label="Cambiar tema claro u oscuro"><svg class="ic"><use href="#i-moon"/></svg></button>
+            <button class="user-chip" onclick="abrirMiCuenta()" title="Mi cuenta y seguridad">
+                <span class="user-avatar" id="user-avatar">·</span>
+                <span class="user-textos"><span id="user-nombre"></span><span id="user-rol"></span></span>
+            </button>
         </div>
     </header>
 
-    <aside class="sidebar" id="sidebar">
-        <button class="nav-btn side-item side-home active" data-section="inicio" onclick="cerrarSidebarMobile()">🏠 Inicio</button>
+    <aside class="sidebar" id="sidebar" aria-label="Menú principal">
+        <button class="nav-btn side-item side-home active" data-section="inicio" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-home"/></svg>Inicio</button>
 
         <div class="side-group">
-            <button class="side-group-head" onclick="toggleGrupo(this)"><span>💳 ApaiCard</span><span class="side-caret">▾</span></button>
+            <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Cobranzas y alumnos</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
-                <button class="nav-btn side-item" data-section="cobrar" onclick="cerrarSidebarMobile()">Cobrar</button>
-                <button class="nav-btn side-item" data-section="operaciones" onclick="cerrarSidebarMobile()">Operaciones</button>
-                <button class="nav-btn side-item" data-section="tarjetas" onclick="cerrarSidebarMobile()">Tarjetas</button>
-                <button class="nav-btn side-item" data-section="reportes" onclick="cargarReportes();cerrarSidebarMobile()">Reportes y consumo</button>
+                <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
+                <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
+                <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
             </div>
         </div>
 
         <div class="side-group">
-            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🧾 Gastos</span><span class="side-caret">▾</span></button>
+            <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Tarjeta APAI</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
-                <button class="nav-btn side-item" data-section="gastos" onclick="cargarGastos();cerrarSidebarMobile()">Gastos</button>
-                <button class="nav-btn side-item" data-section="caja" onclick="cargarCaja();cerrarSidebarMobile()">Caja</button>
-                <button class="nav-btn side-item" data-section="proveedores" onclick="cargarProveedores();cerrarSidebarMobile()">Proveedores</button>
-                <button class="nav-btn side-item" data-section="conciliacion" onclick="cargarConciliacion();cerrarSidebarMobile()">Conciliación bancaria</button>
+                <button class="nav-btn side-item" data-section="cobrar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-scan"/></svg>Cobrar</button>
+                <button class="nav-btn side-item" data-section="operaciones" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-banknote"/></svg>Recargas y cupones</button>
+                <button class="nav-btn side-item" data-section="tarjetas" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-card"/></svg>Tarjetas</button>
+                <button class="nav-btn side-item" data-section="reportes" onclick="cargarReportes();cerrarSidebarMobile()"><svg class="ic"><use href="#i-chart"/></svg>Consumos y reportes</button>
             </div>
         </div>
 
         <div class="side-group">
-            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🎓 Cuotas y alumnos</span><span class="side-caret">▾</span></button>
+            <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Finanzas</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
-                <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()">Cuotas y estado</button>
-                <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()">Alumnos (padrón)</button>
-                <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()">Importar padrón</button>
+                <button class="nav-btn side-item" data-section="gastos" onclick="cargarGastos();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Gastos y facturas</button>
+                <button class="nav-btn side-item" data-section="proveedores" onclick="cargarProveedores();cerrarSidebarMobile()"><svg class="ic"><use href="#i-building"/></svg>Proveedores</button>
+                <button class="nav-btn side-item" data-section="caja" onclick="cargarCaja();cerrarSidebarMobile()"><svg class="ic"><use href="#i-book"/></svg>Libro de caja</button>
+                <button class="nav-btn side-item" data-section="conciliacion" onclick="cargarConciliacion();cerrarSidebarMobile()"><svg class="ic"><use href="#i-bank"/></svg>Conciliación bancaria</button>
             </div>
         </div>
 
         <div class="side-group">
-            <button class="side-group-head" onclick="toggleGrupo(this)"><span>🕒 Personal</span><span class="side-caret">▾</span></button>
+            <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Personal</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
-                <button class="nav-btn side-item" data-section="horario" onclick="cargarHorario();cerrarSidebarMobile()">Control horario</button>
+                <button class="nav-btn side-item" data-section="horario" onclick="cargarHorario();cerrarSidebarMobile()"><svg class="ic"><use href="#i-clock"/></svg>Control horario</button>
             </div>
         </div>
 
         <div class="side-group">
-            <button class="side-group-head" onclick="toggleGrupo(this)"><span>⚙️ Configuración y cuenta</span><span class="side-caret">▾</span></button>
+            <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Administración</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
-                <button class="nav-btn side-item solo-admin" data-section="usuarios" onclick="cargarUsuarios();cerrarSidebarMobile()" style="display:none">Usuarios y seguridad</button>
-                <button class="side-item" onclick="abrirPlantillas();cerrarSidebarMobile()">Plantillas de email</button>
-                <button class="side-item" onclick="abrirMiCuenta();cerrarSidebarMobile()">Mi cuenta y seguridad</button>
-                <button class="side-item" onclick="toggleTema()">Tema claro / oscuro</button>
-                <button class="side-item side-salir" onclick="cerrarSesion()">Salir</button>
+                <button class="nav-btn side-item solo-admin" data-section="usuarios" onclick="cargarUsuarios();cerrarSidebarMobile()" style="display:none"><svg class="ic"><use href="#i-shield"/></svg>Usuarios y seguridad</button>
+                <button class="side-item" onclick="abrirPlantillas();cerrarSidebarMobile()"><svg class="ic"><use href="#i-mail"/></svg>Plantillas de email</button>
+                <button class="side-item" onclick="abrirMiCuenta();cerrarSidebarMobile()"><svg class="ic"><use href="#i-user"/></svg>Mi cuenta</button>
             </div>
         </div>
+
+        <div class="side-sep"></div>
+        <button class="side-item side-salir" onclick="cerrarSesion()"><svg class="ic"><use href="#i-logout"/></svg>Cerrar sesión</button>
     </aside>
     <div class="side-backdrop" id="side-backdrop" onclick="cerrarSidebarMobile()"></div>
 
-    <main>
+    <main id="contenido" tabindex="-1">
+        <div class="page-head" id="page-head" hidden>
+            <div class="page-miga" id="page-miga"></div>
+            <h1 class="page-titulo" id="page-titulo"></h1>
+            <p class="page-desc" id="page-desc"></p>
+        </div>
+
         <!-- INICIO (Dashboard) -->
         <section id="sec-inicio" class="section active">
             <div class="dash-hero">
@@ -92,109 +147,101 @@
                     <div class="dash-fecha" id="dash-fecha"></div>
                 </div>
                 <div class="dash-search">
-                    <input type="text" id="dash-buscar" placeholder="🔎 Buscar módulo..." autocomplete="off">
+                    <svg class="ic"><use href="#i-search"/></svg>
+                    <input type="search" id="dash-buscar" placeholder="Buscar una sección…" autocomplete="off" aria-label="Buscar una sección">
                 </div>
             </div>
 
             <div class="dash-kpis" id="dash-kpis"></div>
 
-            <div class="dash-grupo-tit">🎓 Alumnos y cobros</div>
+            <div class="dash-grupo-tit">Cobranzas y alumnos</div>
             <div class="dash-grid" data-grupo="alumnos">
-                <div class="dash-card" data-color="red" data-tags="cobrar venta fotocopia" onclick="dashIr('cobrar')">
-                    <div class="dash-icon">💳</div>
-                    <div class="dash-nombre">Cobrar</div>
-                    <div class="dash-desc">Cobro con tarjeta en los puntos de venta</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                <div class="dash-card" data-color="purple" tabindex="0" role="button" data-tags="cuotas cuenta corriente deuda siro estadisticas estado" onclick="dashIr('cuotas')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-wallet"/></svg></div>
+                    <div class="dash-nombre">Cuotas y estado de cuenta</div>
+                    <div class="dash-desc">Pagos SIRO, deuda de cada alumno y estadísticas.</div>
                 </div>
-                <div class="dash-card" data-color="sky" data-tags="alumnos padron lista" onclick="dashIr('alumnos')">
-                    <div class="dash-icon">👥</div>
+                <div class="dash-card" tabindex="0" role="button" data-tags="alumnos padron lista legajo dni" onclick="dashIr('alumnos')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-users"/></svg></div>
                     <div class="dash-nombre">Alumnos</div>
-                    <div class="dash-desc">Padrón completo de alumnos y datos</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                    <div class="dash-desc">Padrón completo con datos, curso y condición.</div>
                 </div>
-                <div class="dash-card" data-color="green" data-tags="tarjetas rfid emitir" onclick="dashIr('tarjetas')">
-                    <div class="dash-icon">🎫</div>
+                <div class="dash-card" data-color="green" tabindex="0" role="button" data-tags="importar excel padron" onclick="dashIr('importar')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-upload"/></svg></div>
+                    <div class="dash-nombre">Importar padrón</div>
+                    <div class="dash-desc">Alta o actualización masiva desde Excel.</div>
+                </div>
+            </div>
+
+            <div class="dash-grupo-tit">Tarjeta APAI</div>
+            <div class="dash-grid" data-grupo="tarjeta">
+                <div class="dash-card" data-color="red" tabindex="0" role="button" data-tags="cobrar venta fotocopia" onclick="dashIr('cobrar')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-scan"/></svg></div>
+                    <div class="dash-nombre">Cobrar</div>
+                    <div class="dash-desc">Cobro con tarjeta en los puntos de venta.</div>
+                </div>
+                <div class="dash-card" data-color="amber" tabindex="0" role="button" data-tags="operaciones recarga reintegro transferencia cupon" onclick="dashIr('operaciones')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-banknote"/></svg></div>
+                    <div class="dash-nombre">Recargas y cupones</div>
+                    <div class="dash-desc">Recargas, reintegros, transferencias y envío de cupones.</div>
+                </div>
+                <div class="dash-card" data-color="green" tabindex="0" role="button" data-tags="tarjetas rfid emitir" onclick="dashIr('tarjetas')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-card"/></svg></div>
                     <div class="dash-nombre">Tarjetas</div>
-                    <div class="dash-desc">Emitir, consultar y desactivar tarjetas</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                    <div class="dash-desc">Emitir, consultar y dar de baja tarjetas.</div>
                 </div>
-                <div class="dash-card" data-color="amber" data-tags="operaciones recarga reintegro transferencia cupon" onclick="dashIr('operaciones')">
-                    <div class="dash-icon">💸</div>
-                    <div class="dash-nombre">Operaciones y Cupones</div>
-                    <div class="dash-desc">Recargas, reintegros, transferencias y envío de cupones</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
-                </div>
-                <div class="dash-card" data-color="purple" data-tags="cuotas cuenta corriente deuda siro estadisticas" onclick="dashIr('cuotas')">
-                    <div class="dash-icon">📋</div>
-                    <div class="dash-nombre">Cuotas</div>
-                    <div class="dash-desc">Pagos SIRO, estado de deuda y estadísticas por alumno</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                <div class="dash-card" tabindex="0" role="button" data-tags="reportes estadisticas graficos kpi consumo" onclick="dashIr('reportes', true)">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-chart"/></svg></div>
+                    <div class="dash-nombre">Consumos y reportes</div>
+                    <div class="dash-desc">Indicadores, gráficos y exportación a Excel/PDF.</div>
                 </div>
             </div>
 
-            <div class="dash-grupo-tit">💰 Administración financiera</div>
+            <div class="dash-grupo-tit">Finanzas</div>
             <div class="dash-grid" data-grupo="finanzas">
-                <div class="dash-card" data-color="green" data-tags="caja efectivo ingreso egreso saldo" onclick="dashIr('caja')">
-                    <div class="dash-icon">📒</div>
-                    <div class="dash-nombre">Libro de Caja</div>
-                    <div class="dash-desc">Ingresos y egresos en efectivo, saldo en tiempo real</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
-                </div>
-                <div class="dash-card" data-color="red" data-tags="gastos facturas" onclick="dashIr('gastos')">
-                    <div class="dash-icon">🧾</div>
-                    <div class="dash-nombre">Gastos</div>
-                    <div class="dash-desc">Registro de gastos con concepto, fecha y destino</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
-                </div>
-                <div class="dash-card" data-color="sky" data-tags="proveedores razon social cuit" onclick="dashIr('proveedores')">
-                    <div class="dash-icon">🏢</div>
-                    <div class="dash-nombre">Proveedores</div>
-                    <div class="dash-desc">Base de proveedores con datos, contacto y rubro</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
-                </div>
-                <div class="dash-card" data-color="amber" data-tags="facturas pdf imagenes cargar foto qr" onclick="dashNuevaFactura()">
-                    <div class="dash-icon">📑</div>
+                <div class="dash-card" data-color="amber" tabindex="0" role="button" data-tags="facturas pdf imagenes cargar foto qr nueva" onclick="dashNuevaFactura()">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-camera"/></svg></div>
                     <div class="dash-nombre">Cargar factura</div>
-                    <div class="dash-desc">Sacá la foto y se cargan los datos solos (QR de AFIP)</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                    <div class="dash-desc">Sacá la foto: el QR de AFIP completa los datos solo.</div>
                 </div>
-                <div class="dash-card" data-color="purple" data-tags="banco roela conciliacion transferencia" onclick="dashIr('conciliacion')">
-                    <div class="dash-icon">🏦</div>
+                <div class="dash-card" data-color="red" tabindex="0" role="button" data-tags="gastos facturas" onclick="dashIr('gastos')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-receipt"/></svg></div>
+                    <div class="dash-nombre">Gastos y facturas</div>
+                    <div class="dash-desc">Facturas de proveedores, rubro y destino del gasto.</div>
+                </div>
+                <div class="dash-card" tabindex="0" role="button" data-tags="proveedores razon social cuit" onclick="dashIr('proveedores')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-building"/></svg></div>
+                    <div class="dash-nombre">Proveedores</div>
+                    <div class="dash-desc">Datos, contacto y rubro de cada proveedor.</div>
+                </div>
+                <div class="dash-card" data-color="green" tabindex="0" role="button" data-tags="caja efectivo ingreso egreso saldo libro" onclick="dashIr('caja')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-book"/></svg></div>
+                    <div class="dash-nombre">Libro de caja</div>
+                    <div class="dash-desc">Ingresos y egresos en efectivo con saldo al día.</div>
+                </div>
+                <div class="dash-card" data-color="purple" tabindex="0" role="button" data-tags="banco roela conciliacion transferencia extracto" onclick="dashIr('conciliacion')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-bank"/></svg></div>
                     <div class="dash-nombre">Conciliación bancaria</div>
-                    <div class="dash-desc">Cruce de pagos con el extracto del banco</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                    <div class="dash-desc">Cruce de pagos del extracto con las facturas.</div>
                 </div>
             </div>
 
-            <div class="dash-grupo-tit">👤 Personal</div>
-            <div class="dash-grid" data-grupo="personal">
-                <div class="dash-card dash-soon" data-color="sky" data-tags="horario fichar ingreso egreso horas extras administrativa" onclick="dashProx('Control horario')">
-                    <div class="dash-icon">⏰</div>
+            <div class="dash-grupo-tit">Personal y administración</div>
+            <div class="dash-grid" data-grupo="admin">
+                <div class="dash-card" tabindex="0" role="button" data-tags="horario fichar ingreso egreso horas extras" onclick="dashIr('horario')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-clock"/></svg></div>
                     <div class="dash-nombre">Control horario</div>
-                    <div class="dash-desc">Ingreso, egreso, horas extras y liquidación mensual</div>
-                    <div class="dash-badge">Próximamente</div>
+                    <div class="dash-desc">Entradas, salidas, horas extras y liquidación.</div>
                 </div>
-            </div>
-
-            <div class="dash-grupo-tit">📊 Análisis y herramientas</div>
-            <div class="dash-grid" data-grupo="analisis">
-                <div class="dash-card" data-color="sky" data-tags="reportes estadisticas graficos kpi" onclick="dashIr('reportes', true)">
-                    <div class="dash-icon">📈</div>
-                    <div class="dash-nombre">Reportes</div>
-                    <div class="dash-desc">Indicadores, gráficos y exportación a Excel/PDF</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                <div class="dash-card solo-admin" data-color="red" tabindex="0" role="button" data-tags="usuarios seguridad roles 2fa auditoria" onclick="dashIr('usuarios')" style="display:none">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-shield"/></svg></div>
+                    <div class="dash-nombre">Usuarios y seguridad</div>
+                    <div class="dash-desc">Accesos, permisos y registro de actividad.</div>
                 </div>
-                <div class="dash-card" data-color="green" data-tags="importar excel padron" onclick="dashIr('importar')">
-                    <div class="dash-icon">📥</div>
-                    <div class="dash-nombre">Importar Excel</div>
-                    <div class="dash-desc">Carga masiva de alumnos desde planilla</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
-                </div>
-                <div class="dash-card" data-color="amber" data-tags="mi cuenta clave email" onclick="abrirMiCuenta()">
-                    <div class="dash-icon">⚙️</div>
+                <div class="dash-card" data-color="amber" tabindex="0" role="button" data-tags="mi cuenta clave email 2fa" onclick="abrirMiCuenta()">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-user"/></svg></div>
                     <div class="dash-nombre">Mi cuenta</div>
-                    <div class="dash-desc">Datos del usuario, contraseña y prueba de email</div>
-                    <div class="dash-badge dash-badge-on">Activo</div>
+                    <div class="dash-desc">Tus datos, contraseña y verificación en 2 pasos.</div>
                 </div>
             </div>
         </section>
@@ -280,13 +327,13 @@
             <div class="toolbar">
                 <input type="text" id="buscar-alumno" placeholder="Buscar por nombre, apellido, legajo o DNI...">
                 <select id="filtro-curso"><option value="">Todos los cursos</option></select>
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormAlumno()">+ Nuevo Alumno</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormAlumno()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo Alumno</button>
                 <span style="flex:1"></span>
-                <button class="btn btn-red" onclick="eliminarPadronCompleto()">🗑 Eliminar padrón completo</button>
+                <button class="btn btn-red" onclick="eliminarPadronCompleto()"><svg class="ic"><use href="#i-trash"/></svg>Eliminar padrón completo</button>
             </div>
             <div style="font-size:0.8rem;color:var(--gray-600);margin-bottom:0.75rem">
                 <span style="font-weight:600">Referencias:</span>
-                🚫 = excluido de la cuota &nbsp;·&nbsp; 💲 = paga un monto de cuota distinto
+                <b>Sin cupón</b> = excluido de la cuota &nbsp;·&nbsp; <b>Cuota especial</b> = paga un monto distinto
             </div>
 
             <div id="form-alumno" class="card form-card" style="display:none">
@@ -330,7 +377,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormAlumno()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormAlumno()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -411,8 +458,8 @@
                         <button type="button" class="btn btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga individual</button>
                         <button type="button" class="btn btn-sm" id="tab-recargalote" onclick="cuponTab('recargalote')">Recarga en lote</button>
                         <span style="flex:1"></span>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaEmail()">👁 Vista previa</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()">✎ Editar plantillas</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaEmail()"><svg class="ic"><use href="#i-eye"/></svg>Vista previa</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()"><svg class="ic"><use href="#i-pencil"/></svg>Editar plantillas</button>
                     </div>
 
                     <!-- CUOTA -->
@@ -435,7 +482,7 @@
                             <input type="number" id="cuota-monto" min="1" step="0.01" value="45000">
                         </div>
                         <div>
-                            <div id="cuota-info" style="font-size:0.85rem;color:#5b6b80;margin-bottom:0.5rem"></div>
+                            <div id="cuota-info" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem"></div>
                             <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
                         </div>
                     </div>
@@ -450,7 +497,7 @@
                                 <button type="button" class="buscador-clear">&times;</button>
                                 <div class="buscador-dropdown" id="drop-cupon"></div>
                             </div>
-                            <div id="cupon-info" style="font-size:0.85rem;color:#5b6b80;margin-top:0.4rem"></div>
+                            <div id="cupon-info" style="font-size:0.85rem;color:var(--text-muted);margin-top:0.4rem"></div>
                         </div>
                         <div>
                             <label>Monto a recargar ($)</label>
@@ -560,7 +607,7 @@
             <div class="section-titulo">Usuarios y seguridad</div>
             <div class="toolbar">
                 <span class="muted">Cada persona con su propio usuario. <b>Administrador</b>: ve y modifica todo. <b>Solo lectura</b>: consulta sin poder modificar.</span>
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormUsuario()">+ Nuevo usuario</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormUsuario()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo usuario</button>
             </div>
 
             <div id="form-usuario" class="card form-card" style="display:none">
@@ -579,7 +626,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Crear usuario</button>
-                        <button type="button" class="btn btn-red" onclick="document.getElementById('form-usuario').style.display='none'">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('form-usuario').style.display='none'">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -602,7 +649,7 @@
             <div class="section-titulo">Proveedores</div>
             <div class="toolbar">
                 <input type="text" id="buscar-proveedor" placeholder="Buscar por razón social, nombre de fantasía, CUIT o rubro...">
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormProveedor()">+ Nuevo Proveedor</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormProveedor()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo Proveedor</button>
             </div>
 
             <div id="form-proveedor" class="card form-card" style="display:none">
@@ -622,7 +669,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormProveedor()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormProveedor()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -648,7 +695,7 @@
                 </select>
                 <select id="gasto-f-mes" onchange="cargarGastos()"></select>
                 <select id="gasto-f-anio" onchange="cargarGastos()"></select>
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormGasto()">+ Nuevo Gasto</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormGasto()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo Gasto</button>
             </div>
 
             <div class="gasto-resumen" id="gasto-resumen"></div>
@@ -657,13 +704,13 @@
                 <h3 id="form-gasto-titulo">Nuevo Gasto</h3>
 
                 <div class="gasto-lector">
-                    <div class="gasto-lector-tit">📷 Leer factura automáticamente</div>
+                    <div class="gasto-lector-tit"><svg class="ic"><use href="#i-camera"/></svg>Leer factura automáticamente</div>
                     <p class="gasto-lector-txt">Sacá o subí una foto de la factura. Si tiene el <b>QR de AFIP</b>,
                         el sistema completa solo la fecha, CUIT, número e importe. La imagen queda guardada como respaldo.</p>
                     <input type="file" id="gasto-leer-archivo" accept="image/*,.pdf,.heic" capture="environment"
                         style="display:none" onchange="leerComprobante(this)">
                     <button type="button" class="btn btn-primary btn-3d" onclick="document.getElementById('gasto-leer-archivo').click()">
-                        📤 Subir / sacar foto de la factura</button>
+                        <svg class="ic"><use href="#i-camera"/></svg>Subir o sacar foto de la factura</button>
                     <span id="gasto-lector-estado" class="gasto-lector-estado"></span>
                 </div>
 
@@ -697,7 +744,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormGasto()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormGasto()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -720,7 +767,7 @@
             <!-- Panel rapido tipo punto de venta -->
             <div class="caja-rapida">
                 <div class="caja-rap-col caja-rap-in">
-                    <div class="caja-rap-tit">💵 Ingresos por ventas</div>
+                    <div class="caja-rap-tit"><svg class="ic"><use href="#i-in"/></svg>Ingresos por ventas</div>
                     <div class="caja-rap-chips" id="caja-rap-in-chips">
                         <button type="button" class="chip" onclick="cajaPreset('in',this,'Fotocopias')">Fotocopias</button>
                         <button type="button" class="chip" onclick="cajaPreset('in',this,'Libro Matemática')">Libro Matemática</button>
@@ -732,12 +779,12 @@
                         <input type="text" id="caja-rap-in-concepto" placeholder="Concepto del ingreso">
                         <input type="number" step="0.01" id="caja-rap-in-monto" placeholder="$ Importe"
                             onkeydown="if(event.key==='Enter'){event.preventDefault();cajaRapida('ingreso')}">
-                        <button type="button" class="btn btn-success btn-3d" onclick="cajaRapida('ingreso')">Registrar ↵</button>
+                        <button type="button" class="btn btn-success btn-3d" onclick="cajaRapida('ingreso')">Registrar</button>
                     </div>
                 </div>
 
                 <div class="caja-rap-col caja-rap-out">
-                    <div class="caja-rap-tit">🧾 Egresos / gastos</div>
+                    <div class="caja-rap-tit"><svg class="ic"><use href="#i-out"/></svg>Egresos y gastos</div>
                     <div class="caja-rap-chips" id="caja-rap-out-chips">
                         <button type="button" class="chip" onclick="cajaPreset('out',this,'Pago proveedores')">Pago proveedores</button>
                         <button type="button" class="chip" onclick="cajaPreset('out',this,'Refrigerios')">Refrigerios</button>
@@ -751,7 +798,7 @@
                         <input type="text" id="caja-rap-out-concepto" placeholder="Concepto del gasto">
                         <input type="number" step="0.01" id="caja-rap-out-monto" placeholder="$ Importe"
                             onkeydown="if(event.key==='Enter'){event.preventDefault();cajaRapida('egreso')}">
-                        <button type="button" class="btn btn-red btn-3d" onclick="cajaRapida('egreso')">Registrar ↵</button>
+                        <button type="button" class="btn btn-red btn-3d" onclick="cajaRapida('egreso')">Registrar</button>
                     </div>
                 </div>
             </div>
@@ -765,8 +812,8 @@
                 </select>
                 <select id="caja-f-mes" onchange="cargarCaja()"></select>
                 <select id="caja-f-anio" onchange="cargarCaja()"></select>
-                <button class="btn btn-success btn-3d" onclick="mostrarFormCaja('ingreso')">+ Ingreso</button>
-                <button class="btn btn-red btn-3d" onclick="mostrarFormCaja('egreso')">+ Egreso</button>
+                <button class="btn btn-success btn-3d" onclick="mostrarFormCaja('ingreso')"><svg class="ic"><use href="#i-plus"/></svg>Ingreso</button>
+                <button class="btn btn-red btn-3d" onclick="mostrarFormCaja('egreso')"><svg class="ic"><use href="#i-plus"/></svg>Egreso</button>
                 <button class="btn btn-outline" onclick="editarSaldoInicial()">Saldo inicial</button>
             </div>
 
@@ -786,7 +833,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormCaja()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormCaja()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -815,8 +862,8 @@
                 </div>
                 <div class="conc-importar-acc">
                     <input type="file" id="conc-archivo" accept=".xls" style="display:none" onchange="importarExtracto(this)">
-                    <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()">📤 Subir extracto (.xls)</button>
-                    <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas">↻ Reintentar cruce</button>
+                    <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir extracto</button>
+                    <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas"><svg class="ic"><use href="#i-refresh"/></svg>Reintentar cruce</button>
                 </div>
             </div>
 
@@ -864,8 +911,8 @@
                     </div>
                     <div class="conc-importar-acc">
                         <input type="file" id="siro-archivo" accept=".xls" style="display:none" onchange="importarSiro(this)">
-                        <button class="btn btn-primary btn-3d" onclick="document.getElementById('siro-archivo').click()">📤 Subir cobranzas (.xls)</button>
-                        <button class="btn btn-outline" onclick="reasignarSiro()" title="Reintenta asignar los pagos sin dueño">↻ Reasignar pendientes</button>
+                        <button class="btn btn-primary btn-3d" onclick="document.getElementById('siro-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir cobranzas (.xls)</button>
+                        <button class="btn btn-outline" onclick="reasignarSiro()" title="Reintenta asignar los pagos sin dueño"><svg class="ic"><use href="#i-refresh"/></svg>Reasignar pendientes</button>
                     </div>
                 </div>
 
@@ -885,9 +932,9 @@
                 <table id="tabla-siro">
                     <thead>
                         <tr class="th-sort">
-                            <th onclick="sortSiro('fecha')">Fecha ⇅</th><th onclick="sortSiro('cliente_siro')">N° Cliente ⇅</th>
-                            <th onclick="sortSiro('alumno')">Alumno ⇅</th><th onclick="sortSiro('curso')">Curso ⇅</th>
-                            <th onclick="sortSiro('canal')">Canal ⇅</th><th style="text-align:right" onclick="sortSiro('importe')">Importe ⇅</th><th>Acciones</th>
+                            <th onclick="sortSiro('fecha')">Fecha</th><th onclick="sortSiro('cliente_siro')">N° Cliente</th>
+                            <th onclick="sortSiro('alumno')">Alumno</th><th onclick="sortSiro('curso')">Curso</th>
+                            <th onclick="sortSiro('canal')">Canal</th><th style="text-align:right" onclick="sortSiro('importe')">Importe</th><th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="body-siro"></tbody>
@@ -918,12 +965,12 @@
                 <table id="tabla-estado">
                     <thead>
                         <tr class="th-sort">
-                            <th onclick="sortEstado('legajo')">Legajo ⇅</th><th onclick="sortEstado('alumno')">Alumno ⇅</th>
-                            <th onclick="sortEstado('curso')">Curso ⇅</th><th onclick="sortEstado('area')">Área ⇅</th>
-                            <th style="text-align:right" onclick="sortEstado('pagado')">Pagado ⇅</th>
-                            <th style="text-align:right" onclick="sortEstado('esperado')">Esperado ⇅</th>
-                            <th style="text-align:right" onclick="sortEstado('deuda_total')">Deuda ⇅</th>
-                            <th onclick="sortEstado('estado')">Estado ⇅</th><th></th>
+                            <th onclick="sortEstado('legajo')">Legajo</th><th onclick="sortEstado('alumno')">Alumno</th>
+                            <th onclick="sortEstado('curso')">Curso</th><th onclick="sortEstado('area')">Área</th>
+                            <th style="text-align:right" onclick="sortEstado('pagado')">Pagado</th>
+                            <th style="text-align:right" onclick="sortEstado('esperado')">Esperado</th>
+                            <th style="text-align:right" onclick="sortEstado('deuda_total')">Deuda</th>
+                            <th onclick="sortEstado('estado')">Estado</th><th></th>
                         </tr>
                     </thead>
                     <tbody id="body-estado"></tbody>
@@ -933,7 +980,7 @@
             <!-- TAB: ESTADISTICAS -->
             <div id="cuotas-tab-stats" style="display:none">
                 <div class="toolbar">
-                    <button class="btn btn-red" onclick="exportarEstadisticasPDF()">⬇ Exportar PDF</button>
+                    <button class="btn btn-outline" onclick="exportarEstadisticasPDF()"><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>
                 </div>
                 <div class="gasto-resumen" id="stats-kpis"></div>
                 <div class="reportes-charts">
@@ -956,7 +1003,7 @@
                 Estos valores se usan para calcular la deuda y el estado de cada alumno.</p>
 
             <div class="toolbar">
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormCurso()">+ Nuevo curso</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormCurso()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo curso</button>
             </div>
 
             <div id="form-curso" class="card form-card" style="display:none">
@@ -989,7 +1036,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormCurso()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormCurso()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -1015,9 +1062,9 @@
                 <select id="hor-empleado" onchange="cargarHorarioMes()"></select>
                 <select id="hor-mes" onchange="cargarHorarioMes()"></select>
                 <select id="hor-anio" onchange="cargarHorarioMes()"></select>
-                <button class="btn btn-primary btn-3d" onclick="mostrarFormDia()">+ Registrar día</button>
-                <button class="btn btn-red" onclick="exportarHorarioPDF()">⬇ PDF del mes</button>
-                <button class="btn btn-outline" onclick="abrirEmpleados()">👤 Empleados</button>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormDia()"><svg class="ic"><use href="#i-plus"/></svg>Registrar día</button>
+                <button class="btn btn-outline" onclick="exportarHorarioPDF()"><svg class="ic"><use href="#i-download"/></svg>PDF del mes</button>
+                <button class="btn btn-outline" onclick="abrirEmpleados()"><svg class="ic"><use href="#i-users"/></svg>Empleados</button>
             </div>
 
             <div class="gasto-resumen" id="hor-resumen"></div>
@@ -1035,7 +1082,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
-                        <button type="button" class="btn btn-red" onclick="cerrarFormDia()">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" onclick="cerrarFormDia()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -1080,11 +1127,11 @@
             </div>
 
             <div class="reportes-acciones">
-                <button class="btn btn-success" onclick="exportarReporte('movimientos')">⬇ Excel Movimientos</button>
-                <button class="btn btn-success" onclick="exportarReporte('alumnos')">⬇ Excel Alumnos</button>
-                <button class="btn btn-success" onclick="exportarReporte('por-curso')">⬇ Excel por Curso</button>
-                <button class="btn btn-red" onclick="exportarReportePDF()">⬇ PDF Reporte General</button>
-                <button class="btn btn-outline" onclick="descargarBackup()">💾 Backup completo</button>
+                <button class="btn btn-outline" onclick="exportarReporte('movimientos')"><svg class="ic"><use href="#i-sheet"/></svg>Excel movimientos</button>
+                <button class="btn btn-outline" onclick="exportarReporte('alumnos')"><svg class="ic"><use href="#i-sheet"/></svg>Excel alumnos</button>
+                <button class="btn btn-outline" onclick="exportarReporte('por-curso')"><svg class="ic"><use href="#i-sheet"/></svg>Excel por curso</button>
+                <button class="btn btn-outline" onclick="exportarReportePDF()"><svg class="ic"><use href="#i-download"/></svg>PDF reporte general</button>
+                <button class="btn btn-outline" onclick="descargarBackup()"><svg class="ic"><use href="#i-database"/></svg>Backup completo</button>
             </div>
 
             <div class="kpi-grid" id="kpi-grid"></div>
@@ -1131,7 +1178,7 @@
             <div class="card" style="max-width:600px">
                 <h3>Importar alumnos desde Excel</h3>
                 <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong> y opcionalmente <strong>Mail</strong>.</p>
-                <p style="color:#5b6b80;font-size:0.85rem">Si un alumno ya existe, se actualiza su email desde la columna Mail (no se duplica).</p>
+                <p style="color:var(--text-muted);font-size:0.85rem">Si un alumno ya existe, se actualiza su email desde la columna Mail (no se duplica).</p>
                 <form onsubmit="importarExcel(event)">
                     <input type="file" id="archivo-excel" accept=".xlsx,.xls" required>
                     <button type="submit" class="btn btn-primary">Importar</button>
@@ -1141,11 +1188,12 @@
         </section>
     </main>
 
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="cerrarModal()">
-        <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+            <button class="modal-x" onclick="cerrarModal()" aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
             <div id="modal-content"></div>
-            <button class="btn btn-red btn-cerrar-modal" onclick="cerrarModal()">Cerrar</button>
+            <button class="btn btn-ghost btn-cerrar-modal" onclick="cerrarModal()">Cerrar</button>
         </div>
     </div>
 
@@ -1156,6 +1204,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="/static/pdf.min.js"></script>
     <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/pdf.worker.min.js';</script>
+    <script src="/static/formato.js"></script>
     <script src="/static/app.js"></script>
     <script src="/static/reportes.js"></script>
     <script src="/static/efectos.js"></script>

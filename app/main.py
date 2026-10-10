@@ -68,6 +68,9 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"  # datos personales: que no queden en caché
+    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer"):
+        # Siempre revalidar (ETag): después de cada actualización nadie queda con CSS/JS viejos
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 

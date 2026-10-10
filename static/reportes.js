@@ -43,12 +43,12 @@ function paramsFecha() {
 function rangoRapido(dias) {
     const hasta = new Date();
     const desde = new Date();
-    document.getElementById('rep-hasta').value = hasta.toISOString().slice(0, 10);
+    document.getElementById('rep-hasta').value = isoDeFecha(hasta);
     if (dias === 0) {
         document.getElementById('rep-desde').value = '2024-01-01';
     } else {
         desde.setDate(desde.getDate() - dias);
-        document.getElementById('rep-desde').value = desde.toISOString().slice(0, 10);
+        document.getElementById('rep-desde').value = isoDeFecha(desde);
     }
     cargarReportes();
 }
@@ -73,8 +73,8 @@ async function cargarReportes() {
         const hoy = new Date();
         const hace30 = new Date();
         hace30.setDate(hace30.getDate() - 30);
-        inpHasta.value = hoy.toISOString().slice(0, 10);
-        inpDesde.value = hace30.toISOString().slice(0, 10);
+        inpHasta.value = isoDeFecha(hoy);
+        inpDesde.value = isoDeFecha(hace30);
     }
     // Colores de los graficos segun el tema (claro/oscuro)
     if (window.Chart) {
@@ -217,7 +217,7 @@ function renderTablaPorCurso(datos) {
             <td>${d.cantidad_operaciones}</td>
             <td>${d.alumnos_compradores} / ${d.alumnos_curso}</td>
             <td>$${fmt(d.promedio_por_alumno)}</td>
-        </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sin datos en el período</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin datos en el período</td></tr>';
 }
 
 function renderTopAlumnos(datos) {
@@ -229,7 +229,7 @@ function renderTopAlumnos(datos) {
             <td>${a.legajo}</td>
             <td class="saldo-positivo">$${fmt(a.total_consumo)}</td>
             <td>${a.cantidad}</td>
-        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#94a3b8">Sin datos en el período</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Sin datos en el período</td></tr>';
 }
 
 // --- Descargar archivo autenticado (Excel / Backup) ---
@@ -285,7 +285,7 @@ function pieDePagina(doc) {
     for (let i = 1; i <= paginas; i++) {
         doc.setPage(i);
         doc.setFontSize(7.5); doc.setTextColor(150);
-        doc.text(`APAI Pay — Generado el ${new Date().toLocaleString('es-AR', { hour12: false })}`, 14, 290);
+        doc.text(`APAI Pay — Generado el ${ahoraAR()}`, 14, 290);
         doc.text(`Página ${i} de ${paginas}`, 180, 290);
     }
 }
@@ -308,7 +308,7 @@ async function construirPDFAlumno(id) {
     doc.setFont(undefined, 'normal');
 
     const rows = movs.map(m => [
-        new Date(m.created_at).toLocaleString('es-AR', { hour12: false }),
+        fmtFechaHora(m.created_at),
         traducirTipo(m.tipo),
         `$${fmt(m.monto)}`,
         m.descripcion || '',
@@ -452,7 +452,7 @@ async function exportarReportePDF() {
         });
 
         pieDePagina(doc);
-        doc.save(`reporte_general_${new Date().toISOString().slice(0, 10)}.pdf`);
+        doc.save(`reporte_general_${hoyISO()}.pdf`);
         toast('Reporte PDF generado');
     } catch (err) {
         toast('Error al generar reporte: ' + err.message, 'error');

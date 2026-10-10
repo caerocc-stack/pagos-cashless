@@ -55,6 +55,8 @@ MIGRACIONES = [
 
 def _asegurar_columnas():
     """Migracion ligera e idempotente: agrega columnas nuevas sin perder datos."""
+    if engine.dialect.name != "postgresql":
+        return  # base local de pruebas (SQLite): create_all ya crea todo
     for sql in MIGRACIONES:
         try:
             with engine.begin() as conn:

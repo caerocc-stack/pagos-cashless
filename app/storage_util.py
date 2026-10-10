@@ -4,7 +4,7 @@ Subida de comprobantes (fotos/PDF de facturas) a Supabase Storage.
 Render bloquea SMTP pero NO el puerto 443, así que se usa la API REST de
 Storage por HTTPS (igual que email_util con Mailjet).
 
-Variables de entorno necesarias (cargar en Render):
+Variables de entorno necesarias (cargar en Vercel):
   SUPABASE_URL          ej: https://abcdxyz.supabase.co
   SUPABASE_SERVICE_KEY  la clave 'service_role' (Project Settings > API). SECRETA.
   SUPABASE_BUCKET       opcional, por defecto 'comprobantes'
