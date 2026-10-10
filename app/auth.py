@@ -3,7 +3,7 @@ import jwt
 import bcrypt
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,6 +18,7 @@ if not os.getenv("SECRET_KEY"):
           "Cargá SECRET_KEY en el entorno para mantener las sesiones entre reinicios.")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 12
+METODOS_LECTURA = {"GET", "HEAD", "OPTIONS"}
 
 
 def hash_password(password: str) -> str:
@@ -25,38 +26,75 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except ValueError:
+        return False
 
 
-def create_token(username: str, nombre: str) -> str:
-    payload = {
-        "sub": username,
-        "nombre": nombre,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
-    }
+# Hash fijo para comparar cuando el usuario no existe: el login tarda lo mismo
+# exista o no la cuenta (no se puede averiguar que usuarios existen midiendo tiempos).
+HASH_SENUELO = hash_password(secrets.token_hex(16))
+
+
+def _firmar(payload: dict, minutos: int) -> str:
+    payload = {**payload, "exp": datetime.now(timezone.utc) + timedelta(minutes=minutos)}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_token(token: str) -> dict | None:
+def create_token(usuario: Usuario) -> str:
+    """Token de sesion del personal (cookie 'token')."""
+    return _firmar({"typ": "sesion", "uid": usuario.id, "sub": usuario.username,
+                    "nombre": usuario.nombre, "ver": usuario.version_sesion or 0},
+                   TOKEN_EXPIRE_HOURS * 60)
+
+
+def create_token_2fa(usuario: Usuario) -> str:
+    """Token corto que habilita SOLO el paso del codigo 2FA (5 minutos)."""
+    return _firmar({"typ": "2fa", "uid": usuario.id, "ver": usuario.version_sesion or 0}, 5)
+
+
+def verify_token(token: str, tipo: str = "sesion") -> dict | None:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
         return None
+    return data if data.get("typ") == tipo else None
 
 
-def get_current_user(request: Request):
-    """Dependencia para proteger endpoints de la API."""
+def poner_cookie_sesion(response: Response, token: str):
+    response.set_cookie("token", token, httponly=True, samesite="strict", secure=True,
+                        max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
+    """Dependencia de toda la API del personal: valida token, usuario activo, version de
+    sesion (cambio de clave = cierra las demas sesiones) y permisos del rol."""
     token = request.cookies.get("token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
     if not token:
         raise HTTPException(401, "No autenticado")
     payload = verify_token(token)
-    if not payload:
-        raise HTTPException(401, "Token invalido o expirado")
-    return payload
+    if not payload or "uid" not in payload:
+        raise HTTPException(401, "Sesión vencida. Volvé a iniciar sesión.")
+    usuario = db.get(Usuario, payload["uid"])
+    if not usuario or not usuario.activo or (usuario.version_sesion or 0) != payload.get("ver"):
+        raise HTTPException(401, "Sesión vencida. Volvé a iniciar sesión.")
+
+    ruta = request.url.path
+    libre = ruta.startswith("/api/auth/")  # cuenta propia: clave, 2FA, salir
+    if usuario.debe_cambiar_password and not libre:
+        raise HTTPException(403, "Tenés que cambiar tu contraseña antes de continuar.")
+    if usuario.rol == "lectura" and request.method not in METODOS_LECTURA and not libre:
+        raise HTTPException(403, "Tu usuario es de solo lectura: no puede modificar datos.")
+
+    return {"uid": usuario.id, "sub": usuario.username, "nombre": usuario.nombre,
+            "rol": usuario.rol, "email": usuario.email}
+
+
+def requiere_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user["rol"] != "admin":
+        raise HTTPException(403, "Solo un administrador puede hacer esto.")
+    return user
 
 
 def solo_nombres(nombre_completo: str) -> str:
@@ -71,13 +109,15 @@ def solo_nombres(nombre_completo: str) -> str:
 
 def crear_usuario_inicial(db: Session):
     """Crea el usuario admin si no existe ninguno. La clave inicial sale de
-    ADMIN_PASSWORD (o 'apai2024' por defecto, que DEBE cambiarse al primer ingreso)."""
+    ADMIN_PASSWORD (o 'apai2024' por defecto) y se obliga a cambiarla al primer ingreso."""
     if db.query(Usuario).count() == 0:
         clave = os.getenv("ADMIN_PASSWORD", "apai2024")
         admin = Usuario(
             username=os.getenv("ADMIN_USER", "admin"),
             password_hash=hash_password(clave),
             nombre="Administrador APAI",
+            rol="admin",
+            debe_cambiar_password=True,
         )
         db.add(admin)
         db.commit()

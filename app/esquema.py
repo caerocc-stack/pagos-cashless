@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.database import engine, Base, SessionLocal
 from app.auth import crear_usuario_inicial
 from app import models  # noqa: F401 (registra las tablas principales)
-from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario  # noqa: F401
+from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario, seguridad  # noqa: F401
 
 MIGRACIONES = [
     "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
@@ -38,6 +38,18 @@ MIGRACIONES = [
     "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS deuda_anio_anterior NUMERIC(12,2)",
     # Pagos de cuota: vínculo a un movimiento de caja (pago en efectivo)
     "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS caja_mov_id INTEGER",
+    # Usuarios: correo, roles, 2FA y bloqueo por intentos (seguridad, oct 2026)
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(150) UNIQUE",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol VARCHAR(20) NOT NULL DEFAULT 'admin'",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS totp_secreto VARCHAR(300)",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS totp_activo BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS totp_ultimo_paso INTEGER",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigos_respaldo VARCHAR(1200)",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS intentos_fallidos INTEGER DEFAULT 0",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_hasta TIMESTAMP",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS debe_cambiar_password BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS version_sesion INTEGER DEFAULT 0",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_ingreso TIMESTAMP",
 ]
 
 

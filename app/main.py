@@ -3,12 +3,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
 
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router
+from app.routers import auth as auth_router, usuarios
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -46,9 +46,18 @@ CSP = (
 )
 
 
+METODOS_SEGUROS = {"GET", "HEAD", "OPTIONS"}
+
+
 @app.middleware("http")
 async def headers_seguridad(request: Request, call_next):
-    """Agrega encabezados de seguridad a todas las respuestas."""
+    """Agrega encabezados de seguridad y bloquea pedidos que modifican datos desde otros sitios (CSRF)."""
+    if request.method not in METODOS_SEGUROS and request.url.path.startswith("/api/"):
+        origen = request.headers.get("origin") or request.headers.get("referer") or ""
+        host = request.headers.get("host", "")
+        permitidos = {f"https://{host}", f"http://{host}", *_origenes}
+        if origen and not any(origen == p or origen.startswith(p + "/") for p in permitidos):
+            return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -56,6 +65,9 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = CSP
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"  # datos personales: que no queden en caché
     return response
 
 
@@ -78,6 +90,7 @@ app.include_router(conciliacion.router, dependencies=_auth)
 app.include_router(cursos.router, dependencies=_auth)
 app.include_router(cuotas.router, dependencies=_auth)
 app.include_router(horario.router, dependencies=_auth)
+app.include_router(usuarios.router, dependencies=_auth)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -97,6 +110,11 @@ def health():
 @app.get("/login")
 def login_page():
     return FileResponse(str(STATIC_DIR / "login.html"))
+
+
+@app.get("/restablecer")
+def restablecer_page():
+    return FileResponse(str(STATIC_DIR / "restablecer.html"))
 
 
 @app.api_route("/", methods=["GET", "HEAD"])

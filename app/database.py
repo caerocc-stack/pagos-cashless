@@ -13,7 +13,7 @@ DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+psycopg://")
 
 # Supabase usa pgbouncer en modo transaccion: los prepared statements del servidor
 # chocan con el pooler (error DuplicatePreparedStatement). Los desactivamos.
-_connect_args = {"prepare_threshold": None}
+_connect_args = {} if DATABASE_URL.startswith("sqlite") else {"prepare_threshold": None}
 
 if os.getenv("VERCEL"):
     # En Vercel las instancias se congelan entre pedidos: un pool propio dejaria

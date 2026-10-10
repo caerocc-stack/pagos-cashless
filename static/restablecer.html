@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>APAI Pay - Crear contraseña</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #15233b 0%, #1f3354 55%, #2b4368 100%);
+            display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px;
+        }
+        .card {
+            background: #fff; border-radius: 16px; padding: 2.2rem; width: 100%; max-width: 410px;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.45); border-top: 4px solid #a01e22;
+        }
+        img { display: block; width: 72px; height: 72px; object-fit: contain; margin: 0 auto 0.8rem; }
+        h1 { text-align: center; color: #15233b; font-size: 1.35rem; margin-bottom: 0.4rem; }
+        .sub { text-align: center; color: #5b6b80; font-size: 0.88rem; margin-bottom: 1.4rem; }
+        label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #475569; font-weight: 500; }
+        input {
+            width: 100%; padding: 0.75rem; border: 1px solid #e2e8f0; border-radius: 8px;
+            font-size: 1rem; margin-bottom: 1rem;
+        }
+        input:focus { outline: none; border-color: #3d7fc4; box-shadow: 0 0 0 3px rgba(61,127,196,0.15); }
+        button {
+            width: 100%; padding: 0.85rem; background: #a01e22; color: #fff; border: none; border-radius: 8px;
+            font-size: 1.02rem; font-weight: 600; cursor: pointer;
+        }
+        button:hover { background: #7d1619; }
+        button:disabled { opacity: 0.6; cursor: wait; }
+        .reglas { list-style: none; font-size: 0.82rem; color: #64748b; margin: -0.3rem 0 1rem; }
+        .reglas li::before { content: '○ '; }
+        .reglas li.ok { color: #15803d; }
+        .reglas li.ok::before { content: '✓ '; }
+        .msg { padding: 0.7rem; border-radius: 8px; font-size: 0.88rem; margin-bottom: 1rem; display: none; text-align: center; }
+        .msg.error { background: #fef2f2; color: #a01e22; }
+        .msg.ok { background: #f0fdf4; color: #166534; }
+        a { display: block; text-align: center; margin-top: 1rem; font-size: 0.86rem; color: #3d7fc4; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <img src="/static/logo.png" alt="APAI">
+        <h1>Crear contraseña nueva</h1>
+        <p class="sub">Elegí una contraseña que no uses en otros sitios.</p>
+        <div class="msg" id="msg"></div>
+        <form id="form" onsubmit="guardar(event)">
+            <label for="p1">Contraseña nueva</label>
+            <input type="password" id="p1" autocomplete="new-password" required>
+            <ul class="reglas">
+                <li id="r-largo">Al menos 10 caracteres</li>
+                <li id="r-mix">Letras y números</li>
+                <li id="r-igual">Las dos contraseñas coinciden</li>
+            </ul>
+            <label for="p2">Repetir contraseña</label>
+            <input type="password" id="p2" autocomplete="new-password" required>
+            <button type="submit">Guardar contraseña</button>
+        </form>
+        <a href="/login">Ir al inicio de sesión</a>
+    </div>
+    <script>
+        const token = new URLSearchParams(location.search).get('t') || '';
+        // Saca el token de la barra de direcciones (que no quede en el historial)
+        history.replaceState(null, '', '/restablecer');
+        const $ = id => document.getElementById(id);
+
+        function msg(tipo, texto) { const m = $('msg'); m.className = 'msg ' + tipo; m.textContent = texto; m.style.display = 'block'; }
+
+        function revisar() {
+            const a = $('p1').value, b = $('p2').value;
+            const largo = a.length >= 10, mix = /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(a) && /\d/.test(a), igual = a && a === b;
+            $('r-largo').className = largo ? 'ok' : ''; $('r-mix').className = mix ? 'ok' : ''; $('r-igual').className = igual ? 'ok' : '';
+            return largo && mix && igual;
+        }
+        $('p1').addEventListener('input', revisar); $('p2').addEventListener('input', revisar);
+
+        if (!token) { msg('error', 'El link está incompleto. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".'); $('form').style.display = 'none'; }
+
+        async function guardar(e) {
+            e.preventDefault();
+            if (!revisar()) return msg('error', 'Revisá los requisitos de la contraseña.');
+            const btn = e.submitter; btn.disabled = true;
+            try {
+                const res = await fetch('/api/auth/restablecer', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+                    body: JSON.stringify({ token, password_nueva: $('p1').value }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'No se pudo guardar.');
+                $('form').style.display = 'none';
+                msg('ok', data.mensaje + ' Te llevamos al inicio de sesión…');
+                setTimeout(() => location.href = '/login', 2500);
+            } catch (err) { msg('error', err.message); btn.disabled = false; }
+        }
+    </script>
+</body>
+</html>

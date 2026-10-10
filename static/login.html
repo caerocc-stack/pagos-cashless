@@ -104,6 +104,23 @@
             display: none;
             text-align: center;
         }
+        .ok {
+            background: #f0fdf4; color: #166534; padding: 0.7rem; border-radius: 8px;
+            font-size: 0.88rem; margin-bottom: 1rem; display: none; text-align: center;
+        }
+        .link { display: block; text-align: center; margin-top: 1rem; font-size: 0.85rem; color: #3d7fc4; text-decoration: none; font-weight: 500; }
+        .link:hover { text-decoration: underline; }
+        .ayuda { font-size: 0.86rem; color: #475569; line-height: 1.45; margin-bottom: 1rem; }
+        .ayuda.chica { font-size: 0.78rem; color: #64748b; margin: 0.9rem 0 0; }
+        .input-codigo { font-size: 1.6rem; text-align: center; letter-spacing: 0.35em; font-variant-numeric: tabular-nums; font-weight: 600; }
+        .pass-wrap { position: relative; }
+        .pass-wrap input { padding-right: 3.6rem; }
+        .ver-pass {
+            position: absolute; right: 6px; top: 6px; width: auto; padding: 0.4rem 0.6rem;
+            background: #f1f5f9; color: #475569; font-size: 0.78rem; font-weight: 600; border-radius: 6px;
+        }
+        .ver-pass:hover { background: #e2e8f0; }
+        button:disabled { opacity: 0.6; cursor: wait; }
         .pie {
             text-align: center;
             margin-top: 1.5rem;
@@ -159,14 +176,41 @@
         <h1>APAI Pay</h1>
         <p class="sub">Asociación de Padres y Alumnos del I.N.A.C</p>
         <div class="error" id="error"></div>
-        <form onsubmit="login(event)">
-            <label>Usuario</label>
-            <input type="text" id="username" required autofocus autocomplete="username">
-            <label>Contraseña</label>
-            <input type="password" id="password" required autocomplete="current-password">
-            <button type="submit">Ingresar</button>
+        <div class="ok" id="ok"></div>
+
+        <!-- Paso 1: usuario o correo + contraseña -->
+        <form id="f-login" onsubmit="login(event)">
+            <label for="usuario">Usuario o correo</label>
+            <input type="text" id="usuario" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false">
+            <label for="password">Contraseña</label>
+            <div class="pass-wrap">
+                <input type="password" id="password" required autocomplete="current-password">
+                <button type="button" class="ver-pass" onclick="verPass('password', this)" aria-label="Mostrar contraseña">Ver</button>
+            </div>
+            <button type="submit" id="btn-ingresar">Ingresar</button>
+            <a href="#" class="link" onclick="mostrar('f-olvide');return false;">¿Olvidaste tu contraseña?</a>
         </form>
-        <div class="pie">Sistema interno · Acceso restringido</div>
+
+        <!-- Paso 2: código de la app de autenticación -->
+        <form id="f-2fa" onsubmit="login2fa(event)" style="display:none">
+            <p class="ayuda">🔐 Abrí tu app de autenticación (Google o Microsoft Authenticator) e ingresá el código de 6 dígitos de <b>APAI Pay</b>.</p>
+            <label for="codigo">Código de verificación</label>
+            <input type="text" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="9"
+                   class="input-codigo" placeholder="000 000">
+            <button type="submit">Verificar e ingresar</button>
+            <p class="ayuda chica">¿No tenés el celular? Ingresá uno de tus <b>códigos de respaldo</b> (formato XXXX-XXXX).</p>
+            <a href="#" class="link" onclick="volver();return false;">← Volver</a>
+        </form>
+
+        <!-- Olvidé mi contraseña -->
+        <form id="f-olvide" onsubmit="olvide(event)" style="display:none">
+            <p class="ayuda">Ingresá tu usuario o correo. Si tu cuenta tiene un correo cargado, te enviamos un link para crear una contraseña nueva.</p>
+            <label for="olv-usuario">Usuario o correo</label>
+            <input type="text" id="olv-usuario" autocomplete="username" autocapitalize="none">
+            <button type="submit">Enviar link</button>
+            <a href="#" class="link" onclick="volver();return false;">← Volver al ingreso</a>
+        </form>
+        <div class="pie">Sistema interno · Acceso restringido · Conexión cifrada</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -212,29 +256,83 @@
             }, 2.7);
         }
 
+        let desafio2fa = null;
+        const $ = id => document.getElementById(id);
+
+        function mensaje(tipo, texto) {
+            $('error').style.display = 'none'; $('ok').style.display = 'none';
+            if (texto) { $(tipo).textContent = texto; $(tipo).style.display = 'block'; }
+        }
+
+        function mostrar(id) {
+            ['f-login', 'f-2fa', 'f-olvide'].forEach(f => $(f).style.display = f === id ? 'block' : 'none');
+            mensaje('error', '');
+            const foco = { 'f-login': 'usuario', 'f-2fa': 'codigo', 'f-olvide': 'olv-usuario' }[id];
+            setTimeout(() => $(foco).focus(), 30);
+        }
+
+        function volver() { desafio2fa = null; $('codigo').value = ''; mostrar('f-login'); }
+
+        function verPass(id, btn) {
+            const i = $(id); const ver = i.type === 'password';
+            i.type = ver ? 'text' : 'password'; btn.textContent = ver ? 'Ocultar' : 'Ver';
+        }
+
+        async function enviar(url, body, boton) {
+            if (boton) boton.disabled = true;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body), credentials: 'same-origin',
+                });
+                let data = {};
+                try { data = await res.json(); } catch {}
+                if (!res.ok) throw new Error(data.detail || 'No se pudo completar. Probá de nuevo.');
+                return data;
+            } finally { if (boton) boton.disabled = false; }
+        }
+
         async function login(e) {
             e.preventDefault();
-            const errEl = document.getElementById('error');
-            errEl.style.display = 'none';
+            mensaje('error', '');
             try {
-                const body = JSON.stringify({
-                    username: document.getElementById('username').value,
-                    password: document.getElementById('password').value,
-                });
-                const res = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: body,
-                    credentials: 'same-origin',
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión');
+                const data = await enviar('/api/auth/login', {
+                    usuario: $('usuario').value.trim(), password: $('password').value,
+                }, e.submitter);
+                if (data.requiere_2fa) { desafio2fa = data.desafio; mostrar('f-2fa'); return; }
+                arrancarMotor();
+            } catch (err) { mensaje('error', err.message); }
+        }
+
+        async function login2fa(e) {
+            e.preventDefault();
+            mensaje('error', '');
+            try {
+                await enviar('/api/auth/login/2fa', { desafio: desafio2fa, codigo: $('codigo').value.trim() }, e.submitter);
                 arrancarMotor();
             } catch (err) {
-                errEl.textContent = err.message;
-                errEl.style.display = 'block';
+                mensaje('error', err.message);
+                $('codigo').select();
+                if (/venció|Volvé a iniciar/.test(err.message)) setTimeout(volver, 1800);
             }
         }
+
+        async function olvide(e) {
+            e.preventDefault();
+            try {
+                const data = await enviar('/api/auth/olvide', { usuario: $('olv-usuario').value.trim() }, e.submitter);
+                mensaje('ok', data.mensaje);
+            } catch (err) { mensaje('error', err.message); }
+        }
+
+        // Formatea el código mientras se escribe (123 456) y envía solo al completar 6 dígitos
+        $('codigo').addEventListener('input', ev => {
+            const v = ev.target.value;
+            if (/[A-Za-z]/.test(v)) return;  // código de respaldo: no tocar
+            const d = v.replace(/\D/g, '').slice(0, 6);
+            ev.target.value = d.length > 3 ? d.slice(0, 3) + ' ' + d.slice(3) : d;
+            if (d.length === 6) $('f-2fa').requestSubmit();
+        });
     </script>
 </body>
 </html>

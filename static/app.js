@@ -103,6 +103,7 @@ function cerrarSidebarMobile() {
 
 // --- Toast ---
 function toast(msg, tipo = 'success') {
+    if (!msg) return;
     const el = document.getElementById('toast');
     el.textContent = msg;
     el.className = 'toast ' + tipo + ' show';
@@ -111,7 +112,9 @@ function toast(msg, tipo = 'success') {
 
 // --- Modal ---
 function cerrarModal() {
-    document.getElementById('modal-overlay').style.display = 'none';
+    const ov = document.getElementById('modal-overlay');
+    if (ov.dataset.bloqueado) return;
+    ov.style.display = 'none';
 }
 
 // --- API helpers ---
@@ -121,7 +124,17 @@ async function api(url, opts = {}) {
         credentials: 'same-origin',
         ...opts,
     });
-    const data = await res.json();
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 401 && !url.startsWith('/api/auth/')) {
+        // Sesión vencida o cerrada desde otro lado: volver al login
+        window.location.href = '/login';
+        throw new Error('Sesión vencida');
+    }
+    if (res.status === 403 && /cambiar tu contraseña/.test(data.detail || '')) {
+        abrirCambioObligatorio();
+        throw new Error('');  // silencioso: el modal ya lo explica
+    }
     if (!res.ok) throw new Error(data.detail || 'Error del servidor');
     return data;
 }
@@ -1183,60 +1196,129 @@ const buscadorCupon = crearBuscador({
 });
 
 // --- SESION ---
-let usuarioActual = { username: '', nombre: '' };
+let usuarioActual = { username: '', nombre: '', rol: '' };
 
 async function cargarUsuario() {
     try {
         const user = await api('/api/auth/me');
         usuarioActual = user;
         document.getElementById('user-nombre').textContent = user.nombre;
+        const esAdmin = user.rol === 'admin';
+        document.body.classList.toggle('rol-lectura', !esAdmin);
+        document.querySelectorAll('.solo-admin').forEach(el => el.style.display = esAdmin ? '' : 'none');
+        if (!esAdmin) mostrarAvisoLectura();
         if (typeof dashSaludoYFecha === 'function') dashSaludoYFecha();
+        if (user.debe_cambiar_password) abrirCambioObligatorio();
+        else if (esAdmin && !user.totp_activo) avisoActivar2FA();
     } catch {
-        document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
         window.location.href = '/login';
     }
 }
 
+function mostrarAvisoLectura() {
+    if (document.getElementById('aviso-lectura')) return;
+    const div = document.createElement('div');
+    div.id = 'aviso-lectura';
+    div.className = 'aviso-banda';
+    div.textContent = '👁 Estás en modo solo lectura: podés consultar todo, pero no modificar datos.';
+    document.querySelector('main').prepend(div);
+}
+
+function avisoActivar2FA() {
+    try { if (sessionStorage.getItem('aviso2fa')) return; sessionStorage.setItem('aviso2fa', '1'); } catch {}
+    setTimeout(() => toast('🔐 Recomendado: activá la verificación en 2 pasos desde "Mi cuenta y seguridad".', 'warning'), 1500);
+}
+
+// Primer ingreso / clave temporal: no se puede usar el sistema hasta cambiarla
+function abrirCambioObligatorio() {
+    if (document.getElementById('cp-obligatorio')) return;
+    document.getElementById('modal-content').innerHTML = `
+        <div id="cp-obligatorio">
+            <div class="mc-card-tit" style="font-size:1.15rem">🔒 Creá tu contraseña personal</div>
+            <p class="muted" style="margin:0.4rem 0 1rem">Por seguridad, antes de continuar tenés que reemplazar la contraseña temporal.
+            Mínimo 10 caracteres, con letras y números.</p>
+            <label class="mc-lbl">Contraseña actual (temporal)</label>
+            <input type="password" id="cp-actual" class="mc-inp" autocomplete="current-password">
+            <label class="mc-lbl">Contraseña nueva</label>
+            <input type="password" id="cp-nueva" class="mc-inp" autocomplete="new-password">
+            <label class="mc-lbl">Repetir contraseña nueva</label>
+            <input type="password" id="cp-repetir" class="mc-inp" autocomplete="new-password">
+            <button class="btn btn-primary btn-3d" style="width:100%" onclick="guardarPassword(true)">Guardar y continuar</button>
+        </div>`;
+    const ov = document.getElementById('modal-overlay');
+    ov.style.display = 'flex';
+    ov.dataset.bloqueado = '1';  // no se cierra tocando afuera
+    ov.querySelector('.btn-cerrar-modal').style.display = 'none';
+}
+
 async function cerrarSesion() {
-    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-    document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
     window.location.href = '/login';
 }
 
-function abrirMiCuenta() {
+async function abrirMiCuenta() {
+    try { usuarioActual = await api('/api/auth/me'); } catch {}
     const u = usuarioActual || {};
     const inicial = ((u.nombre || u.username || 'U').trim().charAt(0) || 'U').toUpperCase();
+    const bloque2fa = u.totp_activo
+        ? `<p class="mc-ok">✅ Activada. Al ingresar se te pide el código de tu app de autenticación.</p>
+           <p class="muted">Códigos de respaldo disponibles: <b>${u.codigos_respaldo_restantes}</b> de 8.</p>
+           <label class="mc-lbl">Código actual de la app (para regenerar códigos o desactivar)</label>
+           <input type="text" id="tf-codigo" class="mc-inp" inputmode="numeric" maxlength="9" autocomplete="one-time-code">
+           <label class="mc-lbl">Contraseña (solo para desactivar)</label>
+           <input type="password" id="tf-pass" class="mc-inp" autocomplete="current-password">
+           <div style="display:flex;gap:0.5rem">
+             <button class="btn btn-outline" style="flex:1" onclick="regenerarCodigos2FA()">Nuevos códigos de respaldo</button>
+             <button class="btn btn-red" style="flex:1" onclick="desactivar2FA()">Desactivar</button>
+           </div>`
+        : `<p class="muted">Agrega una segunda llave: aunque alguien sepa tu contraseña, no puede entrar sin el código
+           que genera tu celular. Necesitás <b>Google Authenticator</b> o <b>Microsoft Authenticator</b> (gratis).</p>
+           <div id="tf-paso"></div>
+           <button class="btn btn-primary btn-3d" style="width:100%" id="tf-iniciar" onclick="iniciar2FA()">Activar verificación en 2 pasos</button>`;
     const html = `
         <div class="mc-banner">
             <div class="mc-avatar">${escapeHtml(inicial)}</div>
             <div>
                 <div class="mc-nombre">${escapeHtml(u.nombre || '')}</div>
-                <div class="mc-user">@${escapeHtml(u.username || '')}</div>
+                <div class="mc-user">@${escapeHtml(u.username || '')} · ${escapeHtml(u.rol_nombre || '')}</div>
+                ${u.ultimo_ingreso ? `<div class="mc-user">Último ingreso: ${escapeHtml(u.ultimo_ingreso)}</div>` : ''}
             </div>
+        </div>
+
+        <div class="mc-card">
+            <div class="mc-card-tit">🛡️ Verificación en 2 pasos (2FA)</div>
+            ${bloque2fa}
         </div>
 
         <div class="mc-card">
             <div class="mc-card-tit">👤 Datos de la cuenta</div>
             <label class="mc-lbl">Nombre para mostrar</label>
             <input type="text" id="mc-nombre" class="mc-inp" value="${escapeHtml(u.nombre || '')}">
-            <label class="mc-lbl">Nombre de usuario (para iniciar sesión)</label>
+            <label class="mc-lbl">Usuario (para iniciar sesión)</label>
             <input type="text" id="mc-username" class="mc-inp" value="${escapeHtml(u.username || '')}" autocomplete="off">
-            <small style="color:#94a3b8">Con este usuario vas a entrar la próxima vez.</small>
-            <button class="btn btn-primary btn-3d" style="width:100%;margin-top:0.75rem" onclick="guardarCuenta()">Guardar datos</button>
+            <label class="mc-lbl">Correo (también sirve para ingresar y recuperar la contraseña)</label>
+            <input type="email" id="mc-email" class="mc-inp" value="${escapeHtml(u.email || '')}" autocomplete="email">
+            <button class="btn btn-primary btn-3d" style="width:100%;margin-top:0.5rem" onclick="guardarCuenta()">Guardar datos</button>
         </div>
 
         <div class="mc-card">
             <div class="mc-card-tit">🔒 Cambiar contraseña</div>
             <label class="mc-lbl">Contraseña actual</label>
-            <input type="password" id="cp-actual" class="mc-inp" autocomplete="off">
-            <label class="mc-lbl">Contraseña nueva</label>
-            <input type="password" id="cp-nueva" class="mc-inp" autocomplete="off">
+            <input type="password" id="cp-actual" class="mc-inp" autocomplete="current-password">
+            <label class="mc-lbl">Contraseña nueva (mínimo 10 caracteres, letras y números)</label>
+            <input type="password" id="cp-nueva" class="mc-inp" autocomplete="new-password">
             <label class="mc-lbl">Repetir contraseña nueva</label>
-            <input type="password" id="cp-repetir" class="mc-inp" autocomplete="off">
+            <input type="password" id="cp-repetir" class="mc-inp" autocomplete="new-password">
             <button class="btn btn-primary btn-3d" style="width:100%" onclick="guardarPassword()">Cambiar contraseña</button>
         </div>
 
         <div class="mc-card">
+            <div class="mc-card-tit">📱 Sesiones</div>
+            <p class="muted">¿Dejaste la sesión abierta en otra computadora? Cerrala en todos lados.</p>
+            <button class="btn btn-outline" style="width:100%" onclick="cerrarTodasSesiones()">Cerrar sesión en todos los dispositivos</button>
+        </div>
+
+        <div class="mc-card solo-admin" ${u.rol === 'admin' ? '' : 'style="display:none"'}>
             <div class="mc-card-tit">📧 Probar envío de email</div>
             <label class="mc-lbl">Enviar un email de prueba a</label>
             <input type="email" id="te-destino" class="mc-inp" placeholder="tucorreo@ejemplo.com" autocomplete="off">
@@ -1244,6 +1326,79 @@ function abrirMiCuenta() {
         </div>`;
     document.getElementById('modal-content').innerHTML = html;
     document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function iniciar2FA() {
+    try {
+        const r = await api('/api/auth/2fa/iniciar', { method: 'POST' });
+        document.getElementById('tf-iniciar').style.display = 'none';
+        document.getElementById('tf-paso').innerHTML = `
+            <ol class="tf-pasos">
+              <li>Abrí la app de autenticación y tocá <b>+</b> → <b>Escanear código QR</b>.</li>
+              <li>Escaneá este código:</li>
+            </ol>
+            <img src="${r.qr}" alt="Código QR para la app de autenticación" class="tf-qr">
+            <p class="muted" style="text-align:center">¿No podés escanear? Ingresá esta clave a mano:<br>
+              <code class="tf-secreto">${escapeHtml(r.secreto)}</code></p>
+            <ol class="tf-pasos" start="3"><li>Escribí el código de 6 dígitos que muestra la app:</li></ol>
+            <input type="text" id="tf-confirmar" class="mc-inp input-codigo" inputmode="numeric" maxlength="7" placeholder="000000" autocomplete="one-time-code">
+            <button class="btn btn-primary btn-3d" style="width:100%" onclick="activar2FA()">Confirmar y activar</button>`;
+        document.getElementById('tf-confirmar').focus();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function mostrarCodigosRespaldo(codigos) {
+    const lista = codigos.map(c => `<li><code>${escapeHtml(c)}</code></li>`).join('');
+    document.getElementById('modal-content').innerHTML = `
+        <div class="mc-card-tit" style="font-size:1.15rem">🔑 Guardá tus códigos de respaldo</div>
+        <p class="muted" style="margin:0.5rem 0">Si perdés el celular, cada código sirve <b>una sola vez</b> para entrar.
+        Guardalos en un lugar seguro (impresos o en un gestor de contraseñas). <b>No se vuelven a mostrar.</b></p>
+        <ul class="tf-codigos">${lista}</ul>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn btn-outline" style="flex:1" onclick="copiarCodigos(this)" data-codigos="${escapeHtml(codigos.join('\n'))}">Copiar</button>
+          <button class="btn btn-outline" style="flex:1" onclick="window.print()">Imprimir</button>
+          <button class="btn btn-primary btn-3d" style="flex:1" onclick="cerrarModal()">Ya los guardé</button>
+        </div>`;
+}
+
+function copiarCodigos(btn) {
+    navigator.clipboard.writeText(btn.dataset.codigos).then(() => toast('Códigos copiados'));
+}
+
+async function activar2FA() {
+    try {
+        const codigo = document.getElementById('tf-confirmar').value;
+        const r = await api('/api/auth/2fa/activar', { method: 'POST', body: JSON.stringify({ codigo }) });
+        toast('Verificación en 2 pasos activada');
+        mostrarCodigosRespaldo(r.codigos_respaldo);
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function regenerarCodigos2FA() {
+    try {
+        const codigo = document.getElementById('tf-codigo').value;
+        const r = await api('/api/auth/2fa/codigos-respaldo', { method: 'POST', body: JSON.stringify({ codigo }) });
+        mostrarCodigosRespaldo(r.codigos_respaldo);
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function desactivar2FA() {
+    if (!confirm('¿Desactivar la verificación en 2 pasos? Tu cuenta quedará protegida solo por la contraseña.')) return;
+    try {
+        await api('/api/auth/2fa/desactivar', {
+            method: 'POST',
+            body: JSON.stringify({ codigo: document.getElementById('tf-codigo').value,
+                                   password: document.getElementById('tf-pass').value }),
+        });
+        toast('Verificación en 2 pasos desactivada', 'warning');
+        abrirMiCuenta();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function cerrarTodasSesiones() {
+    if (!confirm('Se cerrará la sesión en todas las computadoras y celulares, incluida esta. ¿Continuar?')) return;
+    try { await api('/api/auth/cerrar-sesiones', { method: 'POST' }); } catch {}
+    window.location.href = '/login';
 }
 
 async function probarEmail() {
@@ -1262,14 +1417,15 @@ async function probarEmail() {
 async function guardarCuenta() {
     const nombre = document.getElementById('mc-nombre').value.trim();
     const username = document.getElementById('mc-username').value.trim();
+    const email = document.getElementById('mc-email').value.trim();
     if (!nombre) return toast('El nombre para mostrar no puede estar vacío', 'error');
     if (!username || username.length < 3) return toast('El usuario debe tener al menos 3 caracteres', 'error');
     try {
         const res = await api('/api/auth/actualizar-cuenta', {
             method: 'POST',
-            body: JSON.stringify({ username, nombre }),
+            body: JSON.stringify({ username, nombre, email }),
         });
-        usuarioActual = { username: res.username, nombre: res.nombre };
+        usuarioActual = { ...usuarioActual, username: res.username, nombre: res.nombre, email: res.email };
         document.getElementById('user-nombre').textContent = res.nombre;
         toast('Cuenta actualizada correctamente');
         cerrarModal();
@@ -1278,12 +1434,13 @@ async function guardarCuenta() {
     }
 }
 
-async function guardarPassword() {
+async function guardarPassword(obligatorio = false) {
     const actual = document.getElementById('cp-actual').value;
     const nueva = document.getElementById('cp-nueva').value;
     const repetir = document.getElementById('cp-repetir').value;
     if (!actual || !nueva) return toast('Completá todos los campos', 'error');
-    if (nueva.length < 6) return toast('La nueva clave debe tener al menos 6 caracteres', 'error');
+    if (nueva.length < 10) return toast('La nueva clave debe tener al menos 10 caracteres', 'error');
+    if (!/[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(nueva) || !/\d/.test(nueva)) return toast('La nueva clave debe combinar letras y números', 'error');
     if (nueva !== repetir) return toast('Las contraseñas nuevas no coinciden', 'error');
     try {
         await api('/api/auth/cambiar-password', {
@@ -1291,6 +1448,7 @@ async function guardarPassword() {
             body: JSON.stringify({ password_actual: actual, password_nueva: nueva }),
         });
         toast('Contraseña actualizada correctamente');
+        if (obligatorio) { window.location.reload(); return; }
         cerrarModal();
     } catch (err) {
         toast(err.message, 'error');
@@ -3228,6 +3386,131 @@ function toggleTema() {
         typeof cargarReportes === 'function') {
         cargarReportes();
     }
+}
+
+// =========================================================
+// --- USUARIOS Y SEGURIDAD (solo administradores) ---
+// =========================================================
+let usuariosCache = [];
+
+const ACCIONES_AUDITORIA = {
+    ingreso: 'Ingreso', ingreso_fallido: 'Ingreso fallido', cuenta_bloqueada: 'Cuenta bloqueada',
+    cambio_password: 'Cambió su contraseña', reset_password: 'Contraseña restablecida por link',
+    pedido_reset: 'Pidió recuperar contraseña', '2fa_activado': '2FA activado', '2fa_desactivado': '2FA desactivado',
+    '2fa_reiniciado': '2FA reiniciado por admin', '2fa_codigos_regenerados': 'Nuevos códigos de respaldo',
+    codigo_respaldo_usado: 'Ingresó con código de respaldo', usuario_creado: 'Usuario creado',
+    usuario_editado: 'Usuario modificado', clave_temporal: 'Clave temporal asignada',
+    link_reset_enviado: 'Link de clave enviado', usuario_desbloqueado: 'Usuario desbloqueado',
+    sesiones_cerradas: 'Sesiones cerradas por admin', cerrar_sesiones: 'Cerró sesión en todos lados',
+    actualizar_cuenta: 'Actualizó sus datos',
+};
+
+async function cargarUsuarios() {
+    try {
+        const [lista, audit] = await Promise.all([api('/api/usuarios/'), api('/api/usuarios/auditoria')]);
+        usuariosCache = lista;
+        const yo = usuarioActual.username;
+        document.getElementById('body-usuarios').innerHTML = lista.map(u => `
+            <tr class="${u.activo ? '' : 'fila-inactiva'}">
+                <td><b>${escapeHtml(u.nombre)}</b>${u.username === yo ? ' <span class="badge">vos</span>' : ''}</td>
+                <td>${escapeHtml(u.username)}<br><small class="muted">${escapeHtml(u.email || 'sin correo')}</small></td>
+                <td>
+                    <select onchange="cambiarRolUsuario(${u.id}, this.value)" ${u.username === yo ? 'disabled' : ''}>
+                        <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+                        <option value="lectura" ${u.rol === 'lectura' ? 'selected' : ''}>Solo lectura</option>
+                    </select>
+                </td>
+                <td>${u.totp_activo ? '<span class="badge badge-activa">Activo</span>' : '<span class="badge badge-inactiva">No</span>'}</td>
+                <td>${!u.activo ? '<span class="badge badge-inactiva">Desactivado</span>'
+                    : u.bloqueado ? '<span class="badge badge-inactiva">Bloqueado</span>'
+                    : u.debe_cambiar_password ? '<span class="badge">Clave temporal</span>'
+                    : '<span class="badge badge-activa">Activo</span>'}</td>
+                <td>${escapeHtml(u.ultimo_ingreso || '—')}</td>
+                <td class="acciones-usuario">
+                    <select onchange="accionUsuario(${u.id}, this.value); this.value=''">
+                        <option value="">Acciones…</option>
+                        ${u.email ? '<option value="link">Enviar link para crear clave</option>' : ''}
+                        <option value="temporal">Asignar clave temporal</option>
+                        ${u.totp_activo ? '<option value="2fa">Reiniciar 2FA (perdió el celular)</option>' : ''}
+                        ${u.bloqueado ? '<option value="desbloquear">Desbloquear</option>' : ''}
+                        <option value="sesiones">Cerrar sus sesiones</option>
+                        <option value="editar">Editar nombre / correo</option>
+                        ${u.username !== yo ? `<option value="${u.activo ? 'desactivar' : 'activar'}">${u.activo ? 'Desactivar' : 'Reactivar'}</option>` : ''}
+                    </select>
+                </td>
+            </tr>`).join('');
+        document.getElementById('body-auditoria').innerHTML = audit.map(a => `
+            <tr class="${/fallido|bloqueada|desactivado/.test(a.accion) ? 'fila-alerta' : ''}">
+                <td style="white-space:nowrap">${escapeHtml(a.fecha)}</td>
+                <td>${escapeHtml(a.usuario || '—')}</td>
+                <td>${escapeHtml(ACCIONES_AUDITORIA[a.accion] || a.accion)}</td>
+                <td>${escapeHtml(a.detalle || '')}</td>
+                <td><small>${escapeHtml(a.ip || '')}</small></td>
+            </tr>`).join('') || '<tr><td colspan="5" class="muted">Sin actividad registrada todavía.</td></tr>';
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+function mostrarFormUsuario() {
+    const f = document.getElementById('form-usuario');
+    f.style.display = 'block';
+    f.querySelector('form').reset();
+    document.getElementById('nu-nombre').focus();
+}
+
+async function crearUsuario(e) {
+    e.preventDefault();
+    const v = id => document.getElementById(id).value.trim();
+    try {
+        const r = await api('/api/usuarios/', {
+            method: 'POST',
+            body: JSON.stringify({ nombre: v('nu-nombre'), username: v('nu-username'), email: v('nu-email') || null,
+                                   rol: v('nu-rol'), password: v('nu-password') || null }),
+        });
+        toast(r.mensaje);
+        document.getElementById('form-usuario').style.display = 'none';
+        cargarUsuarios();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function cambiarRolUsuario(id, rol) {
+    try {
+        await api(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify({ rol }) });
+        toast('Rol actualizado. El usuario deberá volver a ingresar.');
+    } catch (err) { toast(err.message, 'error'); }
+    cargarUsuarios();
+}
+
+async function accionUsuario(id, accion) {
+    if (!accion) return;
+    const u = usuariosCache.find(x => x.id === id) || {};
+    try {
+        let r;
+        if (accion === 'link') {
+            r = await api(`/api/usuarios/${id}/enviar-link`, { method: 'POST' });
+        } else if (accion === 'temporal') {
+            const clave = prompt(`Clave temporal para ${u.nombre} (mín. 10 caracteres, letras y números).\nDeberá cambiarla al ingresar:`);
+            if (!clave) return;
+            r = await api(`/api/usuarios/${id}/clave-temporal`, { method: 'POST', body: JSON.stringify({ password: clave }) });
+        } else if (accion === '2fa') {
+            if (!confirm(`¿Reiniciar la verificación en 2 pasos de ${u.nombre}? Podrá entrar solo con su contraseña hasta que la vuelva a activar.`)) return;
+            r = await api(`/api/usuarios/${id}/reiniciar-2fa`, { method: 'POST' });
+        } else if (accion === 'desbloquear') {
+            r = await api(`/api/usuarios/${id}/desbloquear`, { method: 'POST' });
+        } else if (accion === 'sesiones') {
+            r = await api(`/api/usuarios/${id}/cerrar-sesiones`, { method: 'POST' });
+        } else if (accion === 'editar') {
+            const nombre = prompt('Nombre y apellido:', u.nombre);
+            if (nombre === null) return;
+            const email = prompt('Correo (vacío para quitarlo):', u.email || '');
+            if (email === null) return;
+            r = await api(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify({ nombre, email }) });
+        } else if (accion === 'desactivar' || accion === 'activar') {
+            if (accion === 'desactivar' && !confirm(`¿Desactivar a ${u.nombre}? No podrá ingresar más hasta que lo reactives.`)) return;
+            r = await api(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify({ activo: accion === 'activar' }) });
+        }
+        toast((r && r.mensaje) || 'Listo');
+        cargarUsuarios();
+    } catch (err) { toast(err.message, 'error'); }
 }
 
 // --- INIT ---

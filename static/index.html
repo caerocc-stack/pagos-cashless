@@ -73,8 +73,9 @@
         <div class="side-group">
             <button class="side-group-head" onclick="toggleGrupo(this)"><span>⚙️ Configuración y cuenta</span><span class="side-caret">▾</span></button>
             <div class="side-group-body">
+                <button class="nav-btn side-item solo-admin" data-section="usuarios" onclick="cargarUsuarios();cerrarSidebarMobile()" style="display:none">Usuarios y seguridad</button>
                 <button class="side-item" onclick="abrirPlantillas();cerrarSidebarMobile()">Plantillas de email</button>
-                <button class="side-item" onclick="abrirMiCuenta();cerrarSidebarMobile()">Mi cuenta</button>
+                <button class="side-item" onclick="abrirMiCuenta();cerrarSidebarMobile()">Mi cuenta y seguridad</button>
                 <button class="side-item" onclick="toggleTema()">Tema claro / oscuro</button>
                 <button class="side-item side-salir" onclick="cerrarSesion()">Salir</button>
             </div>
@@ -552,6 +553,48 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- USUARIOS Y SEGURIDAD (solo administradores) -->
+        <section id="sec-usuarios" class="section">
+            <div class="section-titulo">Usuarios y seguridad</div>
+            <div class="toolbar">
+                <span class="muted">Cada persona con su propio usuario. <b>Administrador</b>: ve y modifica todo. <b>Solo lectura</b>: consulta sin poder modificar.</span>
+                <button class="btn btn-primary btn-3d" onclick="mostrarFormUsuario()">+ Nuevo usuario</button>
+            </div>
+
+            <div id="form-usuario" class="card form-card" style="display:none">
+                <h3>Nuevo usuario</h3>
+                <form onsubmit="crearUsuario(event)">
+                    <div class="form-grid">
+                        <div><label>Nombre y apellido</label><input type="text" id="nu-nombre" required></div>
+                        <div><label>Usuario (para ingresar)</label><input type="text" id="nu-username" required autocomplete="off" autocapitalize="none"></div>
+                        <div><label>Correo</label><input type="email" id="nu-email" placeholder="recomendado: le llega el link para crear su clave"></div>
+                        <div><label>Rol</label>
+                            <select id="nu-rol"><option value="lectura">Solo lectura</option><option value="admin">Administrador</option></select>
+                        </div>
+                        <div style="grid-column:1/-1"><label>Contraseña temporal (solo si NO tiene correo)</label>
+                            <input type="text" id="nu-password" autocomplete="off" placeholder="dejala vacía para enviarle un link por correo">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-3d">Crear usuario</button>
+                        <button type="button" class="btn btn-red" onclick="document.getElementById('form-usuario').style.display='none'">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="tabla-usuarios">
+                <thead><tr><th>Nombre</th><th>Usuario / correo</th><th>Rol</th><th>2FA</th><th>Estado</th><th>Último ingreso</th><th>Acciones</th></tr></thead>
+                <tbody id="body-usuarios"></tbody>
+            </table>
+
+            <div class="section-titulo" style="margin-top:2rem;font-size:1.1rem">Registro de actividad de seguridad</div>
+            <p class="muted" style="margin-bottom:0.6rem">Ingresos, intentos fallidos, cambios de contraseña, 2FA y cambios de usuarios (últimos 200).</p>
+            <table id="tabla-auditoria">
+                <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Detalle</th><th>IP</th></tr></thead>
+                <tbody id="body-auditoria"></tbody>
+            </table>
         </section>
 
         <!-- PROVEEDORES -->
