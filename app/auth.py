@@ -84,7 +84,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     libre = ruta.startswith("/api/auth/")  # cuenta propia: clave, 2FA, salir
     if usuario.debe_cambiar_password and not libre:
         raise HTTPException(403, "Tenés que cambiar tu contraseña antes de continuar.")
-    if usuario.rol == "lectura" and request.method not in METODOS_LECTURA and not libre:
+    # Reportar un problema está permitido para todos (también solo lectura)
+    if usuario.rol == "lectura" and request.method not in METODOS_LECTURA and not libre and ruta != "/api/consultas/reportar":
         raise HTTPException(403, "Tu usuario es de solo lectura: no puede modificar datos.")
 
     return {"uid": usuario.id, "sub": usuario.username, "nombre": usuario.nombre,

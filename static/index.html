@@ -54,6 +54,8 @@
         <symbol id="i-arrows" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
         <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></symbol>
         <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+        <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></symbol>
         <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></symbol>
         <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
     </svg>
@@ -71,6 +73,7 @@
             </div>
         </div>
         <div class="user-info">
+            <button class="btn-icono-top" onclick="abrirReportarProblema()" title="Reportar un problema del sistema" aria-label="Reportar un problema"><svg class="ic"><use href="#i-flag"/></svg></button>
             <button class="btn-icono-top" id="btn-tema" onclick="toggleTema()" title="Cambiar a modo oscuro" aria-label="Cambiar tema claro u oscuro"><svg class="ic"><use href="#i-moon"/></svg></button>
             <button class="user-chip" onclick="abrirMiCuenta()" title="Mi cuenta y seguridad">
                 <span class="user-avatar" id="user-avatar">·</span>
@@ -88,6 +91,7 @@
                 <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
                 <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
                 <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
+                <button class="nav-btn side-item" data-section="consultas" onclick="cargarConsultas();cerrarSidebarMobile()"><svg class="ic"><use href="#i-chat"/></svg>Consultas de familias <span class="side-badge" id="side-badge-consultas" hidden></span></button>
             </div>
         </div>
 
@@ -600,6 +604,27 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- CONSULTAS (portal de familias + reportes del personal) -->
+        <section id="sec-consultas" class="section">
+            <div class="toolbar">
+                <div class="cuotas-tabs" role="tablist" id="cq-filtros">
+                    <button class="cuota-tab activo" data-estado="" onclick="filtrarConsultas(this)">Todas</button>
+                    <button class="cuota-tab" data-estado="abierta" onclick="filtrarConsultas(this)">Esperando respuesta</button>
+                    <button class="cuota-tab" data-estado="respondida" onclick="filtrarConsultas(this)">Respondidas</button>
+                    <button class="cuota-tab" data-estado="cerrada" onclick="filtrarConsultas(this)">Cerradas</button>
+                </div>
+                <select id="cq-origen" onchange="cargarConsultas()" aria-label="Origen">
+                    <option value="">Familias y personal</option><option value="portal">Solo familias (portal)</option><option value="sistema">Solo problemas del sistema</option>
+                </select>
+            </div>
+            <p class="muted" style="margin-bottom:0.75rem">Las familias escriben desde <a href="/portal" target="_blank" rel="noopener">el portal</a>
+            (ingresan con el correo de los cupones). Cuando respondés, les llega un aviso por correo.</p>
+            <table id="tabla-consultas">
+                <thead><tr><th>Actualizada</th><th>Tema</th><th>Asunto</th><th>De</th><th>Alumno</th><th>Estado</th><th></th></tr></thead>
+                <tbody id="body-consultas"></tbody>
+            </table>
         </section>
 
         <!-- USUARIOS Y SEGURIDAD (solo administradores) -->

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#15233b">
+    <meta name="referrer" content="no-referrer">
+    <title>Portal de familias · APAI</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/portal.css">
+</head>
+<body class="portal">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+        <symbol id="i-card" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></symbol>
+        <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    </svg>
+
+    <header class="p-top">
+        <div class="p-marca">
+            <img src="/static/logo.png" alt="" class="p-logo">
+            <div><div class="p-t1">Portal de familias</div><div class="p-t2">Asociación de Padres y Alumnos del I.N.A.C.</div></div>
+        </div>
+        <div class="p-usuario" id="p-usuario" hidden>
+            <span id="p-email"></span>
+            <button class="btn btn-sm p-salir" onclick="salir()"><svg class="ic"><use href="#i-logout"/></svg><span>Salir</span></button>
+        </div>
+    </header>
+
+    <main class="p-main" id="contenido">
+        <!-- INGRESO -->
+        <section id="v-login" class="p-vista" hidden>
+            <div class="card p-card-login">
+                <h1>Ingresá al portal</h1>
+                <p class="muted">Consultá cuotas, pagos, saldo de la tarjeta y cupones de tus hijos, y escribile a la Asociación.</p>
+                <div class="p-msg" id="login-msg" role="alert" hidden></div>
+                <form id="f-login" onsubmit="ingresar(event)">
+                    <label for="l-email">Correo electrónico</label>
+                    <input type="email" id="l-email" autocomplete="username" required placeholder="el correo donde te llegan los cupones">
+                    <label for="l-pass">Contraseña</label>
+                    <div class="p-pass"><input type="password" id="l-pass" autocomplete="current-password" required>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="verClave('l-pass', this)">Ver</button></div>
+                    <p class="p-ayuda"><svg class="ic"><use href="#i-alert"/></svg>
+                        <span><b>¿Primera vez?</b> Tu contraseña es el <b>DNI de tu hijo/a</b>, sin puntos. Después vas a crear una propia.</span></p>
+                    <button type="submit" class="btn btn-primary p-ancho">Ingresar</button>
+                </form>
+                <button class="btn btn-ghost p-ancho" onclick="mostrar('v-olvide')">Olvidé mi contraseña</button>
+            </div>
+        </section>
+
+        <!-- OLVIDÉ -->
+        <section id="v-olvide" class="p-vista" hidden>
+            <div class="card p-card-login">
+                <h1>Recuperar el acceso</h1>
+                <p class="muted">Escribí el correo donde recibís los cupones. Te enviamos un link para crear una contraseña nueva (vence en 30 minutos).</p>
+                <div class="p-msg" id="olv-msg" role="alert" hidden></div>
+                <form onsubmit="olvide(event)">
+                    <label for="o-email">Correo electrónico</label>
+                    <input type="email" id="o-email" autocomplete="username" required>
+                    <button type="submit" class="btn btn-primary p-ancho">Enviar link</button>
+                </form>
+                <button class="btn btn-ghost p-ancho" onclick="mostrar('v-login')">Volver al ingreso</button>
+            </div>
+        </section>
+
+        <!-- CREAR / CAMBIAR CONTRASEÑA -->
+        <section id="v-clave" class="p-vista" hidden>
+            <div class="card p-card-login">
+                <h1 id="clave-titulo">Creá tu contraseña</h1>
+                <p class="muted" id="clave-desc">Por seguridad, reemplazá el DNI por una contraseña personal. Mínimo 8 caracteres, con letras y números.</p>
+                <div class="p-msg" id="clave-msg" role="alert" hidden></div>
+                <form onsubmit="guardarClave(event)">
+                    <div id="clave-actual-wrap">
+                        <label for="c-actual">Contraseña actual (el DNI con el que ingresaste)</label>
+                        <input type="password" id="c-actual" autocomplete="current-password">
+                    </div>
+                    <label for="c-nueva">Contraseña nueva</label>
+                    <input type="password" id="c-nueva" autocomplete="new-password" required>
+                    <label for="c-repetir">Repetir contraseña nueva</label>
+                    <input type="password" id="c-repetir" autocomplete="new-password" required>
+                    <button type="submit" class="btn btn-primary p-ancho">Guardar contraseña</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- APLICACIÓN -->
+        <section id="v-app" class="p-vista" hidden>
+            <div class="p-hijos" id="p-hijos" role="tablist" aria-label="Elegí el alumno"></div>
+
+            <div class="p-acciones">
+                <button class="p-accion" onclick="nuevaConsulta('informar_pago')"><svg class="ic"><use href="#i-receipt"/></svg>Informar un pago</button>
+                <button class="p-accion" onclick="nuevaConsulta('reenvio_cupon')"><svg class="ic"><use href="#i-wallet"/></svg>Necesito el cupón</button>
+                <button class="p-accion" onclick="nuevaConsulta('pago_no_registrado')"><svg class="ic"><use href="#i-alert"/></svg>Pagué y no figura</button>
+                <button class="p-accion" onclick="irTab('consultas')"><svg class="ic"><use href="#i-chat"/></svg>Otras consultas</button>
+            </div>
+
+            <div class="gasto-resumen" id="p-kpis"></div>
+
+            <nav class="cuotas-tabs p-tabs" role="tablist">
+                <button class="cuota-tab activo" data-tab="cuotas" onclick="irTab('cuotas')">Cuotas y pagos</button>
+                <button class="cuota-tab" data-tab="tarjeta" onclick="irTab('tarjeta')">Tarjeta</button>
+                <button class="cuota-tab" data-tab="cupones" onclick="irTab('cupones')">Cupones</button>
+                <button class="cuota-tab" data-tab="datos" onclick="irTab('datos')">Datos del alumno</button>
+                <button class="cuota-tab" data-tab="consultas" onclick="irTab('consultas')">Consultas <span class="p-badge" id="p-badge" hidden></span></button>
+            </nav>
+            <div id="p-tab"></div>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="cerrarModal()">
+        <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+            <button class="modal-x" onclick="cerrarModal()" aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/formato.js"></script>
+    <script src="/static/portal.js"></script>
+</body>
+</html>

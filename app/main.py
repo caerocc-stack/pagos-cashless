@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -68,7 +68,7 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"  # datos personales: que no queden en caché
-    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer"):
+    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer", "/portal"):
         # Siempre revalidar (ETag): después de cada actualización nadie queda con CSS/JS viejos
         response.headers["Cache-Control"] = "no-cache"
     return response
@@ -96,6 +96,9 @@ app.include_router(horario.router, dependencies=_auth)
 app.include_router(usuarios.router, dependencies=_auth)
 app.include_router(mantenimiento.router, dependencies=_auth)
 app.include_router(importar_gastos.router, dependencies=_auth)
+app.include_router(consultas.router, dependencies=_auth)
+# Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
+app.include_router(portal.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -115,6 +118,11 @@ def health():
 @app.get("/login")
 def login_page():
     return FileResponse(str(STATIC_DIR / "login.html"))
+
+
+@app.get("/portal")
+def portal_page():
+    return FileResponse(str(STATIC_DIR / "portal.html"))
 
 
 @app.get("/restablecer")

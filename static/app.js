@@ -18,6 +18,7 @@ const PAGINAS = {
     cuotas: ['Cobranzas y alumnos', 'Cuotas y estado de cuenta', 'Pagos recibidos por SIRO, deuda de cada alumno, estadísticas y valores de cada curso.'],
     alumnos: ['Cobranzas y alumnos', 'Alumnos', 'Padrón completo: datos personales, curso, condición y saldo de la tarjeta.'],
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
+    consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
     operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
     tarjetas: ['Tarjeta APAI', 'Tarjetas', 'Emitir tarjetas nuevas, consultar una tarjeta o darla de baja.'],
@@ -1270,6 +1271,8 @@ async function cargarUsuario() {
         if (user.debe_cambiar_password) abrirCambioObligatorio();
         else if (esAdmin && !user.totp_activo) avisoActivar2FA();
         irAlHash();  // con los permisos ya aplicados, abrir la sección del enlace
+        actualizarContadorConsultas();
+        setInterval(actualizarContadorConsultas, 120000);
     } catch {
         window.location.href = '/login';
     }
@@ -3588,6 +3591,10 @@ const ACCIONES_AUDITORIA = {
     link_reset_enviado: 'Link de clave enviado', usuario_desbloqueado: 'Usuario desbloqueado',
     sesiones_cerradas: 'Sesiones cerradas por admin', cerrar_sesiones: 'Cerró sesión en todos lados',
     actualizar_cuenta: 'Actualizó sus datos', limpieza_finanzas: 'Dejó finanzas en cero', importacion_facturas: 'Importó facturas desde planilla',
+    consulta_respondida: 'Respondió una consulta', consulta_estado: 'Cambió el estado de una consulta', reporte_problema: 'Reportó un problema',
+    portal_ingreso: 'Portal: ingreso de familia', portal_cuenta_creada: 'Portal: cuenta de familia creada', portal_cuenta_bloqueada: 'Portal: cuenta bloqueada',
+    portal_cambio_password: 'Portal: cambio de contraseña', portal_reset_password: 'Portal: contraseña restablecida',
+    portal_pedido_reset: 'Portal: pidió recuperar contraseña', portal_consulta: 'Portal: nueva consulta',
 };
 
 async function cargarUsuarios() {
@@ -4046,3 +4053,143 @@ if (_bes) _bes.addEventListener('input', filtrarEstado);
 cargarUsuario();
 cargarAlumnos();
 cargarMovimientosGenerales();
+
+
+// =========================================================
+// CONSULTAS DE FAMILIAS Y REPORTES DE PROBLEMAS
+// =========================================================
+let consultasEstado = '';
+const ESTADO_CONSULTA = {
+    abierta: '<span class="badge badge-inactiva">Esperando respuesta</span>',
+    respondida: '<span class="badge badge-activa">Respondida</span>',
+    cerrada: '<span class="badge">Cerrada</span>',
+};
+
+async function actualizarContadorConsultas() {
+    try {
+        const c = await api('/api/consultas/contador');
+        const b = document.getElementById('side-badge-consultas');
+        b.textContent = c.sin_leer; b.hidden = !c.sin_leer;
+    } catch {}
+}
+
+function filtrarConsultas(btn) {
+    document.querySelectorAll('#cq-filtros .cuota-tab').forEach(b => b.classList.toggle('activo', b === btn));
+    consultasEstado = btn.dataset.estado;
+    cargarConsultas();
+}
+
+async function cargarConsultas() {
+    const body = document.getElementById('body-consultas');
+    const qs = new URLSearchParams();
+    if (consultasEstado) qs.set('estado', consultasEstado);
+    const origen = document.getElementById('cq-origen').value;
+    if (origen) qs.set('origen', origen);
+    try {
+        const lista = await api('/api/consultas/?' + qs);
+        body.innerHTML = lista.length ? lista.map(x => `
+            <tr class="${x.sin_leer ? 'fila-no-leida' : ''}" style="cursor:pointer" onclick="verConsulta(${x.id})">
+                <td>${fmtFechaHora(x.actualizada)}</td>
+                <td>${escapeHtml(x.categoria_titulo)}</td>
+                <td>${x.sin_leer ? '<span class="punto-nuevo" title="Sin leer"></span>' : ''}<b>${escapeHtml(x.asunto)}</b> <span class="muted">(${x.mensajes_n})</span></td>
+                <td>${x.origen === 'sistema' ? '<span class="badge">Personal</span> ' : ''}${escapeHtml(x.autor || '')}</td>
+                <td>${x.alumno ? escapeHtml(x.alumno.nombre) + ' <span class="muted">' + escapeHtml(x.alumno.curso || '') + '</span>' : '—'}</td>
+                <td>${ESTADO_CONSULTA[x.estado] || escapeHtml(x.estado)}</td>
+                <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();verConsulta(${x.id})">Abrir</button></td>
+            </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:1.5rem">No hay consultas con este filtro.</td></tr>';
+        actualizarContadorConsultas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function verConsulta(id) {
+    try {
+        const x = await api('/api/consultas/' + id);
+        const esAdmin = usuarioActual.rol === 'admin';
+        const msjs = x.mensajes.map(m => {
+            const nuestro = m.autor === 'admin';
+            return `<div class="cq-msj ${nuestro ? 'nuestro' : ''}"><div class="cq-txt">${escapeHtml(m.texto)}</div>
+                ${m.adjunto_url ? `<br><a href="${escapeHtml(m.adjunto_url)}" target="_blank" rel="noopener noreferrer">Ver comprobante adjunto</a>` : ''}
+                <small>${escapeHtml(nuestro ? m.autor_nombre + ' (APAI)' : m.autor_nombre)} · ${fmtFechaHora(m.fecha)}</small></div>`;
+        }).join('');
+        window._cqRapidas = x.respuestas_rapidas;
+        const rapidas = esAdmin ? x.respuestas_rapidas.map((r, i) =>
+            `<button type="button" class="btn btn-sm btn-ghost" onclick="usarRespuestaRapida(${i})">${escapeHtml(r.titulo)}</button>`).join('') : '';
+        const alumno = x.alumno ? `${escapeHtml(x.alumno.nombre)} · ${escapeHtml(x.alumno.curso || '')} · legajo ${escapeHtml(x.alumno.legajo)}` : '';
+        document.getElementById('modal-content').innerHTML = `
+            <h3 style="margin-bottom:0.2rem">${escapeHtml(x.asunto)}</h3>
+            <p class="muted" style="margin:0 0 0.5rem">${[escapeHtml(x.categoria_titulo), escapeHtml(x.autor || ''), alumno].filter(Boolean).join(' · ')}
+                · ${ESTADO_CONSULTA[x.estado] || ''}</p>
+            <div class="cq-hilo">${msjs}</div>
+            ${esAdmin ? `
+            <label for="cq-resp">Respuesta</label>
+            <div class="cq-rapidas">${rapidas}</div>
+            <textarea id="cq-resp" rows="4" maxlength="4000" placeholder="Escribí la respuesta.${x.origen === 'portal' ? ' A la familia le llega un aviso por correo.' : ''}"></textarea>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-3d" onclick="responderConsultaAdmin(${x.id}, false)"><svg class="ic"><use href="#i-mail"/></svg>Responder</button>
+                <button class="btn btn-outline" onclick="responderConsultaAdmin(${x.id}, true)">Responder y cerrar</button>
+                ${x.estado === 'cerrada'
+                    ? `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'abierta')">Reabrir</button>`
+                    : `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'cerrada')">Cerrar sin responder</button>`}
+            </div>` : '<p class="muted">Solo un administrador puede responder.</p>'}`;
+        const ov = document.getElementById('modal-overlay');
+        ov.querySelector('.modal').classList.add('modal-ancho');
+        ov.style.display = 'flex';
+        const hilo = document.querySelector('.cq-hilo'); hilo.scrollTop = hilo.scrollHeight;
+        actualizarContadorConsultas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function usarRespuestaRapida(i) {
+    const t = document.getElementById('cq-resp');
+    t.value = window._cqRapidas[i].texto;
+    t.focus();
+}
+
+async function responderConsultaAdmin(id, cerrar) {
+    const texto = document.getElementById('cq-resp').value.trim();
+    if (!texto) return toast('Escribí la respuesta', 'error');
+    try {
+        const r = await api(`/api/consultas/${id}/responder`, { method: 'POST', body: JSON.stringify({ texto, cerrar }) });
+        cerrarModal(); toast(r.mensaje);
+        if (document.getElementById('sec-consultas').classList.contains('active')) cargarConsultas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function estadoConsulta(id, estado) {
+    try {
+        await api(`/api/consultas/${id}/estado`, { method: 'POST', body: JSON.stringify({ estado }) });
+        toast(estado === 'cerrada' ? 'Consulta cerrada' : 'Consulta reabierta');
+        cerrarModal(); cargarConsultas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function abrirReportarProblema() {
+    const pantalla = (PAGINAS[location.hash.slice(1)] || ['', 'Inicio'])[1];
+    window._rpPantalla = pantalla;
+    document.getElementById('modal-content').innerHTML = `
+        <h3><svg class="ic"><use href="#i-flag"/></svg> Reportar un problema</h3>
+        <p class="muted" style="margin:0.3rem 0 0.8rem">¿Algo no anda o se ve mal? Contalo acá: le llega al administrador del sistema
+        y te responde por correo.</p>
+        <label for="rp-asunto">Asunto</label>
+        <input type="text" id="rp-asunto" maxlength="150" placeholder="Ej: no carga el gráfico de gastos">
+        <label for="rp-texto">¿Qué pasó?</label>
+        <textarea id="rp-texto" rows="5" maxlength="4000" placeholder="Qué estabas haciendo, qué esperabas que pasara y qué pasó."></textarea>
+        <p class="muted" style="font-size:0.82rem">Pantalla: <b>${escapeHtml(pantalla)}</b> (se adjunta automáticamente).</p>
+        <div class="form-actions">
+            <button class="btn btn-primary btn-3d" id="rp-enviar" onclick="enviarReporteProblema()">Enviar reporte</button>
+            <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button>
+        </div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('rp-asunto').focus();
+}
+
+async function enviarReporteProblema() {
+    const btn = document.getElementById('rp-enviar'); btn.disabled = true;
+    try {
+        const r = await api('/api/consultas/reportar', { method: 'POST', body: JSON.stringify({
+            asunto: document.getElementById('rp-asunto').value, texto: document.getElementById('rp-texto').value,
+            pantalla: window._rpPantalla }) });
+        cerrarModal(); toast(r.mensaje);
+        actualizarContadorConsultas();
+    } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}

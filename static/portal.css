@@ -1,0 +1,98 @@
+/* Portal de familias: usa los tokens de style.css, layout propio pensado para celular */
+body.portal { background: var(--bg); }
+.p-top { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.6rem 1rem; background: var(--navy); color: #fff; border-bottom: 3px solid var(--red); }
+.p-marca { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+.p-logo { width: 38px; height: 38px; border-radius: 50%; background: #fff; padding: 3px; object-fit: contain; }
+.p-t1 { font-family: var(--font-head); font-weight: 600; font-size: 1.05rem; }
+.p-t2 { font-size: 0.7rem; color: #b8c9e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-usuario { display: flex; align-items: center; gap: 0.6rem; font-size: 0.82rem; color: #d5e1f0; }
+.p-usuario[hidden], .p-vista[hidden], .p-msg[hidden], .p-badge[hidden] { display: none !important; }
+.p-salir { background: transparent; color: #d5e1f0; border-color: rgba(255,255,255,0.25); }
+.p-salir:hover { background: var(--red); color: #fff; border-color: var(--red); }
+.p-main { max-width: 980px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+.p-card-login { max-width: 430px; margin: 1.5rem auto; padding: 1.75rem 1.5rem; }
+.p-card-login h1 { font-size: 1.45rem; margin-bottom: 0.3rem; }
+.p-card-login label { display: block; margin: 0.9rem 0 0.3rem; }
+.p-ancho { width: 100%; margin-top: 1rem; min-height: 46px; font-size: 1rem; }
+.p-pass { position: relative; }
+.p-pass input { padding-right: 4.5rem; }
+.p-pass .btn { position: absolute; right: 4px; top: 4px; min-height: 32px; }
+.p-ayuda { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; padding: 0.7rem 0.8rem; font-size: 0.87rem;
+    background: var(--primary-soft); border-radius: var(--radius-sm); color: var(--text); }
+.p-ayuda .ic { color: var(--primary); margin-top: 2px; }
+.p-msg { margin: 0.75rem 0 0; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.9rem; }
+.p-msg.error { background: var(--danger-soft); color: var(--danger); }
+.p-msg.ok { background: var(--success-soft); color: var(--success); }
+
+/* Selector de hijos */
+.p-hijos { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem; margin-bottom: 1rem; }
+.p-hijo { display: flex; align-items: center; gap: 0.6rem; min-height: 52px; padding: 0.45rem 0.9rem 0.45rem 0.45rem;
+    border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); cursor: pointer; font: inherit; color: var(--text); white-space: nowrap; }
+.p-hijo .p-ini { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3);
+    font-family: var(--font-head); font-weight: 600; }
+.p-hijo small { display: block; color: var(--text-muted); font-size: 0.75rem; text-align: left; }
+.p-hijo b { display: block; text-align: left; }
+.p-hijo[aria-selected="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary); }
+.p-hijo[aria-selected="true"] .p-ini { background: var(--primary); color: #fff; }
+
+/* Accesos rápidos */
+.p-acciones { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; margin-bottom: 1.1rem; }
+.p-accion { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem; min-height: 78px;
+    padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text);
+    font: inherit; font-size: 0.85rem; font-weight: 600; text-align: center; cursor: pointer; box-shadow: var(--shadow-sm); }
+.p-accion .ic { width: 24px; height: 24px; color: var(--primary); }
+.p-accion:hover { border-color: var(--primary); }
+
+.p-tabs { position: sticky; top: 64px; z-index: 5; background: var(--bg); }
+.p-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px;
+    background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 700; }
+
+.p-codigo { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.p-codigo-num { font-family: ui-monospace, Consolas, monospace; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.08em; color: var(--heading); }
+.p-estado { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.65rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+.p-estado.ok { background: var(--success-soft); color: var(--success); }
+.p-estado.mal { background: var(--danger-soft); color: var(--danger); }
+.p-estado.neutro { background: var(--surface-3); color: var(--text-muted); }
+.p-lista { list-style: none; display: flex; flex-direction: column; }
+.p-lista li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem 0.1rem; border-bottom: 1px solid var(--border); }
+.p-lista li:last-child { border-bottom: 0; }
+.p-lista .p-sec { color: var(--text-muted); font-size: 0.82rem; }
+.p-monto { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.p-monto.pos { color: var(--success); }
+.p-monto.neg { color: var(--danger); }
+.p-vacio { text-align: center; color: var(--text-muted); padding: 1.5rem 1rem; }
+.p-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.4rem 1.25rem; }
+.p-datos div { padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+.p-datos dt { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.p-datos dd { font-weight: 500; margin: 0.1rem 0 0; }
+
+/* Consultas */
+.p-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.6rem; margin-bottom: 1.25rem; }
+.p-cat { text-align: left; padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    font: inherit; color: var(--text); cursor: pointer; }
+.p-cat:hover { border-color: var(--primary); }
+.p-cat b { display: block; margin-bottom: 0.15rem; }
+.p-cat span { font-size: 0.84rem; color: var(--text-muted); }
+.p-sugerencias { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0 1rem; }
+.p-sugerencias li { display: flex; gap: 0.55rem; padding: 0.7rem 0.85rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.92rem; }
+.p-sugerencias .ic { color: var(--success); margin-top: 2px; }
+.p-hilo { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.75rem 0 1rem; }
+.p-msj { max-width: 88%; padding: 0.65rem 0.85rem; border-radius: 12px; font-size: 0.93rem; word-wrap: break-word; }
+.p-msj.yo { align-self: flex-end; background: var(--primary-soft); border-bottom-right-radius: 4px; }
+.p-msj.ellos { align-self: flex-start; background: var(--surface-3); border-bottom-left-radius: 4px; }
+.p-msj small { display: block; margin-top: 0.3rem; font-size: 0.72rem; color: var(--text-muted); }
+.p-consulta { cursor: pointer; }
+.p-consulta:hover { background: var(--row-hover); }
+
+@media (max-width: 640px) {
+    .p-acciones { grid-template-columns: repeat(2, 1fr); }
+    .p-t2, .p-usuario #p-email, .p-salir span { display: none; }
+    .p-tabs { top: 58px; }
+    .p-main .gasto-resumen { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+    .p-main .gasto-kpi { padding: 0.8rem 0.85rem; }
+    .p-main .gasto-kpi-sub { font-size: 0.75rem; }
+    .p-hijos { scrollbar-width: none; }
+    .p-card-login { margin-top: 0.5rem; padding: 1.4rem 1.1rem; }
+}

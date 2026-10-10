@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from app.database import get_db
 from app.models.alumno import Alumno
+from app.models.portal import CuponEnviado
 from app import siro, email_util, config_util
 
 router = APIRouter(prefix="/api/cupones", tags=["Cupones SIRO"])
@@ -75,7 +76,13 @@ def _asunto(db: Session, tipo: str, alumno, monto) -> str:
 
 def _generar_y_enviar(db: Session, tipo: str, alumno, monto) -> dict:
     """Genera el cupón en SIRO y lo envía por email. Devuelve el resultado."""
-    cupon = siro.generar_cupon(alumno, monto, concepto=("Cuota APAI" if tipo == "cuota" else "Recarga ApaiCard"))
+    concepto = "Cuota APAI" if tipo == "cuota" else "Recarga ApaiCard"
+    cupon = siro.generar_cupon(alumno, monto, concepto=concepto)
+    # Queda registrado: la familia lo puede volver a abrir desde el Portal aunque no le llegue el correo
+    registro = CuponEnviado(alumno_id=alumno.id, tipo=tipo, monto=monto,
+                            concepto=f"{concepto} - {config_util.mes_actual()}", url=cupon.get("url"))
+    db.add(registro)
+    db.commit()
     if not email_util.email_configurado():
         return {"email_enviado": False, "url": cupon.get("url"), "motivo": "email no configurado"}
     email_util.enviar_email(
@@ -83,6 +90,8 @@ def _generar_y_enviar(db: Session, tipo: str, alumno, monto) -> dict:
         asunto=_asunto(db, tipo, alumno, monto),
         cuerpo_html=_cuerpo_email(db, tipo, alumno, monto, cupon.get("url")),
     )
+    registro.email_enviado = True
+    db.commit()
     return {"email_enviado": True, "url": cupon.get("url")}
 
 

@@ -680,3 +680,18 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .imp-tabla td:last-child { min-width: 230px; }
 .imp-tabla td:nth-child(5), .imp-tabla td:nth-child(6) { min-width: 170px; }
 .imp-tabla td:first-child { width: 1%; }
+
+/* Consultas de familias */
+.side-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+    background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 700; }
+.side-badge[hidden] { display: none; }
+.fila-no-leida td { background: var(--primary-soft); }
+.punto-nuevo { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 0.4rem; vertical-align: middle; }
+.cq-hilo { display: flex; flex-direction: column; gap: 0.6rem; max-height: 46vh; overflow-y: auto; margin: 0.6rem 0 1rem; padding: 0.75rem;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cq-msj { align-self: flex-start; max-width: 85%; padding: 0.6rem 0.85rem; border-radius: 12px; border-bottom-left-radius: 4px;
+    background: var(--surface); border: 1px solid var(--border); word-wrap: break-word; font-size: 0.92rem; }
+.cq-txt { white-space: pre-wrap; }
+.cq-msj.nuestro { align-self: flex-end; background: var(--primary-soft); border-color: transparent; border-bottom-left-radius: 12px; border-bottom-right-radius: 4px; }
+.cq-msj small { display: block; margin-top: 0.3rem; font-size: 0.72rem; color: var(--text-muted); }
+.cq-rapidas { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0 0.5rem; }
