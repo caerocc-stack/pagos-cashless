@@ -7,3 +7,4 @@ backups/
 node_modules/
 package-lock.json
 *.xls
+.vercel/

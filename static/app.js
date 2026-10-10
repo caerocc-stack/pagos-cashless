@@ -1842,6 +1842,36 @@ function aplicarDatosAfip(d) {
     return provEncontrado;
 }
 
+// Sube el comprobante directo a Supabase Storage con una URL firmada por el servidor
+// (Vercel no acepta pedidos de más de 4,5 MB). Si eso falla, prueba la subida clásica.
+async function subirComprobante(file) {
+    try {
+        const r = await fetch(API + '/api/gastos/adjunto-firma', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre: file.name || 'comprobante', tamanio: file.size }),
+        });
+        const firma = await r.json();
+        if (!r.ok) throw new Error(firma.detail || 'Error al preparar la subida');
+        const up = await fetch(firma.upload_url, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+        });
+        if (!up.ok) throw new Error('Storage respondió ' + up.status);
+        return firma.public_url;
+    } catch (e) {
+        if (file.size > 4 * 1024 * 1024) throw e;  // demasiado grande para la vía clásica
+        console.warn('Subida directa falló, uso la clásica:', e);
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await fetch(API + '/api/gastos/adjunto', { method: 'POST', credentials: 'same-origin', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al subir');
+        return data.url;
+    }
+}
+
 async function leerComprobante(input) {
     const file = input.files[0];
     if (!file) return;
@@ -1861,11 +1891,7 @@ async function leerComprobante(input) {
 
     // Subir la imagen/PDF a Storage como respaldo
     try {
-        const fd = new FormData();
-        fd.append('archivo', file);
-        const res = await fetch(API + '/api/gastos/adjunto', { method: 'POST', credentials: 'same-origin', body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Error al subir');
+        const data = { url: await subirComprobante(file) };
         document.getElementById('gasto-adjunto').value = data.url;
         const ver = document.getElementById('gasto-adjunto-ver');
         ver.href = data.url; ver.style.display = '';

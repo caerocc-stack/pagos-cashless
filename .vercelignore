@@ -1,0 +1,10 @@
+.env
+.venv/
+node_modules/
+backups/
+docs/
+scripts/capturas/
+__pycache__/
+*.pyc
+*.xlsx
+*.xls

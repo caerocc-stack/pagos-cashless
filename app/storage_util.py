@@ -83,48 +83,69 @@ def _es_bucket_inexistente(code: int, cuerpo: str) -> bool:
     return code == 404 or "bucket not found" in (cuerpo or "").lower()
 
 
-def subir_comprobante(contenido: bytes, filename: str, content_type: str | None = None) -> str:
-    """Sube el archivo y devuelve la URL pública. Lanza ValueError con un mensaje claro si falla."""
+def _preparar(filename: str):
+    """Valida la configuración y la extensión; devuelve (url, key, bucket, ruta)."""
     url, key, bucket = _cfg()
     if not (url and key):
         raise ValueError(
             "Supabase Storage no está configurado. Cargá SUPABASE_URL y "
-            "SUPABASE_SERVICE_KEY en las variables de entorno de Render y volvé a desplegar."
+            "SUPABASE_SERVICE_KEY en las variables de entorno del servidor y volvé a desplegar."
         )
-
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
     if ext not in EXT_PERMITIDAS:
         raise ValueError(f"Tipo de archivo no permitido (.{ext}). Usá una foto o PDF.")
-    if not content_type:
-        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    ruta = f"{ahora_ar().year}/{uuid.uuid4().hex}.{ext}"
+    return url, key, bucket, ruta
 
-    anio = ahora_ar().year
-    ruta = f"{anio}/{uuid.uuid4().hex}.{ext}"
-    destino = f"{url}/storage/v1/object/{bucket}/{ruta}"
 
-    def _intentar():
-        _request("POST", destino, key, contenido, content_type, extra={"x-upsert": "true"})
-
+def _con_bucket(url: str, key: str, bucket: str, accion):
+    """Ejecuta accion(); si el bucket no existe lo crea y reintenta una vez."""
     try:
-        _intentar()
+        return accion()
     except urllib.error.HTTPError as e:
         cuerpo = _leer_cuerpo(e)
         # Supabase responde "Bucket not found" a veces como 404 y a veces dentro de un 400.
-        if _es_bucket_inexistente(e.code, cuerpo):
-            try:
-                _asegurar_bucket(url, key, bucket)
-            except urllib.error.HTTPError as e_bucket:
-                cb = _leer_cuerpo(e_bucket)
-                # 400/409 o "already exists" = el bucket ya estaba, seguimos
-                if e_bucket.code not in (400, 409) and "exist" not in cb.lower():
-                    raise ValueError(_traducir(e_bucket.code, cb))
-            try:
-                _intentar()
-            except urllib.error.HTTPError as e2:
-                raise ValueError(_traducir(e2.code, _leer_cuerpo(e2)))
-        else:
+        if not _es_bucket_inexistente(e.code, cuerpo):
             raise ValueError(_traducir(e.code, cuerpo))
+        try:
+            _asegurar_bucket(url, key, bucket)
+        except urllib.error.HTTPError as e_bucket:
+            cb = _leer_cuerpo(e_bucket)
+            # 400/409 o "already exists" = el bucket ya estaba, seguimos
+            if e_bucket.code not in (400, 409) and "exist" not in cb.lower():
+                raise ValueError(_traducir(e_bucket.code, cb))
+        try:
+            return accion()
+        except urllib.error.HTTPError as e2:
+            raise ValueError(_traducir(e2.code, _leer_cuerpo(e2)))
     except urllib.error.URLError as e:
         raise ValueError(f"No se pudo conectar con Supabase: {e.reason}. Revisá SUPABASE_URL.")
 
+
+def subir_comprobante(contenido: bytes, filename: str, content_type: str | None = None) -> str:
+    """Sube el archivo y devuelve la URL pública. Lanza ValueError con un mensaje claro si falla."""
+    url, key, bucket, ruta = _preparar(filename)
+    if not content_type:
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    destino = f"{url}/storage/v1/object/{bucket}/{ruta}"
+    _con_bucket(url, key, bucket,
+                lambda: _request("POST", destino, key, contenido, content_type, extra={"x-upsert": "true"}))
     return f"{url}/storage/v1/object/public/{bucket}/{ruta}"
+
+
+def crear_subida_firmada(filename: str) -> dict:
+    """Genera una URL firmada para que el navegador suba el archivo directo a Storage
+    (sin pasar por el servidor: Vercel limita el cuerpo de los pedidos a 4,5 MB).
+    Devuelve {"upload_url", "public_url"}. La firma vence a las 2 horas."""
+    url, key, bucket, ruta = _preparar(filename)
+
+    def _firmar():
+        with _request("POST", f"{url}/storage/v1/object/upload/sign/{bucket}/{ruta}",
+                      key, b"{}", "application/json") as resp:
+            return json.loads(resp.read())
+
+    firma = _con_bucket(url, key, bucket, _firmar)
+    return {
+        "upload_url": f"{url}/storage/v1{firma['url']}",
+        "public_url": f"{url}/storage/v1/object/public/{bucket}/{ruta}",
+    }

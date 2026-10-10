@@ -9,7 +9,7 @@ from app.models.proveedor import Proveedor
 from app.models.caja import MovimientoCaja
 from app.models.banco import MovimientoBanco
 from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
-from app.storage_util import subir_comprobante, storage_configurado
+from app.storage_util import subir_comprobante, crear_subida_firmada, storage_configurado
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/gastos", tags=["Gastos"])
@@ -36,6 +36,18 @@ async def subir_adjunto(archivo: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"url": url}
+
+
+@router.post("/adjunto-firma")
+def firmar_adjunto(datos: dict):
+    """Devuelve una URL firmada para subir el comprobante directo a Storage desde el navegador."""
+    nombre = str(datos.get("nombre") or "")
+    if int(datos.get("tamanio") or 0) > 10 * 1024 * 1024:
+        raise HTTPException(400, "El archivo supera los 10 MB.")
+    try:
+        return crear_subida_firmada(nombre)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def _completar_proveedor(data: dict, db: Session):

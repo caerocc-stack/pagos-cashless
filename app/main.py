@@ -4,69 +4,16 @@ from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import text
 
-from app.database import engine, Base, SessionLocal
-from app.auth import verify_token, crear_usuario_inicial, get_current_user
+from app.auth import verify_token, get_current_user
+from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
 from app.routers import auth as auth_router
-from app.models import configuracion as _configuracion  # noqa: F401 (registra la tabla)
-from app.models import proveedor as _proveedor  # noqa: F401 (registra la tabla)
-from app.models import gasto as _gasto  # noqa: F401 (registra la tabla)
-from app.models import caja as _caja  # noqa: F401 (registra la tabla)
-from app.models import banco as _banco  # noqa: F401 (registra la tabla)
-from app.models import curso as _curso  # noqa: F401 (registra la tabla)
-from app.models import pago_cuota as _pago_cuota  # noqa: F401 (registra la tabla)
-from app.models import horario as _horario  # noqa: F401 (registra la tabla)
 
-Base.metadata.create_all(bind=engine)
-
-
-def _asegurar_columnas():
-    """Migracion ligera e idempotente: agrega columnas nuevas sin perder datos."""
-    migraciones = [
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS area VARCHAR(30)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS cuota_excluir BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS cuota_personalizada NUMERIC(12,2)",
-        # Clasificar el area automaticamente segun el curso (solo donde falta)
-        "UPDATE alumnos SET area='Ciclo Basico' WHERE area IS NULL AND curso ILIKE '%ciclo%'",
-        "UPDATE alumnos SET area='Avionica' WHERE area IS NULL AND curso ILIKE '%avionica%'",
-        "UPDATE alumnos SET area='Mecanica' WHERE area IS NULL AND curso ILIKE '%mecanica%'",
-        # Indices para acelerar historial, reportes y envios por curso/area
-        "CREATE INDEX IF NOT EXISTS ix_mov_alumno ON movimientos (alumno_id)",
-        "CREATE INDEX IF NOT EXISTS ix_mov_fecha ON movimientos (created_at)",
-        "CREATE INDEX IF NOT EXISTS ix_alumno_curso ON alumnos (curso)",
-        "CREATE INDEX IF NOT EXISTS ix_alumno_area ON alumnos (area)",
-        # Gastos: vinculo a un movimiento de caja en efectivo (forma de pago)
-        "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS caja_mov_id INTEGER",
-        # Alumnos: datos del padron ALUMNOS 2026 (cuotas)
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS division VARCHAR(10)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS telefono VARCHAR(40)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS condicion VARCHAR(20)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS modalidad VARCHAR(20)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS legajo_completo VARCHAR(20)",
-        "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS deuda_anio_anterior NUMERIC(12,2)",
-        # Pagos de cuota: vínculo a un movimiento de caja (pago en efectivo)
-        "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS caja_mov_id INTEGER",
-    ]
-    for sql in migraciones:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(sql))
-        except Exception as e:
-            print("Aviso de migracion:", e)
-
-
-_asegurar_columnas()
-
-# Crear usuario admin inicial si no existe
-db = SessionLocal()
-try:
-    crear_usuario_inicial(db)
-finally:
-    db.close()
+# En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
+# no en cada instancia que arranca.
+if not os.getenv("VERCEL"):
+    preparar_base()
 
 app = FastAPI(
     title="APAI Pay",
@@ -94,7 +41,7 @@ CSP = (
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "img-src 'self' data: blob: https://*.supabase.co; "
     "font-src 'self' data: https://fonts.gstatic.com; "
-    "connect-src 'self'; "
+    "connect-src 'self' https://*.supabase.co; "  # subida directa de comprobantes a Storage
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 

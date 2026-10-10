@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["gru1"],
+  "buildCommand": "python scripts/preparar_base.py",
+  "functions": {
+    "app/main.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{docs/**,backups/**,node_modules/**,scripts/capturas/**,.github/**}"
+    }
+  }
+}
