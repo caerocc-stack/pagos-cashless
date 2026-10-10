@@ -642,6 +642,20 @@
                 <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Detalle</th><th>IP</th></tr></thead>
                 <tbody id="body-auditoria"></tbody>
             </table>
+
+            <div class="section-titulo" style="margin-top:2rem;font-size:1.1rem">Mantenimiento</div>
+            <div class="card zona-riesgo">
+                <div>
+                    <h3 style="margin-bottom:0.3rem"><svg class="ic"><use href="#i-alert"/></svg>Dejar las finanzas en cero</h3>
+                    <p class="muted" style="margin:0">Borra gastos y facturas, conciliación bancaria (extractos y movimientos), libro de caja y,
+                    si querés, los proveedores. <b>No toca</b> alumnos, tarjetas, saldos, cuotas ni usuarios. No se puede deshacer:
+                    descargá un backup antes.</p>
+                </div>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                    <button class="btn btn-outline" onclick="descargarBackup()"><svg class="ic"><use href="#i-database"/></svg>Descargar backup</button>
+                    <button class="btn btn-red" onclick="abrirLimpiezaFinanzas()"><svg class="ic"><use href="#i-trash"/></svg>Dejar en cero…</button>
+                </div>
+            </div>
         </section>
 
         <!-- PROVEEDORES -->

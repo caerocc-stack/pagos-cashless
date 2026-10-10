@@ -3586,7 +3586,7 @@ const ACCIONES_AUDITORIA = {
     usuario_editado: 'Usuario modificado', clave_temporal: 'Clave temporal asignada',
     link_reset_enviado: 'Link de clave enviado', usuario_desbloqueado: 'Usuario desbloqueado',
     sesiones_cerradas: 'Sesiones cerradas por admin', cerrar_sesiones: 'Cerró sesión en todos lados',
-    actualizar_cuenta: 'Actualizó sus datos',
+    actualizar_cuenta: 'Actualizó sus datos', limpieza_finanzas: 'Dejó finanzas en cero',
 };
 
 async function cargarUsuarios() {
@@ -3695,6 +3695,53 @@ async function accionUsuario(id, accion) {
         toast((r && r.mensaje) || 'Listo');
         cargarUsuarios();
     } catch (err) { toast(err.message, 'error'); }
+}
+
+// =========================================================
+// --- MANTENIMIENTO: dejar finanzas en cero (solo admin) ---
+// =========================================================
+async function abrirLimpiezaFinanzas() {
+    let n = {};
+    try { n = await api('/api/mantenimiento/conteos'); } catch (err) { return toast(err.message, 'error'); }
+    const op = (id, txt, cant, marcado = true) => `
+        <label class="check-inline" style="margin:0.45rem 0"><input type="checkbox" id="lf-${id}" ${marcado ? 'checked' : ''}>
+            ${txt} <span class="badge">${cant}</span></label>`;
+    document.getElementById('modal-content').innerHTML = `
+        <h3>Dejar las finanzas en cero</h3>
+        <p class="muted" style="margin-top:-0.4rem">Elegí qué borrar. <b>No se puede deshacer.</b> Alumnos, tarjetas, saldos, cuotas y usuarios no se tocan.</p>
+        <div class="mc-card">
+            ${op('gastos', 'Gastos y facturas', n.gastos)}
+            ${op('conciliacion', 'Conciliación bancaria (extractos y movimientos del banco)', `${n.conciliacion} mov. · ${n.extractos} extracto(s)`)}
+            ${op('caja', 'Libro de caja (y su saldo inicial)', n.caja)}
+            ${op('proveedores', 'Proveedores (requiere borrar también los gastos)', n.proveedores, false)}
+        </div>
+        <label class="mc-lbl" for="lf-pass">Tu contraseña</label>
+        <input type="password" id="lf-pass" class="mc-inp" autocomplete="current-password">
+        <label class="mc-lbl" for="lf-conf">Para confirmar, escribí <b>BORRAR</b></label>
+        <input type="text" id="lf-conf" class="mc-inp" autocomplete="off" autocapitalize="characters">
+        <div class="form-actions">
+            <button class="btn btn-red" id="lf-ok" onclick="confirmarLimpiezaFinanzas()"><svg class="ic"><use href="#i-trash"/></svg>Borrar definitivamente</button>
+            <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button>
+        </div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('lf-proveedores').addEventListener('change', e => { if (e.target.checked) document.getElementById('lf-gastos').checked = true; });
+}
+
+async function confirmarLimpiezaFinanzas() {
+    const v = id => document.getElementById(id);
+    if (v('lf-conf').value.trim().toUpperCase() !== 'BORRAR') return toast('Escribí BORRAR para confirmar', 'error');
+    const btn = v('lf-ok');
+    btn.disabled = true;
+    try {
+        const r = await api('/api/mantenimiento/limpiar-finanzas', { method: 'POST', body: JSON.stringify({
+            password: v('lf-pass').value, confirmacion: v('lf-conf').value,
+            gastos: v('lf-gastos').checked, conciliacion: v('lf-conciliacion').checked,
+            caja: v('lf-caja').checked, proveedores: v('lf-proveedores').checked }) });
+        toast(r.mensaje);
+        cerrarModal();
+        gastosCache = []; concCache = []; gaDatos = null;
+        cargarUsuarios();
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
 }
 
 // =========================================================

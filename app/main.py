@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios
+from app.routers import auth as auth_router, usuarios, mantenimiento
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -94,6 +94,7 @@ app.include_router(cursos.router, dependencies=_auth)
 app.include_router(cuotas.router, dependencies=_auth)
 app.include_router(horario.router, dependencies=_auth)
 app.include_router(usuarios.router, dependencies=_auth)
+app.include_router(mantenimiento.router, dependencies=_auth)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
