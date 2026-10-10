@@ -17,6 +17,7 @@ from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
+from app.cuenta_alumno import estado_cuenta, anio_de_pago
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -36,18 +37,25 @@ def _indices(db: Session):
             by_leg.setdefault(leg[-5:], a)
         d = _dig(a.dni)
         if len(d) >= 7:  # DNI real (los placeholders 'SL...' quedan afuera)
-            by_dni.setdefault(d[-8:], a)
+            by_dni.setdefault(d[-8:].zfill(8), a)
     return by_leg, by_dni
 
 
 def _matchear(cliente, by_leg, by_dni):
+    """Cliente SIRO = 1 dígito de concepto + 8 dígitos: el DNI, o "000" + legajo.
+    Si los 8 dígitos no empiezan con 000 es un DNI: se busca primero por DNI para no confundirlo
+    con un legajo que coincida con sus últimos 5 dígitos."""
     c = _dig(cliente)
     if not c:
         return None, None
+    if len(c) >= 8 and not c[-8:].startswith("000"):
+        a = by_dni.get(c[-8:].zfill(8))
+        if a:
+            return a, "dni"
     a = by_leg.get(c[-5:])
     if a:
         return a, "legajo"
-    a = by_dni.get(c[-8:])
+    a = by_dni.get(c[-8:].zfill(8))
     if a:
         return a, "dni"
     return None, None
@@ -264,58 +272,46 @@ def _nivel(curso: str) -> str:
     return f"{m.group(1)}°" if m else "Otros"
 
 
-def _estado_de(alumno, curso, total_pagado: Decimal, mes_corte: int) -> dict:
-    cond = (alumno.condicion or "").strip().lower()
-    deuda_ant = Decimal(str(alumno.deuda_anio_anterior or 0))
-    base = {
-        "id": alumno.id, "legajo": alumno.legajo,
-        "apellido": alumno.apellido, "nombre": alumno.nombre,
-        "curso": alumno.curso, "area": alumno.area,
-        "division": alumno.division, "nivel": _nivel(alumno.curso),
-        "modalidad": alumno.modalidad, "condicion": alumno.condicion,
-        "pagado": float(total_pagado), "deuda_anterior": float(deuda_ant),
-    }
-    if cond in ("becado", "exento"):
-        base.update(esperado=0, deuda=0, deuda_total=float(deuda_ant),
-                    cuotas_pagas=0, estado=alumno.condicion)
-        return base
-    if not curso:
-        base.update(esperado=0, deuda=0, deuda_total=float(deuda_ant),
-                    cuotas_pagas=0, estado="Sin curso")
-        return base
-    cuota = Decimal(str(curso.cuota or 0))
-    matric = Decimal(str(curso.matricula or 0))
-    devengadas = min(curso.n_cuotas, max(0, mes_corte - 2))
-    esperado = matric + devengadas * cuota
-    deuda_corriente = max(Decimal("0"), esperado - total_pagado)
-    deuda_total = deuda_corriente + deuda_ant
-    cuotas_pagas = int(total_pagado / cuota) if cuota else 0
-    if total_pagado <= 0:
-        estado = "Sin pagos"
-    elif deuda_corriente <= 0:
-        estado = "Al día"
-    else:
-        estado = "Moroso"
-    base.update(esperado=float(esperado), deuda=float(deuda_corriente),
-                deuda_total=float(deuda_total), cuotas_pagas=cuotas_pagas, estado=estado)
-    return base
+def _base_alumno(alumno) -> dict:
+    return {"id": alumno.id, "legajo": alumno.legajo, "apellido": alumno.apellido, "nombre": alumno.nombre,
+            "curso": alumno.curso, "area": alumno.area, "division": alumno.division, "nivel": _nivel(alumno.curso),
+            "modalidad": alumno.modalidad, "condicion": alumno.condicion}
 
 
-def _calcular(db: Session, anio: int, mes_corte: int):
+def _estado_de(alumno, curso, pagos, anio: int, mes_corte: int | None = None, detalle: bool = False) -> dict:
+    """Estado de cuenta cuota por cuota (ver app/cuenta_alumno.py). Sin `detalle` devuelve solo el resumen."""
+    info = estado_cuenta(alumno, curso, pagos, anio, hoy=ahora_ar().date(), mes_corte=mes_corte)
+    if not detalle:
+        for k in ("items", "pagos", "proximo"):
+            info.pop(k, None)
+    return {**_base_alumno(alumno), **info}
+
+
+def pagos_del_anio(db: Session, anio: int, alumno_id: int | None = None) -> dict[int, list]:
+    """Pagos imputables al año (por fecha de pago: un pago del 30/12 acreditado en enero es del año anterior)."""
+    q = db.query(PagoCuota).filter(PagoCuota.alumno_id.isnot(None),
+                                   PagoCuota.fecha >= date(anio - 1, 12, 1), PagoCuota.fecha <= date(anio + 1, 1, 31))
+    if alumno_id:
+        q = q.filter(PagoCuota.alumno_id == alumno_id)
+    por_alumno: dict[int, list] = {}
+    for p in q.all():
+        if anio_de_pago(p) == anio:
+            por_alumno.setdefault(p.alumno_id, []).append(p)
+    return por_alumno
+
+
+def _corte_texto(mes_corte: int | None) -> int:
+    """Último mes con la cuota ya vencida (las cuotas vencen el último día de cada mes)."""
+    return mes_corte if mes_corte else max(0, ahora_ar().month - 1)
+
+
+def _calcular(db: Session, anio: int, mes_corte: int | None):
     cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
     if not cursos:
         cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
-    sumas = dict(
-        db.query(PagoCuota.alumno_id, func.coalesce(func.sum(PagoCuota.importe), 0))
-        .filter(PagoCuota.anio == anio, PagoCuota.alumno_id.isnot(None))
-        .group_by(PagoCuota.alumno_id).all()
-    )
-    salida = []
-    for a in db.query(Alumno).filter(Alumno.activo == True).all():  # noqa: E712
-        curso = curso_de_alumno(a, cursos)
-        total = Decimal(str(sumas.get(a.id, 0)))
-        salida.append(_estado_de(a, curso, total, mes_corte))
-    return salida
+    pagos = pagos_del_anio(db, anio)
+    return [_estado_de(a, curso_de_alumno(a, cursos), pagos.get(a.id, []), anio, mes_corte)
+            for a in db.query(Alumno).filter(Alumno.activo == True).all()]  # noqa: E712
 
 
 @router.get("/estado")
@@ -325,8 +321,7 @@ def estado(anio: int | None = None, mes: int | None = None,
            db: Session = Depends(get_db)):
     """Estado de cuenta de todos los alumnos (para consulta y morosos)."""
     anio = anio or ahora_ar().year
-    mes_corte = mes or ahora_ar().month
-    filas = _calcular(db, anio, mes_corte)
+    filas = _calcular(db, anio, mes)
     if area:
         filas = [f for f in filas if (f["area"] or "") == area]
     if curso:
@@ -337,7 +332,18 @@ def estado(anio: int | None = None, mes: int | None = None,
         t = q.strip().lower()
         filas = [f for f in filas if t in f"{f['apellido']} {f['nombre']} {f['legajo']}".lower()]
     filas.sort(key=lambda f: (-f["deuda_total"], f["apellido"]))
-    return {"anio": anio, "mes_corte": mes_corte, "alumnos": filas}
+    return {"anio": anio, "mes_corte": _corte_texto(mes), "alumnos": filas}
+
+
+def detalle_alumno(db: Session, a: Alumno, anio: int | None = None) -> dict:
+    """Estado de cuenta completo de un alumno: cuotas, imputación de cada pago y próximo vencimiento."""
+    anio = anio or ahora_ar().year
+    cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    curso = curso_de_alumno(a, cursos)
+    info = _estado_de(a, curso, pagos_del_anio(db, anio, a.id).get(a.id, []), anio, detalle=True)
+    info["curso_param"] = {"nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
+                           "matricula": float(curso.matricula or 0)} if curso else None
+    return info
 
 
 @router.get("/estado/{alumno_id}")
@@ -345,32 +351,14 @@ def estado_alumno(alumno_id: int, anio: int | None = None, db: Session = Depends
     a = db.get(Alumno, alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
-    anio = anio or ahora_ar().year
-    mes_corte = ahora_ar().month
-    cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
-    curso = curso_de_alumno(a, cursos)
-    pagos = db.query(PagoCuota).filter(
-        PagoCuota.alumno_id == alumno_id, PagoCuota.anio == anio
-    ).order_by(PagoCuota.fecha).all()
-    total = sum((Decimal(str(p.importe)) for p in pagos), Decimal("0"))
-    info = _estado_de(a, curso, total, mes_corte)
-    info["curso_param"] = {
-        "nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
-        "matricula": float(curso.matricula),
-    } if curso else None
-    info["pagos"] = [
-        {"fecha": str(p.fecha), "mes": p.mes, "importe": float(p.importe),
-         "canal": p.canal, "via": p.via}
-        for p in pagos
-    ]
-    return info
+    return detalle_alumno(db, a, anio)
 
 
 @router.get("/estadisticas")
 def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = Depends(get_db)):
     anio = anio or ahora_ar().year
-    mes_corte = mes or ahora_ar().month
-    filas = _calcular(db, anio, mes_corte)
+    mes_corte = _corte_texto(mes)
+    filas = _calcular(db, anio, mes)
 
     def agrupar(clave):
         g = {}

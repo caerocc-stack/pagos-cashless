@@ -1,7 +1,7 @@
 """Portal de padres: cuentas, cupones enviados y consultas (mesa de ayuda)."""
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Integer, Numeric, ForeignKey, Text, Index
+from sqlalchemy import String, Boolean, DateTime, Date, Integer, Numeric, ForeignKey, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.tz import ahora_ar
@@ -37,6 +37,25 @@ class CuponEnviado(Base):
     url: Mapped[str | None] = mapped_column(String(500))
     email_enviado: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+    # Cupones leídos del PDF de SIRO (origen "siro_pdf"): datos para pagar desde el portal
+    origen: Mapped[str | None] = mapped_column(String(20))           # sistema / siro_pdf
+    lote: Mapped[str | None] = mapped_column(String(40))             # una carga de PDF
+    archivo: Mapped[str | None] = mapped_column(String(150))
+    identificador: Mapped[str | None] = mapped_column(String(20))    # DNI o 000+legajo
+    nombre_cupon: Mapped[str | None] = mapped_column(String(150))
+    periodo: Mapped[str | None] = mapped_column(String(40))          # OCTUBRE 2026
+    vencimiento: Mapped[date | None] = mapped_column(Date)           # 1er vencimiento (monto = 1er importe)
+    vencimiento2: Mapped[date | None] = mapped_column(Date)
+    monto2: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    vencimiento3: Mapped[date | None] = mapped_column(Date)
+    monto3: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    vence_ultimo: Mapped[date | None] = mapped_column(Date)          # después de esta fecha no se muestra
+    codigo_pago: Mapped[str | None] = mapped_column(String(30))      # código de pago electrónico
+    codigo_barras: Mapped[str | None] = mapped_column(String(80))
+    pago_url: Mapped[str | None] = mapped_column(String(300))        # botón de pago SIRO
+    qr_texto: Mapped[str | None] = mapped_column(Text)
+    qr_imagen: Mapped[str | None] = mapped_column(Text)              # data:image/png (si el QR no se pudo leer)
+    barras_imagen: Mapped[str | None] = mapped_column(Text)          # data:image/png del código de barras
 
 
 class Consulta(Base):

@@ -51,7 +51,8 @@ body.portal { background: var(--bg); }
 .p-accion .ic { width: 24px; height: 24px; color: var(--primary); }
 .p-accion:hover { border-color: var(--primary); }
 
-.p-tabs { position: sticky; top: 64px; z-index: 5; background: var(--bg); }
+.p-tabs { position: sticky; top: 64px; z-index: 5; background: var(--bg); scrollbar-width: none; }
+.p-tabs::-webkit-scrollbar { display: none; }
 .p-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px;
     background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 700; }
 
@@ -102,3 +103,11 @@ body.portal { background: var(--bg); }
     .p-hijos { scrollbar-width: none; }
     .p-card-login { margin-top: 0.5rem; padding: 1.4rem 1.1rem; }
 }
+
+/* Acceso directo al cupón vigente */
+.p-pagar { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.8rem; padding: 0.85rem 1rem; border: 0; border-radius: var(--radius);
+    background: var(--primary); color: #fff; font: inherit; text-align: left; cursor: pointer; box-shadow: var(--shadow-sm); }
+.p-pagar:hover { filter: brightness(1.08); }
+.p-pagar .ic { width: 28px; height: 28px; flex: none; }
+.p-pagar b { display: block; font-size: 1rem; }
+.p-pagar small { display: block; opacity: 0.9; font-size: 0.8rem; }

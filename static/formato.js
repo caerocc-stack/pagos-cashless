@@ -223,3 +223,97 @@ function mejorarCampos(raiz = document) {
     if (document.readyState !== 'loading') iniciar();
     else document.addEventListener('DOMContentLoaded', iniciar);
 })();
+
+// Medios de pago del reporte de cobranzas SIRO, con nombres que entiendan las familias
+const CANALES = { LK: 'Red Link', PF: 'Pago Fácil', RP: 'Rapipago', TQR: 'Pago con QR', BPC: 'Pago Mis Cuentas (Banelco)',
+    PC: 'Pago Mis Cuentas', PMC: 'Pago Mis Cuentas', CE: 'Cobro Express', BP: 'Bapro Pagos', DEB: 'Débito automático' };
+function nombreCanal(p) {  // p = {canal, via}
+    if (p.via === 'efectivo') return 'Efectivo en la Asociación';
+    return CANALES[(p.canal || '').toUpperCase()] || (p.canal ? 'Pago SIRO (' + p.canal + ')' : 'Pago registrado');
+}
+
+
+// ---------------------------------------------------------------- estado de cuenta (sistema y portal)
+const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const _escCC = s => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Una ficha por matrícula y por cuota, con su estado (pagada, adeudada, a vencer…)
+function htmlCuotasGrid(e) {
+    if (!e.items || !e.items.length) return '';
+    let primera = true;
+    return '<div class="cc-grid">' + e.items.map(it => {
+        let est = it.estado;
+        if (est === 'a_vencer') { est = primera ? 'a_vencer' : 'futura'; primera = false; }
+        const nombre = it.concepto === 'Matrícula' ? 'Matrícula' : (e.items.length > 2 ? MESES_CORTOS[it.mes - 1] : it.concepto);
+        const det = { pagada: 'Pagada', parcial: 'Falta ' + fmtMoneda(it.saldo), adeudada: 'Debe ' + fmtMoneda(it.saldo),
+            a_vencer: 'Vence ' + fmtFecha(it.vence), futura: fmtMoneda(it.importe) }[est];
+        return `<div class="cc-item cc-${est}" title="${_escCC(it.concepto)} · vence ${fmtFecha(it.vence)}"><b>${_escCC(nombre)}</b><small>${det}</small></div>`;
+    }).join('') + '</div>';
+}
+
+// "Cuotas adeudadas: 2 · Monto total: $90.000 · Meses sin pago: agosto y septiembre"
+function htmlResumenDeuda(e) {
+    const prox = e.proximo ? `Próximo vencimiento: <b>${_escCC(e.proximo.concepto)}</b>, ${fmtMoneda(e.proximo.importe)}, vence el <b>${fmtFecha(e.proximo.vence)}</b>.` : '';
+    if (!(e.deuda_total > 0)) {
+        return `<div class="cc-resumen cc-ok"><b>Al día.</b> No hay cuotas vencidas sin pagar. ${prox}</div>`;
+    }
+    const partes = [];
+    if (e.cuotas_adeudadas) partes.push(`Cuotas adeudadas: <b>${e.cuotas_adeudadas}</b>`);
+    if (e.matricula_adeudada > 0) partes.push(`Matrícula adeudada: <b>${fmtMoneda(e.matricula_adeudada)}</b>`);
+    if (e.deuda_anterior > 0) partes.push(`Deuda de años anteriores: <b>${fmtMoneda(e.deuda_anterior)}</b>`);
+    partes.push(`Monto total de deuda: <b>${fmtMoneda(e.deuda_total)}</b>`);
+    const meses = (e.meses_adeudados || []);
+    const lista = meses.length ? (meses.length === 1 ? meses[0] : meses.slice(0, -1).join(', ') + ' y ' + meses[meses.length - 1]) : '';
+    return `<div class="cc-resumen cc-mal">${partes.join(' · ')}
+        ${lista ? `<div>Meses sin pago registrado: <b>${_escCC(lista)}</b>.</div>` : ''}
+        ${prox ? `<div class="cc-prox">${prox}</div>` : ''}</div>`;
+}
+
+// Cada pago con su fecha de pago, acreditación, medio y a qué cuota se imputó
+function htmlPagosImputados(pagos) {
+    if (!pagos || !pagos.length) return '<p class="muted" style="padding:0.75rem 0">Todavía no hay pagos registrados este año.</p>';
+    return '<ul class="cc-pagos">' + pagos.slice().reverse().map(p => {
+        const acred = p.fecha_pago && p.fecha_pago !== p.fecha ? ` · acreditado el ${fmtFecha(p.fecha)}` : '';
+        return `<li><div><b>${fmtFecha(p.fecha_pago || p.fecha)}</b> <span class="muted">· ${_escCC(nombreCanal(p))}${acred}</span>
+            ${p.imputado_a ? `<div class="cc-imp">Pagó: ${_escCC(p.imputado_a)}</div>` : ''}</div>
+            <span class="cc-monto">${fmtMoneda(p.importe)}</span></li>`;
+    }).join('') + '</ul>';
+}
+
+function copiarTexto(t, aviso = 'Copiado') {
+    const ok = () => { if (typeof toast === 'function') toast(aviso); };
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(ok).catch(() => {});
+}
+
+// Cupón de pago de SIRO con todas las formas de pago (QR, botón de pago, código electrónico, código de barras)
+function htmlCupon(c) {
+    if (c.origen !== 'siro_pdf') {  // cupones generados por el sistema: solo el enlace
+        return `<div class="cupon" style="grid-template-columns:1fr"><div><h4>${_escCC(c.concepto || 'Cupón de pago')}</h4>
+            <div class="cupon-venc"><div>Importe<b>${fmtMoneda(c.monto)}</b></div><div>Generado<b>${fmtFecha((c.fecha || '').slice(0, 10))}</b></div></div>
+            ${c.url ? `<a class="btn btn-primary" href="${_escCC(c.url)}" target="_blank" rel="noopener noreferrer">Abrir cupón</a>` : ''}</div></div>`;
+    }
+    const venc = c.vencimientos.map((v, i) => `<div>${['1er', '2do', '3er'][i]} vencimiento · ${fmtFecha(v.fecha)}<b>${fmtMoneda(v.importe)}</b></div>`).join('');
+    const cod = c.codigo_pago ? `<div class="cupon-cod">Código de pago electrónico: <code>${_escCC(c.codigo_pago)}</code>
+        <button class="btn btn-sm btn-ghost" onclick="copiarTexto('${_escCC(c.codigo_pago)}','Código copiado')">Copiar</button></div>` : '';
+    const barras = c.barras_imagen || c.codigo_barras ? `<div class="cupon-barras">
+        ${c.barras_imagen ? `<img src="${_escCC(c.barras_imagen)}" alt="Código de barras del cupón">` : ''}
+        ${c.codigo_barras ? `<code>${_escCC(c.codigo_barras)}</code>` : ''}</div>` : '';
+    return `<div class="cupon">
+        <div class="cupon-qr">${c.qr ? `<img src="${_escCC(c.qr)}" alt="QR para pagar con billetera virtual"><small>Escaneá el QR desde Mercado Pago, MODO, Cuenta DNI, Ualá u otra billetera</small>` : '<small>Sin QR</small>'}</div>
+        <div>
+            <h4>${_escCC(c.concepto || 'Cupón de pago')}</h4>
+            <div class="cupon-venc">${venc}</div>
+            ${cod}
+            ${barras}
+            <div class="cupon-acciones">
+                ${c.pago_url ? `<a class="btn btn-primary" href="${_escCC(c.pago_url)}" target="_blank" rel="noopener noreferrer">Pagar online (tarjeta o DEBIN)</a>` : ''}
+                ${c.codigo_barras ? `<button class="btn btn-outline" onclick="copiarTexto('${_escCC(c.codigo_barras)}','Número del código de barras copiado')">Copiar código de barras</button>` : ''}
+            </div>
+            <details class="cupon-como"><summary>¿Cómo pago?</summary><ul>
+                <li><b>Billetera virtual</b> (Mercado Pago, MODO, Cuenta DNI, Ualá, Naranja X, Personal Pay): escaneá el QR.</li>
+                <li><b>Online con tarjeta o DEBIN</b>: botón «Pagar online», o entrá a siropagos.bancoroela.com.ar y poné el código de pago electrónico.</li>
+                <li><b>Home banking</b>: en Link Pagos buscá «BANCO ROELA SIRO» (rubro Administraciones y consorcios) o en Pago Mis Cuentas «BANCO ROELA SIRO» (rubro Consorcios), con el código de pago electrónico.</li>
+                <li><b>Efectivo</b> (Rapipago, Pago Fácil, Bancor, Cobro Express, Provincia NET, Pronto Pago, Multipagos y otros): mostrá el código de barras, o decí que pagás a «Banco Roela SIRO» e indicá el código de pago electrónico.</li>
+            </ul></details>
+        </div></div>`;
+}

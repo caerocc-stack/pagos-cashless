@@ -152,17 +152,25 @@ function claseEstado(e) { return /al día/i.test(e) ? 'ok' : /moroso|sin pagos/i
 
 function renderKpis() {
     const c = datosHijo.cuotas, t = datosHijo.tarjeta;
+    const subDeuda = c.deuda_total > 0
+        ? escapeHtml([c.cuotas_adeudadas ? `${c.cuotas_adeudadas} cuota${c.cuotas_adeudadas > 1 ? 's' : ''}` : '',
+                      c.matricula_adeudada > 0 ? 'matrícula' : '', c.deuda_anterior > 0 ? 'años anteriores' : ''].filter(Boolean).join(' + '))
+        : 'sin cuotas vencidas impagas';
+    const cupon = datosHijo.cupones.find(x => x.origen === 'siro_pdf');
     $('p-kpis').innerHTML = `
         <div class="gasto-kpi"><div class="gasto-kpi-label">Estado de la cuota</div>
             <div class="gasto-kpi-valor"><span class="p-estado ${claseEstado(c.estado)}">${escapeHtml(c.estado)}</span></div>
             <div class="gasto-kpi-sub">año ${c.anio}</div></div>
-        <div class="gasto-kpi ${c.deuda_total > 0 ? 'gasto-kpi-total' : ''}"><div class="gasto-kpi-label">Deuda a la fecha</div>
+        <div class="gasto-kpi ${c.deuda_total > 0 ? 'gasto-kpi-total' : ''}"><div class="gasto-kpi-label">Deuda vencida</div>
             <div class="gasto-kpi-valor" style="color:var(--${c.deuda_total > 0 ? 'danger' : 'success'})">${fmtMoneda(c.deuda_total)}</div>
-            <div class="gasto-kpi-sub">${c.deuda_anterior > 0 ? 'incluye ' + fmtMoneda(c.deuda_anterior) + ' de años anteriores' : 'cuotas vencidas sin pagar'}</div></div>
-        <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado en ${c.anio}</div>
-            <div class="gasto-kpi-valor">${fmtMoneda(c.pagado)}</div><div class="gasto-kpi-sub">${c.pagos.length} pago(s) registrados</div></div>
+            <div class="gasto-kpi-sub">${subDeuda}</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Próximo vencimiento</div>
+            <div class="gasto-kpi-valor">${c.proximo ? fmtFecha(c.proximo.vence) : '—'}</div>
+            <div class="gasto-kpi-sub">${c.proximo ? escapeHtml(c.proximo.concepto) + ' · ' + fmtMoneda(c.proximo.importe) : 'no quedan cuotas este año'}</div></div>
         <div class="gasto-kpi"><div class="gasto-kpi-label">Saldo de la tarjeta</div>
-            <div class="gasto-kpi-valor">${fmtMoneda(t.saldo)}</div><div class="gasto-kpi-sub">para fotocopias y compras</div></div>`;
+            <div class="gasto-kpi-valor">${fmtMoneda(t.saldo)}</div><div class="gasto-kpi-sub">para fotocopias y compras</div></div>
+        ${cupon ? `<button class="p-pagar" onclick="irTab('cupones')"><svg class="ic"><use href="#i-wallet"/></svg>
+            <span><b>Pagar ${escapeHtml(cupon.concepto || 'el cupón')}</b><small>vence el ${fmtFecha(cupon.vence)} · QR, online, home banking o efectivo</small></span></button>` : ''}`;
 }
 
 function irTab(tab) {
@@ -172,36 +180,25 @@ function irTab(tab) {
     ({ cuotas: tabCuotas, tarjeta: tabTarjeta, cupones: tabCupones, datos: tabDatos, consultas: tabConsultas })[tab]();
 }
 
-// Medios de pago del reporte de cobranzas SIRO, con nombres que entiendan las familias
-const CANALES = { LK: 'Red Link', PF: 'Pago Fácil', RP: 'Rapipago', TQR: 'Pago con QR', BPC: 'Pago Mis Cuentas (Banelco)',
-    PC: 'Pago Mis Cuentas', PMC: 'Pago Mis Cuentas', CE: 'Cobro Express', BP: 'Bapro Pagos', DEB: 'Débito automático' };
-function nombreCanal(p) {
-    if (p.via === 'efectivo') return 'Efectivo en la Asociación';
-    return CANALES[(p.canal || '').toUpperCase()] || (p.canal ? 'Pago SIRO (' + p.canal + ')' : 'Pago registrado');
-}
-
 function tabCuotas() {
-    const c = datosHijo.cuotas, a = datosHijo.alumno;
-    const pagos = c.pagos.map(p => `<li><div><b>${fmtFecha(p.fecha)}</b><div class="p-sec">${escapeHtml(nombreCanal(p))}</div></div>
-        <span class="p-monto pos">${fmtMoneda(p.importe)}</span></li>`).join('');
+    const c = datosHijo.cuotas;
     $('p-tab').innerHTML = `
-        <div class="card p-codigo">
-            <div><div class="gasto-kpi-label">Código de pago del alumno (SIRO)</div>
-                <div class="p-codigo-num" id="cod-pago">${escapeHtml(a.codigo_pago)}</div>
-                <div class="muted">Usalo en Pago Mis Cuentas, Link, Pago Fácil o Rapipago si no tenés el cupón.</div></div>
-            <button class="btn btn-outline" onclick="copiar('${escapeHtml(a.codigo_pago)}')"><svg class="ic"><use href="#i-copy"/></svg>Copiar código</button>
+        <div class="card"><h3>Estado de cuenta ${c.anio}</h3>
+            ${htmlResumenDeuda(c)}
+            ${htmlCuotasGrid(c)}
+            ${c.saldo_a_favor > 0 ? `<p class="muted">Tenés un saldo a favor de <b>${fmtMoneda(c.saldo_a_favor)}</b>.</p>` : ''}
+            <p class="muted" style="font-size:0.84rem">Cada cuota vence el último día de su mes. Los pagos se imputan por la fecha en que se hicieron
+            (si pagás el 30/09 y se acredita en octubre, cuenta para septiembre) y pueden demorar 48 a 72 horas hábiles en aparecer.</p>
         </div>
         ${c.curso ? `<div class="card"><h3>Valores ${c.anio} · ${escapeHtml(c.curso.nombre)}</h3>
             <dl class="p-datos">
                 <div><dt>Cuota mensual</dt><dd>${fmtMoneda(c.curso.cuota)}</dd></div>
                 <div><dt>Cantidad de cuotas</dt><dd>${c.curso.n_cuotas}</dd></div>
                 <div><dt>Matrícula</dt><dd>${c.curso.matricula ? fmtMoneda(c.curso.matricula) : '—'}</dd></div>
-                <div><dt>Vencido a la fecha</dt><dd>${fmtMoneda(c.esperado)}</dd></div>
-            </dl>
-            <p class="muted" style="margin-top:0.75rem">La deuda es lo vencido (matrícula + cuotas hasta el mes anterior) menos lo pagado.
-            Los pagos pueden demorar 48 a 72 horas hábiles en aparecer.</p></div>` : ''}
+                <div><dt>Pagado en ${c.anio}</dt><dd>${fmtMoneda(c.pagado)}</dd></div>
+            </dl></div>` : ''}
         <div class="card"><h3>Pagos registrados en ${c.anio}</h3>
-            ${pagos ? `<ul class="p-lista">${pagos}</ul>` : '<p class="p-vacio">Todavía no hay pagos registrados este año.</p>'}
+            ${htmlPagosImputados(c.pagos)}
             <button class="btn btn-ghost" onclick="nuevaConsulta('pago_no_registrado')">¿Falta un pago? Avisanos</button></div>`;
 }
 
@@ -218,14 +215,11 @@ function tabTarjeta() {
 }
 
 function tabCupones() {
-    const lista = datosHijo.cupones.map(c => `<li><div><b>${escapeHtml(c.concepto || (c.tipo === 'cuota' ? 'Cuota' : 'Recarga'))}</b>
-        <div class="p-sec">Generado el ${fmtFechaHora(c.fecha)}</div></div>
-        <div style="display:flex;align-items:center;gap:0.6rem"><span class="p-monto">${fmtMoneda(c.monto)}</span>
-        ${c.url ? `<a class="btn btn-primary btn-sm" href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer">Abrir cupón</a>` : ''}</div></li>`).join('');
-    $('p-tab').innerHTML = `<div class="card"><h3>Cupones de pago</h3>
-        <p class="muted">Acá quedan todos los cupones que te enviamos por correo, por si no te llegó o lo perdiste.</p>
-        ${lista ? `<ul class="p-lista">${lista}</ul>` : `<p class="p-vacio">Todavía no hay cupones generados para este alumno.<br>
-            Podés pagar con el código <b>${escapeHtml(datosHijo.alumno.codigo_pago)}</b> (pestaña «Cuotas y pagos»).</p>`}
+    const a = datosHijo.alumno, lista = datosHijo.cupones;
+    $('p-tab').innerHTML = `<div class="card"><h3>Cupones para pagar</h3>
+        <p class="muted">Son los mismos cupones que te mandamos por correo. Cada uno se muestra hasta su vencimiento.</p>
+        ${lista.length ? lista.map(htmlCupon).join('') : `<p class="p-vacio">No hay cupones vigentes para este alumno.
+            ${a.codigo_pago ? `<br>Podés pagar con el código de pago electrónico <b>${escapeHtml(a.codigo_pago)}</b> en Link, Pago Mis Cuentas o siropagos.bancoroela.com.ar.` : ''}</p>`}
         <button class="btn btn-ghost" onclick="nuevaConsulta('reenvio_cupon')">Necesito un cupón</button></div>`;
 }
 

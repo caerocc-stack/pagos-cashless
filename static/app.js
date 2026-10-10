@@ -18,6 +18,7 @@ const PAGINAS = {
     cuotas: ['Cobranzas y alumnos', 'Cuotas y estado de cuenta', 'Pagos recibidos por SIRO, deuda de cada alumno, estadísticas y valores de cada curso.'],
     alumnos: ['Cobranzas y alumnos', 'Alumnos', 'Padrón completo: datos personales, curso, condición y saldo de la tarjeta.'],
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
+    'cupones-siro': ['Cobranzas y alumnos', 'Cupones de SIRO', 'Subí el PDF de cupones que descargás de SIRO: cada familia los ve en el portal hasta su vencimiento.'],
     consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
     operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
@@ -544,9 +545,9 @@ async function eliminarMovimientosAlumno(id) {
 
 async function verAlumno(id) {
     try {
-        const a = await api(`/api/alumnos/${id}`);
-        const movs = await api(`/api/operaciones/historial/${id}?limite=10`);
-        const tarjetas = await api(`/api/tarjetas/alumno/${id}`);
+        const [a, movs, tarjetas, cuenta, cupones] = await Promise.all([
+            api(`/api/alumnos/${id}`), api(`/api/operaciones/historial/${id}?limite=10`), api(`/api/tarjetas/alumno/${id}`),
+            api(`/api/cuotas/estado/${id}`).catch(() => null), api(`/api/cupones-siro/alumno/${id}`).catch(() => [])]);
 
         let html = `<h3>${escapeHtml(a.apellido)}, ${escapeHtml(a.nombre)}</h3>
             <p><strong>Legajo:</strong> ${escapeHtml(a.legajo)} | <strong>DNI:</strong> ${escapeHtml(a.dni)} | <strong>Curso:</strong> ${escapeHtml(a.curso)}</p>
@@ -561,7 +562,9 @@ async function verAlumno(id) {
                 <button class="btn btn-danger btn-sm" onclick="eliminarMovimientosAlumno(${a.id})">🗑 Eliminar movimientos</button>
             </div>`;
 
-        html += '<h4>Tarjetas</h4>';
+        if (cuenta) html += htmlCuentaAlumno(cuenta, cupones);
+
+        html += '<h4 style="margin-top:1rem">Tarjetas</h4>';
         if (tarjetas.length === 0) {
             html += '<p style="color:var(--text-muted)">Sin tarjetas asignadas</p>';
         } else {
@@ -589,7 +592,9 @@ async function verAlumno(id) {
         }
 
         document.getElementById('modal-content').innerHTML = html;
-        document.getElementById('modal-overlay').style.display = 'flex';
+        const ov = document.getElementById('modal-overlay');
+        ov.querySelector('.modal').classList.add('modal-ancho');
+        ov.style.display = 'flex';
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -2851,7 +2856,7 @@ async function cargarEstado() {
         const sinp = estadoCache.filter(x => x.estado === 'Sin pagos').length;
         const deuda = estadoCache.reduce((s, x) => s + (x.deuda_total ?? x.deuda), 0);
         document.getElementById('estado-resumen').innerHTML = `
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">corte mes ${r.mes_corte}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">cuotas vencidas hasta ${MESES[r.mes_corte - 1] ? MESES[r.mes_corte - 1].toLowerCase() : 'el mes ' + r.mes_corte}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:var(--warning)">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">${fmtMoneda(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
@@ -2879,7 +2884,7 @@ function filtrarEstado() {
             <td>${escapeHtml(x.area || '-')}</td>
             <td style="text-align:right">${fmtMoneda(x.pagado)}</td>
             <td style="text-align:right">${fmtMoneda(x.esperado)}</td>
-            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">${fmtMoneda(x.deuda_total ?? x.deuda)}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. ${fmtMoneda(x.deuda_anterior)} año ant.)</span>` : ''}</td>
+            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">${fmtMoneda(x.deuda_total ?? x.deuda)}${x.detalle_deuda ? `<br><span style="font-size:.72rem;color:var(--text-muted)">${escapeHtml(x.detalle_deuda.replace(/^Debe /, ''))}</span>` : ''}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. ${fmtMoneda(x.deuda_anterior)} año ant.)</span>` : ''}</td>
             <td>${estadoBadge(x.estado)}</td>
             <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
         </tr>`).join('') ||
@@ -2888,28 +2893,31 @@ function filtrarEstado() {
 
 async function verEstadoAlumno(id) {
     try {
-        const e = await api(`/api/cuotas/estado/${id}`);
-        const pagos = (e.pagos || []).map(p =>
-            `<tr><td>${p.fecha.split('-').reverse().join('/')}</td><td>${MESES[p.mes - 1] || p.mes}</td>
-             <td>${escapeHtml(p.canal || '-')}</td><td style="text-align:right">${fmtMoneda(p.importe)}</td></tr>`).join('') ||
-            '<tr><td colspan="4" style="color:var(--text-muted)">Sin pagos registrados este año</td></tr>';
-        const cp = e.curso_param;
-        const html = `
+        const [e, cupones] = await Promise.all([api(`/api/cuotas/estado/${id}`), api(`/api/cupones-siro/alumno/${id}`).catch(() => [])]);
+        document.getElementById('modal-content').innerHTML = `
             <h2 style="margin-top:0">${escapeHtml(e.apellido)}, ${escapeHtml(e.nombre)}</h2>
-            <p style="color:var(--text-muted);margin-top:-.4rem">Legajo ${escapeHtml(e.legajo)} · ${escapeHtml(e.curso || '')} · ${escapeHtml(e.area || '')}
-              ${cp ? `· cuota ${fmtMoneda(cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matríc. $' + gastoFmt(cp.matricula) : ''}` : ''}</p>
-            <div class="gasto-resumen">
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--green)">${fmtMoneda(e.pagado)}</div></div>
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado al corte</div><div class="gasto-kpi-valor">${fmtMoneda(e.esperado)}</div></div>
-                <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">${fmtMoneda(e.deuda_total ?? e.deuda)}</div><div class="gasto-kpi-sub">${e.deuda_anterior > 0 ? 'incl. $' + gastoFmt(e.deuda_anterior) + ' año ant.' : '&nbsp;'}</div></div>
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Estado</div><div class="gasto-kpi-valor" style="font-size:1.1rem">${estadoBadge(e.estado)}</div></div>
-            </div>
-            <h3 style="margin:.8rem 0 .4rem">Pagos del año</h3>
-            <table><thead><tr><th>Fecha proceso</th><th>Mes</th><th>Canal</th><th style="text-align:right">Importe</th></tr></thead><tbody>${pagos}</tbody></table>
-            <div style="margin-top:1rem;text-align:right"><button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
-        document.getElementById('modal-content').innerHTML = html;
-        document.getElementById('modal-overlay').style.display = 'flex';
+            <p style="color:var(--text-muted);margin-top:-.4rem">Legajo ${escapeHtml(e.legajo)} · ${escapeHtml(e.curso || '')} · ${escapeHtml(e.area || '')}</p>
+            ${htmlCuentaAlumno(e, cupones)}
+            <div class="form-actions"><button class="btn btn-outline" onclick="cerrarModal();verAlumno(${e.id})">Ver ficha completa</button>
+            ${usuarioActual.rol === 'admin' ? `<button class="btn btn-ghost" onclick="verComoFamilia(${e.id})">Ver como familia</button>` : ''}
+            <button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
+        const ov = document.getElementById('modal-overlay');
+        ov.querySelector('.modal').classList.add('modal-ancho');
+        ov.style.display = 'flex';
     } catch (err) { toast(err.message, 'error'); }
+}
+
+// Estado de cuenta cuota por cuota + pagos imputados + cupones vigentes (ficha del alumno)
+function htmlCuentaAlumno(e, cupones) {
+    const cp = e.curso_param;
+    return `<h4 style="margin:1rem 0 0.2rem">Estado de cuenta ${e.anio} · ${estadoBadge(e.estado)}</h4>
+        <p class="muted" style="margin:0">${cp ? `${escapeHtml(cp.nombre)} · cuota ${fmtMoneda(e.cuota || cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matrícula ' + fmtMoneda(cp.matricula) : ''} · ` : ''}pagado en el año ${fmtMoneda(e.pagado)}</p>
+        ${htmlResumenDeuda(e)}
+        ${htmlCuotasGrid(e)}
+        <h4 style="margin:0.8rem 0 0.2rem">Pagos del año</h4>
+        ${htmlPagosImputados(e.pagos)}
+        <h4 style="margin:1rem 0 0.4rem">Cupones vigentes en el portal</h4>
+        ${cupones && cupones.length ? cupones.map(htmlCupon).join('') : '<p class="muted">No tiene cupones vigentes cargados.</p>'}`;
 }
 
 // ---- Estadisticas ----
@@ -4133,7 +4141,8 @@ async function verConsulta(id) {
                 ${x.estado === 'cerrada'
                     ? `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'abierta')">Reabrir</button>`
                     : `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'cerrada')">Cerrar sin responder</button>`}
-                ${x.alumno ? `<button class="btn btn-ghost" onclick="verComoFamilia(${x.alumno.id})">Ver como familia</button>` : ''}
+                ${x.alumno ? `<button class="btn btn-ghost" onclick="cerrarModal();verAlumno(${x.alumno.id})">Ver perfil del alumno</button>
+                <button class="btn btn-ghost" onclick="verComoFamilia(${x.alumno.id})">Ver como familia</button>` : ''}
             </div>` : '<p class="muted">Solo un administrador puede responder.</p>'}`;
         const ov = document.getElementById('modal-overlay');
         ov.querySelector('.modal').classList.add('modal-ancho');
@@ -4208,4 +4217,251 @@ async function verComoFamilia(alumnoId) {
         if (ventana) ventana.close();
         toast(e.message, 'error');
     }
+}
+
+
+// =========================================================
+// CUPONES DE SIRO: se lee el PDF en el navegador y se publican en el portal
+// =========================================================
+let csCupones = [], csFilas = [], csErrores = [];
+
+function _filasTextoPDF(items, alto) {
+    const arr = items.filter(i => i.str && i.str.trim())
+        .map(i => ({ s: i.str.trim(), x: i.transform[4], y: alto - i.transform[5] }))
+        .sort((a, b) => a.y - b.y || a.x - b.x);
+    const filas = [];
+    for (const it of arr) {
+        const f = filas[filas.length - 1];
+        if (f && Math.abs(f.y - it.y) <= 3) f.items.push(it); else filas.push({ y: it.y, items: [it] });
+    }
+    filas.forEach(f => f.items.sort((a, b) => a.x - b.x));
+    return filas;
+}
+
+function _parsearCuponSiro(filas) {
+    const texto = f => f.items.map(i => i.s).join(' ');
+    const fila = re => filas.findIndex(f => re.test(texto(f)));
+    const todos = filas.flatMap(f => f.items);
+    const iId = fila(/^Identificador/);
+    if (iId < 0 || !filas[iId + 1]) throw new Error('no parece un cupón de SIRO');
+    const fid = filas[iId + 1].items;
+    const ident = fid.find(i => /^\d{7,9}$/.test(i.s));
+    if (!ident) throw new Error('no se encontró el identificador');
+    const nombre = fid.filter(i => i !== ident && i.x < 405).map(i => i.s).join(' ');
+    const iCon = fila(/^Descripci.n de Concepto/);
+    const fc = iCon >= 0 && filas[iCon + 1] ? filas[iCon + 1].items : [];
+    const iV = fila(/1er vencimiento/);
+    const col = x => x < 215 ? 0 : x < 385 ? 1 : 2;
+    const fechas = [null, null, null], importes = [null, null, null];
+    for (const f of filas.slice(iV + 1, iV + 4)) {
+        for (const it of f.items) {
+            const m = it.s.match(/^(\d\d)\/(\d\d)\/(\d{4})$/);
+            if (m) fechas[col(it.x)] = `${m[3]}-${m[2]}-${m[1]}`;
+            else if (/^\$\s?[\d.]+,\d\d$/.test(it.s)) importes[col(it.x)] = Number(it.s.replace(/[$\s.]/g, '').replace(',', '.'));
+        }
+    }
+    const vencimientos = [0, 1, 2].filter(i => fechas[i] && importes[i]).map(i => ({ fecha: fechas[i], importe: importes[i] }));
+    if (!vencimientos.length) throw new Error('no se encontraron vencimiento e importe');
+    const barras = todos.find(i => /^\d{40,}$/.test(i.s));
+    const codigo = todos.find(i => /^\d{15,25}$/.test(i.s));
+    return {
+        identificador: ident.s, nombre,
+        descripcion: fc.filter(i => i.x < 300).map(i => i.s).join(' '),
+        periodo: fc.filter(i => i.x >= 300).map(i => i.s).join(' '),
+        vencimientos, codigo_barras: barras ? barras.s : null, codigo_pago: codigo ? codigo.s : null,
+    };
+}
+
+// Imagen de pdf.js ({width, height, kind, data}) -> ImageData RGBA
+function _imagenPDFaRGBA(o) {
+    const { width: w, height: h, kind, data } = o;
+    const out = new Uint8ClampedArray(w * h * 4);
+    if (kind === 3) out.set(data.subarray(0, w * h * 4));
+    else if (kind === 2) {
+        for (let i = 0, j = 0; i < w * h; i++, j += 3) { out[i * 4] = data[j]; out[i * 4 + 1] = data[j + 1]; out[i * 4 + 2] = data[j + 2]; out[i * 4 + 3] = 255; }
+    } else {  // 1 bit por pixel, filas completadas al byte
+        const fila = (w + 7) >> 3;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const v = (data[y * fila + (x >> 3)] >> (7 - (x & 7))) & 1 ? 255 : 0, k = (y * w + x) * 4;
+            out[k] = out[k + 1] = out[k + 2] = v; out[k + 3] = 255;
+        }
+    }
+    return new ImageData(out, w, h);
+}
+
+function _pngDe(imgData) {
+    const c = document.createElement('canvas');
+    c.width = imgData.width; c.height = imgData.height;
+    c.getContext('2d').putImageData(imgData, 0, 0);
+    return c.toDataURL('image/png');
+}
+
+function _leerQR(imgData) {
+    const { width: w, height: h, data } = imgData;
+    let q = jsQR(data, w, h, { inversionAttempts: 'attemptBoth' });
+    if (!q) {  // con margen blanco alrededor lo detecta mejor
+        const m = 24, W = w + 2 * m, H = h + 2 * m, d = new Uint8ClampedArray(W * H * 4).fill(255);
+        for (let y = 0; y < h; y++) d.set(data.subarray(y * w * 4, (y + 1) * w * 4), ((y + m) * W + m) * 4);
+        q = jsQR(d, W, H, { inversionAttempts: 'attemptBoth' });
+    }
+    return q && q.data ? q.data : null;
+}
+
+// Lee un cupón (una página): texto, enlace de pago e imágenes originales del QR y del código de barras.
+// No dibuja la página: toma las imágenes tal cual vienen dentro del PDF (más rápido y sin pérdida).
+async function _leerPaginaCupon(page) {
+    const cupon = _parsearCuponSiro(_filasTextoPDF((await page.getTextContent()).items, page.view[3]));
+    const link = (await page.getAnnotations()).find(a => a.url && /PagoOffLine/i.test(a.url));
+    cupon.pago_url = link ? link.url : null;
+    const ops = await page.getOperatorList();
+    const ids = [];
+    ops.fnArray.forEach((f, i) => { if (f === pdfjsLib.OPS.paintImageXObject) ids.push(ops.argsArray[i][0]); });
+    let qr = null, barras = null;
+    for (const id of ids) {
+        const o = await new Promise(res => (id.startsWith('g_') ? page.commonObjs : page.objs).get(id, res));
+        if (!o || !o.data) continue;
+        if (o.width === o.height && o.width >= 150 && (!qr || o.width > qr.width)) qr = o;           // QR: cuadrado grande
+        else if (o.width / o.height > 8 && (!barras || o.width > barras.width)) barras = o;          // código de barras: muy apaisado
+    }
+    cupon.qr_texto = null; cupon.qr_imagen = null; cupon.barras_imagen = null;
+    if (qr) {
+        const d = _imagenPDFaRGBA(qr);
+        cupon.qr_texto = _leerQR(d);
+        if (!cupon.qr_texto) cupon.qr_imagen = _pngDe(d);
+    }
+    if (barras) cupon.barras_imagen = _pngDe(_imagenPDFaRGBA(barras));
+    page.cleanup();
+    return cupon;
+}
+
+function _progresoCupones(hechos, total, texto) {
+    document.getElementById('cs-estado').hidden = false;
+    document.getElementById('cs-barra').style.width = (total ? Math.round(hechos / total * 100) : 0) + '%';
+    document.getElementById('cs-texto').textContent = texto;
+}
+
+async function leerCuponesSiro() {
+    const archivos = [...document.getElementById('cs-archivos').files];
+    if (!archivos.length) return toast('Elegí el PDF de cupones que descargaste de SIRO', 'error');
+    if (typeof pdfjsLib === 'undefined' || typeof jsQR === 'undefined') return toast('No se pudo cargar el lector de PDF. Recargá la página.', 'error');
+    const btn = document.getElementById('cs-leer'); btn.disabled = true;
+    document.getElementById('cs-vista').hidden = true;
+    csCupones = []; csErrores = [];
+    try {
+        const docs = [];
+        for (const f of archivos) {
+            if (f.size > 80 * 1024 * 1024) { csErrores.push(`${f.name}: el archivo es demasiado grande`); continue; }
+            try { docs.push({ f, pdf: await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isOffscreenCanvasSupported: false }).promise }); }
+            catch { csErrores.push(`${f.name}: no se pudo abrir el PDF`); }
+        }
+        const total = docs.reduce((s, d) => s + d.pdf.numPages, 0);
+        let hechos = 0;
+        for (const { f, pdf } of docs) {
+            for (let i = 1; i <= pdf.numPages; i++) {
+                _progresoCupones(hechos, total, `Leyendo ${f.name}: cupón ${i} de ${pdf.numPages} (${hechos + 1} de ${total})…`);
+                try {
+                    const c = await _leerPaginaCupon(await pdf.getPage(i));
+                    c.pagina = i; c.archivo = f.name;
+                    csCupones.push(c);
+                } catch (e) { csErrores.push(`${f.name}, página ${i}: ${e.message}`); }
+                hechos++;
+            }
+            pdf.destroy();
+        }
+        _progresoCupones(total, total, 'Verificando alumnos…');
+        csFilas = [];
+        const liviano = csCupones.map(({ qr_imagen, barras_imagen, qr_texto, ...c }) => ({ ...c, qr_texto: qr_texto ? 'x' : null, qr_imagen: qr_imagen ? 'x' : null, barras_imagen: barras_imagen ? 'x' : null }));
+        for (let i = 0; i < liviano.length; i += 400) {
+            const r = await api('/api/cupones-siro/previsualizar', { method: 'POST', body: JSON.stringify({ cupones: liviano.slice(i, i + 400).map(c => ({ ...c, qr_imagen: null, barras_imagen: null })) }) });
+            csFilas.push(...r.filas);
+        }
+        csFilas.forEach((f, i) => { f.archivo = csCupones[i].archivo; f.qr = !!(csCupones[i].qr_texto || csCupones[i].qr_imagen); });
+        document.getElementById('cs-estado').hidden = true;
+        renderVistaCupones();
+    } catch (e) {
+        toast(e.message, 'error');
+        document.getElementById('cs-estado').hidden = true;
+    } finally { btn.disabled = false; }
+}
+
+function renderVistaCupones(soloProblemas = false) {
+    const f = csFilas;
+    const publicables = f.filter(x => x.alumno && !x.vencido).length;
+    const cuenta = (fn) => f.filter(fn).length;
+    const estado = x => !x.alumno ? '<span class="badge badge-inactiva">Sin alumno</span>'
+        : x.vencido ? '<span class="badge">Vencido: no se publica</span>'
+        : x.repetido ? '<span class="badge">Ya cargado: se actualiza</span>' : '<span class="badge badge-activa">Nuevo</span>';
+    const filas = f.filter(x => !soloProblemas || !x.alumno || x.vencido || x.avisos.length || !x.qr);
+    const v = document.getElementById('cs-vista');
+    v.hidden = false;
+    v.innerHTML = `
+        <h3>Revisá antes de publicar</h3>
+        <div class="gasto-resumen">
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cupones leídos</div><div class="gasto-kpi-valor">${f.length}</div><div class="gasto-kpi-sub">${csErrores.length ? csErrores.length + ' página(s) con error' : 'sin errores de lectura'}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Se publican</div><div class="gasto-kpi-valor" style="color:var(--success)">${publicables}</div><div class="gasto-kpi-sub">${cuenta(x => x.repetido)} ya estaban cargados</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Sin alumno en el padrón</div><div class="gasto-kpi-valor" style="color:var(--${cuenta(x => !x.alumno) ? 'danger' : 'text-muted'})">${cuenta(x => !x.alumno)}</div><div class="gasto-kpi-sub">no se publican</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Para revisar</div><div class="gasto-kpi-valor" style="color:var(--warning)">${cuenta(x => x.avisos.length || !x.qr)}</div><div class="gasto-kpi-sub">nombre o importe distinto, o sin QR</div></div>
+        </div>
+        ${csErrores.length ? `<div class="aviso-banda" style="margin:0.6rem 0">${csErrores.map(escapeHtml).join('<br>')}</div>` : ''}
+        <label style="display:flex;gap:0.4rem;align-items:center;margin:0.6rem 0"><input type="checkbox" ${soloProblemas ? 'checked' : ''} onchange="renderVistaCupones(this.checked)"> Mostrar solo los que hay que revisar</label>
+        <div class="tabla-wrap"><table class="imp-tabla"><thead><tr><th>Archivo · pág.</th><th>Cupón</th><th>Alumno en el sistema</th><th>Concepto</th><th style="text-align:right">Importe</th><th>Vence</th><th>QR</th><th>Estado</th></tr></thead><tbody>
+        ${filas.map(x => `<tr>
+            <td>${escapeHtml(x.archivo)} · ${x.pagina}</td>
+            <td>${escapeHtml(x.identificador)}<br><span class="muted">${escapeHtml(x.nombre_cupon || '')}</span></td>
+            <td>${x.alumno ? `${escapeHtml(x.alumno.nombre)}<br><span class="muted">${escapeHtml(x.alumno.curso || '')} · por ${x.alumno.via === 'dni' ? 'DNI' : 'legajo ' + escapeHtml(x.alumno.legajo)}</span>` : '<span style="color:var(--danger)">No encontrado</span>'}
+                ${x.avisos.length ? `<div style="color:var(--warning);font-size:0.8rem">⚠ ${x.avisos.map(escapeHtml).join('; ')}</div>` : ''}</td>
+            <td>${escapeHtml(x.concepto)}</td>
+            <td style="text-align:right">${fmtMoneda(x.importe)}</td>
+            <td>${fmtFecha(x.vence)}</td>
+            <td>${x.qr ? '✓' : '<span style="color:var(--warning)">✗</span>'}</td>
+            <td>${estado(x)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted" style="text-align:center">Nada para revisar.</td></tr>'}
+        </tbody></table></div>
+        <div class="form-actions">
+            <button class="btn btn-primary btn-3d" id="cs-publicar" onclick="publicarCuponesSiro()" ${publicables ? '' : 'disabled'}>Publicar ${publicables} cupón(es) en el portal</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('cs-vista').hidden=true">Cancelar</button>
+        </div>`;
+}
+
+async function publicarCuponesSiro() {
+    const btn = document.getElementById('cs-publicar'); btn.disabled = true;
+    const porArchivo = {};
+    csCupones.forEach((c, i) => { if (csFilas[i].alumno && !csFilas[i].vencido) (porArchivo[c.archivo] = porArchivo[c.archivo] || []).push(c); });
+    const total = Object.values(porArchivo).reduce((s, l) => s + l.length, 0);
+    let hechos = 0, nuevos = 0, actualizados = 0;
+    try {
+        for (const [archivo, lista] of Object.entries(porArchivo)) {
+            const lote = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+            for (let i = 0; i < lista.length; i += 25) {
+                _progresoCupones(hechos, total, `Publicando ${archivo}: ${hechos} de ${total}…`);
+                const r = await api('/api/cupones-siro/importar', { method: 'POST', body: JSON.stringify({ archivo, lote, cupones: lista.slice(i, i + 25) }) });
+                nuevos += r.nuevos; actualizados += r.actualizados; hechos += Math.min(25, lista.length - i);
+            }
+        }
+        document.getElementById('cs-estado').hidden = true;
+        document.getElementById('cs-vista').hidden = true;
+        document.getElementById('cs-archivos').value = '';
+        toast(`Listo: ${nuevos} cupones nuevos y ${actualizados} actualizados ya se ven en el portal`);
+        cargarLotesCupones();
+    } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function cargarLotesCupones() {
+    try {
+        const lotes = await api('/api/cupones-siro/lotes');
+        const esAdmin = usuarioActual.rol === 'admin';
+        document.getElementById('body-lotes-cupones').innerHTML = lotes.map(l => `<tr>
+            <td>${fmtFechaHora(l.cargado)}</td><td>${escapeHtml(l.archivo || '')}</td><td>${escapeHtml(l.concepto || '')}</td>
+            <td style="text-align:right">${l.cupones}</td><td style="text-align:right">${fmtMoneda(l.total)}</td><td>${fmtFecha(l.vence)}</td>
+            <td>${l.vigente ? '<span class="badge badge-activa">Vigente</span>' : '<span class="badge">Vencido (oculto)</span>'}</td>
+            <td>${esAdmin ? `<button class="btn btn-sm btn-danger" onclick="borrarLoteCupones('${escapeHtml(l.lote)}')">Quitar</button>` : ''}</td></tr>`).join('')
+            || '<tr><td colspan="8" class="muted" style="text-align:center;padding:1.2rem">Todavía no se cargaron cupones de SIRO.</td></tr>';
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function borrarLoteCupones(lote) {
+    if (!confirm('¿Quitar estos cupones del portal? Las familias dejarán de verlos.')) return;
+    try {
+        const r = await api('/api/cupones-siro/lotes/' + encodeURIComponent(lote), { method: 'DELETE' });
+        toast(`Se quitaron ${r.borrados} cupones`); cargarLotesCupones();
+    } catch (e) { toast(e.message, 'error'); }
 }

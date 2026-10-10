@@ -695,3 +695,50 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .cq-msj.nuestro { align-self: flex-end; background: var(--primary-soft); border-color: transparent; border-bottom-left-radius: 12px; border-bottom-right-radius: 4px; }
 .cq-msj small { display: block; margin-top: 0.3rem; font-size: 0.72rem; color: var(--text-muted); }
 .cq-rapidas { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0 0.5rem; }
+
+/* Estado de cuenta cuota por cuota (sistema y portal) */
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 0.45rem; margin: 0.6rem 0 0.9rem; }
+.cc-item { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.5rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--surface); font-size: 0.85rem; line-height: 1.25; }
+.cc-item small { font-size: 0.72rem; color: var(--text-muted); }
+.cc-pagada { background: var(--success-soft); border-color: transparent; }
+.cc-pagada b::after { content: " ✓"; color: var(--success); }
+.cc-adeudada { background: var(--danger-soft); border-color: var(--danger); }
+.cc-adeudada small { color: var(--danger); font-weight: 600; }
+.cc-parcial { background: var(--warning-soft); border-color: var(--warning); }
+.cc-parcial small { color: var(--warning); font-weight: 600; }
+.cc-a_vencer { border: 2px solid var(--primary); }
+.cc-a_vencer small { color: var(--primary); font-weight: 600; }
+.cc-futura { opacity: 0.6; }
+.cc-resumen { padding: 0.8rem 1rem; border-radius: var(--radius-sm); font-size: 0.92rem; line-height: 1.55; margin: 0.4rem 0 0.6rem; }
+.cc-resumen.cc-ok { background: var(--success-soft); }
+.cc-resumen.cc-mal { background: var(--danger-soft); }
+.cc-resumen .cc-prox { margin-top: 0.3rem; color: var(--text-muted); font-size: 0.86rem; }
+.cc-pagos { list-style: none; margin: 0; padding: 0; }
+.cc-pagos li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.1rem; border-bottom: 1px solid var(--border); }
+.cc-pagos li:last-child { border-bottom: 0; }
+.cc-imp { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.1rem; }
+.cc-monto { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--success); }
+
+/* Cupones de SIRO */
+.cupon { display: grid; grid-template-columns: 180px 1fr; gap: 1.1rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); margin-bottom: 0.9rem; }
+.cupon-qr { text-align: center; }
+.cupon-qr img { width: 100%; max-width: 180px; image-rendering: pixelated; background: #fff; border-radius: 6px; padding: 4px; }
+.cupon-qr small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem; }
+.cupon h4 { margin: 0 0 0.2rem; font-size: 1.02rem; }
+.cupon-venc { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; margin: 0.4rem 0 0.7rem; }
+.cupon-venc div { font-size: 0.85rem; color: var(--text-muted); }
+.cupon-venc b { display: block; font-size: 1.15rem; color: var(--heading); }
+.cupon-cod { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.35rem 0; font-size: 0.85rem; }
+.cupon-cod code { font-family: ui-monospace, Consolas, monospace; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.03em; word-break: break-all; }
+.cupon-barras { background: #fff; padding: 6px 8px; border-radius: 6px; margin-top: 0.4rem; }
+.cupon-barras img { width: 100%; max-width: 420px; height: auto; display: block; image-rendering: pixelated; }
+.cupon-barras code { display: block; font-size: 0.7rem; color: #333; letter-spacing: 0.02em; word-break: break-all; margin-top: 2px; }
+.cupon-acciones { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; }
+.cupon-como { margin-top: 0.7rem; font-size: 0.84rem; color: var(--text-muted); }
+.cupon-como summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.cupon-como ul { margin: 0.4rem 0 0 1.1rem; padding: 0; line-height: 1.5; }
+@media (max-width: 640px) { .cupon { grid-template-columns: 1fr; } .cupon-qr { order: 2; } .cupon-qr img { max-width: 200px; } }
+.cs-progreso { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin: 0.6rem 0 0.3rem; }
+.cs-progreso div { height: 100%; width: 0; background: var(--primary); transition: width 0.2s; }

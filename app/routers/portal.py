@@ -32,8 +32,8 @@ from app.models.movimiento import Movimiento
 from app.models.pago_cuota import PagoCuota
 from app.models.curso import Curso
 from app.models.portal import CuentaPadre, CuponEnviado, Consulta, MensajeConsulta
-from app.routers.cursos import curso_de_alumno
-from app.routers.cuotas import _estado_de
+from app.routers.cuotas import detalle_alumno
+from app.routers.cupones_siro import cupones_vigentes, ultimo_codigo_pago
 from app.seguridad import (ip_cliente, auditar, segundos_bloqueo, registrar_fallo, limpiar_fallos, error_password,
                            crear_token_acceso, consumir_token_acceso)
 from app.storage_util import crear_subida_firmada
@@ -300,35 +300,25 @@ def restablecer(data: Restablecer, request: Request, db: Session = Depends(get_d
 @router.get("/alumno/{alumno_id}")
 def resumen_alumno(alumno_id: int, c: CuentaPadre = Depends(get_padre), db: Session = Depends(get_db)):
     a = _hijo(db, c, alumno_id)
-    anio, mes = ahora_ar().year, ahora_ar().month
-    cursos = db.query(Curso).filter(Curso.activo.is_(True)).all()
-    curso = curso_de_alumno(a, cursos)
-    pagos = db.query(PagoCuota).filter(PagoCuota.alumno_id == a.id, PagoCuota.anio == anio).order_by(PagoCuota.fecha.desc()).all()
-    total = sum((Decimal(str(p.importe)) for p in pagos), Decimal("0"))
-    estado = _estado_de(a, curso, total, mes)
+    e = detalle_alumno(db, a)
     saldo = db.get(Saldo, a.id)
     movs = db.query(Movimiento).filter(Movimiento.alumno_id == a.id).order_by(Movimiento.created_at.desc()).limit(60).all()
-    cupones = db.query(CuponEnviado).filter(CuponEnviado.alumno_id == a.id).order_by(CuponEnviado.created_at.desc()).limit(24).all()
     return {
         "alumno": {"id": a.id, "nombre": a.nombre, "apellido": a.apellido, "legajo": a.legajo, "dni": a.dni,
                    "curso": a.curso, "division": a.division, "area": a.area, "condicion": a.condicion or "Regular",
                    "modalidad": a.modalidad, "email": a.email, "telefono": a.telefono,
                    "fecha_nacimiento": str(a.fecha_nacimiento) if a.fecha_nacimiento else None,
-                   "codigo_pago": a.codigo_siro},
-        "cuotas": {
-            "anio": anio, "estado": estado["estado"], "pagado": estado["pagado"], "esperado": estado["esperado"],
-            "deuda": estado["deuda"], "deuda_anterior": estado["deuda_anterior"], "deuda_total": estado["deuda_total"],
-            "curso": {"nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
-                      "matricula": float(curso.matricula or 0)} if curso else None,
-            "pagos": [{"fecha": str(p.fecha), "importe": float(p.importe), "canal": p.canal, "via": p.via} for p in pagos],
-        },
+                   "codigo_pago": ultimo_codigo_pago(db, a.id)},
+        "cuotas": {k: e.get(k) for k in (
+            "anio", "estado", "pagado", "esperado", "deuda", "deuda_anterior", "deuda_total", "items", "pagos",
+            "cuotas_adeudadas", "matricula_adeudada", "meses_adeudados", "detalle_deuda", "proximo", "saldo_a_favor")}
+        | {"curso": e.get("curso_param")},
         "tarjeta": {
             "saldo": float(saldo.monto) if saldo else 0.0,
             "movimientos": [{"fecha": _fmt(m.created_at), "tipo": m.tipo, "monto": float(m.monto),
                              "descripcion": m.descripcion} for m in movs],
         },
-        "cupones": [{"fecha": _fmt(x.created_at), "tipo": x.tipo, "monto": float(x.monto), "concepto": x.concepto,
-                     "url": x.url} for x in cupones],
+        "cupones": cupones_vigentes(db, a.id),
     }
 
 

@@ -63,6 +63,26 @@ MIGRACIONES = [
     "AND (notas IS NULL OR notas NOT LIKE 'Creado desde el extracto:%')",
     "WITH m AS (DELETE FROM banco_movimientos WHERE concepto IN ('256','880100') RETURNING gasto_id) "
     "DELETE FROM gastos WHERE id IN (SELECT gasto_id FROM m) AND notas LIKE 'Creado desde el extracto:%'",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS origen VARCHAR(20)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS lote VARCHAR(40)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS archivo VARCHAR(150)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS identificador VARCHAR(20)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS nombre_cupon VARCHAR(150)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS periodo VARCHAR(40)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS vencimiento DATE",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS vencimiento2 DATE",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS monto2 NUMERIC(12,2)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS vencimiento3 DATE",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS monto3 NUMERIC(12,2)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS vence_ultimo DATE",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS codigo_pago VARCHAR(30)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS codigo_barras VARCHAR(80)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS pago_url VARCHAR(300)",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS qr_texto TEXT",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS qr_imagen TEXT",
+    "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS barras_imagen TEXT",
+    "CREATE INDEX IF NOT EXISTS ix_cupon_vence ON cupones_enviados (alumno_id, vence_ultimo)",
+    "CREATE INDEX IF NOT EXISTS ix_cupon_lote ON cupones_enviados (lote)",
 ]
 
 

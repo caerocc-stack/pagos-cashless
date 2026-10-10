@@ -91,6 +91,7 @@
                 <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
                 <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
                 <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
+                <button class="nav-btn side-item" data-section="cupones-siro" onclick="cargarLotesCupones();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Cupones de SIRO</button>
                 <button class="nav-btn side-item" data-section="consultas" onclick="cargarConsultas();cerrarSidebarMobile()"><svg class="ic"><use href="#i-chat"/></svg>Consultas de familias <span class="side-badge" id="side-badge-consultas" hidden></span></button>
             </div>
         </div>
@@ -604,6 +605,27 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- CUPONES DE SIRO (PDF descargado de SIRO -> portal de familias) -->
+        <section id="sec-cupones-siro" class="section">
+            <div class="card">
+                <h3>Subir cupones de SIRO</h3>
+                <p class="muted" style="margin-bottom:0.8rem">Descargá de SIRO el PDF con los cupones (uno por página) y subilo acá. Podés subir varios a la vez
+                (Ciclo Básico, Mecánica, Aviónica, MMH, exámenes…). El archivo se lee en esta computadora: al sistema solo llegan los datos de cada cupón
+                (vencimientos, importes, QR, código de barras y código de pago electrónico). Cada cupón aparece en el portal de la familia hasta su último vencimiento.</p>
+                <div class="toolbar" style="margin-bottom:0">
+                    <input type="file" id="cs-archivos" accept="application/pdf,.pdf" multiple class="solo-admin">
+                    <button class="btn btn-primary btn-3d solo-admin" id="cs-leer" onclick="leerCuponesSiro()"><svg class="ic"><use href="#i-upload"/></svg>Leer cupones</button>
+                </div>
+                <div id="cs-estado" hidden><div class="cs-progreso"><div id="cs-barra"></div></div><p class="muted" id="cs-texto"></p></div>
+            </div>
+            <div id="cs-vista" class="card" hidden></div>
+            <div class="section-titulo" style="margin-top:1.5rem;font-size:1.1rem">Cupones cargados</div>
+            <table id="tabla-lotes-cupones">
+                <thead><tr><th>Cargado</th><th>Archivo</th><th>Concepto</th><th style="text-align:right">Cupones</th><th style="text-align:right">Total</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+                <tbody id="body-lotes-cupones"></tbody>
+            </table>
         </section>
 
         <!-- CONSULTAS (portal de familias + reportes del personal) -->
