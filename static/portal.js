@@ -95,9 +95,21 @@ async function guardarClave(e) {
 }
 
 async function salir() {
+    const eraVista = yo && yo.vista_admin;
     try { await fetch('/api/portal/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
     yo = null; hijoId = null;
+    if (eraVista) { location.href = '/#alumnos'; return; }
     mostrarLogin();
+}
+
+function bandaVistaAdmin() {
+    let b = $('p-vista-admin');
+    if (!yo.vista_admin) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'p-vista-admin'; b.className = 'p-vista-admin'; $('contenido').prepend(b); }
+    b.innerHTML = `<svg class="ic"><use href="#i-lock"/></svg>
+        <div><b>Vista previa del administrador</b> · Estás viendo el portal tal cual lo ve la familia de <b>${escapeHtml(yo.email)}</b>.
+        Es solo lectura: no se envían consultas ni se marcan mensajes como leídos. Vence en 30 minutos.</div>
+        <button class="btn btn-sm btn-primary" onclick="salir()">Volver al sistema</button>`;
 }
 
 // ---------------------------------------------------------------- aplicación
@@ -106,6 +118,7 @@ async function cargarApp() {
     if (yo.debe_cambiar_password) return mostrarClave(false);
     $('p-email').textContent = yo.email;
     mostrar('v-app');
+    bandaVistaAdmin();
     if (!yo.hijos.length) {
         $('p-hijos').innerHTML = '';
         $('p-tab').innerHTML = '<div class="card p-vacio">No encontramos alumnos activos con este correo. Escribinos a la Asociación.</div>';
@@ -159,9 +172,17 @@ function irTab(tab) {
     ({ cuotas: tabCuotas, tarjeta: tabTarjeta, cupones: tabCupones, datos: tabDatos, consultas: tabConsultas })[tab]();
 }
 
+// Medios de pago del reporte de cobranzas SIRO, con nombres que entiendan las familias
+const CANALES = { LK: 'Red Link', PF: 'Pago Fácil', RP: 'Rapipago', TQR: 'Pago con QR', BPC: 'Pago Mis Cuentas (Banelco)',
+    PC: 'Pago Mis Cuentas', PMC: 'Pago Mis Cuentas', CE: 'Cobro Express', BP: 'Bapro Pagos', DEB: 'Débito automático' };
+function nombreCanal(p) {
+    if (p.via === 'efectivo') return 'Efectivo en la Asociación';
+    return CANALES[(p.canal || '').toUpperCase()] || (p.canal ? 'Pago SIRO (' + p.canal + ')' : 'Pago registrado');
+}
+
 function tabCuotas() {
     const c = datosHijo.cuotas, a = datosHijo.alumno;
-    const pagos = c.pagos.map(p => `<li><div><b>${fmtFecha(p.fecha)}</b><div class="p-sec">${escapeHtml(p.canal || p.via || 'Pago')}</div></div>
+    const pagos = c.pagos.map(p => `<li><div><b>${fmtFecha(p.fecha)}</b><div class="p-sec">${escapeHtml(nombreCanal(p))}</div></div>
         <span class="p-monto pos">${fmtMoneda(p.importe)}</span></li>`).join('');
     $('p-tab').innerHTML = `
         <div class="card p-codigo">

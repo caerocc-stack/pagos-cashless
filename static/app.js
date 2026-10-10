@@ -399,6 +399,7 @@ function renderAlumnos(lista) {
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
                 <button class="btn btn-sm" onclick="editarAlumno(${a.id})">Editar</button>
+                <button class="btn btn-sm btn-outline solo-admin" ${usuarioActual.rol === 'admin' ? '' : 'style="display:none"'} onclick="verComoFamilia(${a.id})" title="Abrir el portal tal cual lo ve la familia">Ver como familia</button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarAlumno(${a.id})">Eliminar</button>
             </td>
         </tr>`;
@@ -556,6 +557,7 @@ async function verAlumno(id) {
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
                 <button class="btn btn-success btn-sm" onclick="compartirWhatsAppAlumno(${a.id})">Compartir WhatsApp</button>
                 <button class="btn btn-outline btn-sm" onclick="compartirEmailAlumno(${a.id})">Enviar por Email</button>
+                ${usuarioActual.rol === 'admin' ? `<button class="btn btn-primary btn-sm" onclick="verComoFamilia(${a.id})">Ver como familia (portal)</button>` : ''}
                 <button class="btn btn-danger btn-sm" onclick="eliminarMovimientosAlumno(${a.id})">🗑 Eliminar movimientos</button>
             </div>`;
 
@@ -3595,6 +3597,7 @@ const ACCIONES_AUDITORIA = {
     portal_ingreso: 'Portal: ingreso de familia', portal_cuenta_creada: 'Portal: cuenta de familia creada', portal_cuenta_bloqueada: 'Portal: cuenta bloqueada',
     portal_cambio_password: 'Portal: cambio de contraseña', portal_reset_password: 'Portal: contraseña restablecida',
     portal_pedido_reset: 'Portal: pidió recuperar contraseña', portal_consulta: 'Portal: nueva consulta',
+    portal_vista_admin: 'Vio el portal como familia',
 };
 
 async function cargarUsuarios() {
@@ -4130,6 +4133,7 @@ async function verConsulta(id) {
                 ${x.estado === 'cerrada'
                     ? `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'abierta')">Reabrir</button>`
                     : `<button class="btn btn-ghost" onclick="estadoConsulta(${x.id}, 'cerrada')">Cerrar sin responder</button>`}
+                ${x.alumno ? `<button class="btn btn-ghost" onclick="verComoFamilia(${x.alumno.id})">Ver como familia</button>` : ''}
             </div>` : '<p class="muted">Solo un administrador puede responder.</p>'}`;
         const ov = document.getElementById('modal-overlay');
         ov.querySelector('.modal').classList.add('modal-ancho');
@@ -4192,4 +4196,16 @@ async function enviarReporteProblema() {
         cerrarModal(); toast(r.mensaje);
         actualizarContadorConsultas();
     } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+// Abre el portal de familias tal cual lo ve la familia del alumno (vista previa de solo lectura)
+async function verComoFamilia(alumnoId) {
+    const ventana = window.open('', '_blank');  // se abre ya, en el clic, para que el navegador no la bloquee
+    try {
+        await api('/api/portal/vista-previa', { method: 'POST', body: JSON.stringify({ alumno_id: alumnoId }) });
+        if (ventana) ventana.location = '/portal'; else location.href = '/portal';
+    } catch (e) {
+        if (ventana) ventana.close();
+        toast(e.message, 'error');
+    }
 }

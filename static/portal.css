@@ -26,6 +26,12 @@ body.portal { background: var(--bg); }
 .p-msg.error { background: var(--danger-soft); color: var(--danger); }
 .p-msg.ok { background: var(--success-soft); color: var(--success); }
 
+.p-vista-admin { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem 1rem; font-size: 0.88rem;
+    background: var(--warning-soft, #fff4e0); color: var(--text); border: 1px solid var(--warning, #c77700); border-radius: var(--radius); }
+.p-vista-admin .ic { color: var(--warning, #c77700); flex: none; }
+.p-vista-admin div { flex: 1; }
+@media (max-width: 640px) { .p-vista-admin { flex-wrap: wrap; } .p-vista-admin .btn { width: 100%; } }
+
 /* Selector de hijos */
 .p-hijos { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem; margin-bottom: 1rem; }
 .p-hijo { display: flex; align-items: center; gap: 0.6rem; min-height: 52px; padding: 0.45rem 0.9rem 0.45rem 0.45rem;

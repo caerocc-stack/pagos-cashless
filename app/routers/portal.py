@@ -11,6 +11,7 @@ Seguridad:
 """
 import re
 import os
+from types import SimpleNamespace
 from datetime import timedelta, datetime, timezone
 from decimal import Decimal
 from html import escape
@@ -23,7 +24,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import SECRET_KEY, ALGORITHM, hash_password, verify_password, HASH_SENUELO
+from app.auth import SECRET_KEY, ALGORITHM, hash_password, verify_password, HASH_SENUELO, requiere_admin
+from app.models.usuario import Usuario
 from app.models.alumno import Alumno
 from app.models.saldo import Saldo
 from app.models.movimiento import Movimiento
@@ -42,6 +44,7 @@ router = APIRouter(prefix="/api/portal", tags=["Portal de familias"])
 
 APP_URL = (os.getenv("APP_URL") or "https://pagos-cashless.vercel.app").rstrip("/")
 SESION_HORAS = 8
+VISTA_MINUTOS = 30
 MAX_FALLOS, BLOQUEO_MIN = 5, 15
 MSG_CRED = "Correo o contraseña incorrectos."
 
@@ -84,6 +87,8 @@ def get_padre(request: Request, db: Session = Depends(get_db)) -> CuentaPadre:
         data = jwt.decode(tok or "", SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(401, "Tu sesión venció. Ingresá de nuevo.")
+    if data.get("typ") == "padre_vista":
+        return _vista_admin(request, db, data)
     c = db.get(CuentaPadre, data.get("cid")) if data.get("typ") == "padre" else None
     if not c or not c.activo or (c.version_sesion or 0) != data.get("ver"):
         raise HTTPException(401, "Tu sesión venció. Ingresá de nuevo.")
@@ -91,6 +96,26 @@ def get_padre(request: Request, db: Session = Depends(get_db)) -> CuentaPadre:
     if c.debe_cambiar_password and not libre:
         raise HTTPException(403, "Antes de continuar tenés que crear tu contraseña personal.")
     return c
+
+
+def _vista_admin(request: Request, db: Session, data: dict):
+    """Vista previa del portal para un administrador: ve exactamente lo mismo que la familia,
+    pero en solo lectura (no envía consultas, no cambia claves, no marca mensajes como leídos)."""
+    admin = db.get(Usuario, data.get("uid"))
+    if (not admin or not admin.activo or admin.rol != "admin"
+            or (admin.version_sesion or 0) != data.get("ver")):
+        raise HTTPException(401, "La vista previa venció. Abrila de nuevo desde el sistema.")
+    if request.method not in ("GET", "HEAD") and request.url.path != "/api/portal/logout":
+        raise HTTPException(403, "Estás en vista previa: no se pueden enviar consultas ni cambiar datos de la familia.")
+    email = _norm_email(data.get("email"))
+    c = db.query(CuentaPadre).filter(CuentaPadre.email == email).first()
+    # Si la familia todavía no ingresó nunca, no tiene cuenta: id 0 no coincide con ninguna consulta
+    return SimpleNamespace(id=c.id if c else 0, email=email, activo=True, debe_cambiar_password=False,
+                           vista_admin=admin.nombre)
+
+
+def _es_vista(c) -> bool:
+    return bool(getattr(c, "vista_admin", None))
 
 
 def _hijo(db: Session, cuenta: CuentaPadre, alumno_id: int) -> Alumno:
@@ -196,6 +221,7 @@ def me(c: CuentaPadre = Depends(get_padre), db: Session = Depends(get_db)):
     hijos = hijos_de(db, c.email)
     no_leidas = db.query(Consulta).filter(Consulta.cuenta_id == c.id, Consulta.leida_autor.is_(False)).count()
     return {"email": c.email, "debe_cambiar_password": bool(c.debe_cambiar_password), "consultas_sin_leer": no_leidas,
+            "vista_admin": getattr(c, "vista_admin", None),
             "hijos": [{"id": a.id, "nombre": a.nombre, "apellido": a.apellido, "curso": a.curso,
                        "division": a.division, "legajo": a.legajo} for a in hijos]}
 
@@ -396,7 +422,7 @@ def ver_consulta(cid: int, c: CuentaPadre = Depends(get_padre), db: Session = De
     x = db.get(Consulta, cid)
     if not x or x.cuenta_id != c.id:
         raise HTTPException(404, "Consulta no encontrada.")
-    if not x.leida_autor:
+    if not x.leida_autor and not _es_vista(c):
         x.leida_autor = True
         db.commit()
     return _dto_consulta(x, db, con_mensajes=True)
@@ -417,3 +443,28 @@ def responder(cid: int, data: NuevoMensaje, c: CuentaPadre = Depends(get_padre),
     x.actualizada = ahora_ar()
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- vista previa para administradores
+
+class VistaPrevia(BaseModel):
+    alumno_id: int
+
+
+@router.post("/vista-previa")
+def vista_previa(data: VistaPrevia, request: Request, admin=Depends(requiere_admin), db: Session = Depends(get_db)):
+    """Abre el portal tal cual lo ve la familia del alumno (solo lectura, 30 minutos)."""
+    a = db.get(Alumno, data.alumno_id)
+    if not a:
+        raise HTTPException(404, "Alumno no encontrado.")
+    correos = sorted(emails_de(a.email), key=lambda e: (a.email or "").lower().find(e))
+    if not correos:
+        raise HTTPException(400, "El alumno no tiene correo cargado: las familias ingresan al portal con ese correo.")
+    usuario = db.get(Usuario, admin["uid"])
+    token = jwt.encode({"typ": "padre_vista", "uid": usuario.id, "ver": usuario.version_sesion or 0, "email": correos[0],
+                        "exp": datetime.now(timezone.utc) + timedelta(minutes=VISTA_MINUTOS)}, SECRET_KEY, algorithm=ALGORITHM)
+    auditar(db, "portal_vista_admin", admin["sub"], f"{correos[0]} ({a.apellido}, {a.nombre})", request)
+    db.commit()
+    resp = JSONResponse({"ok": True, "email": correos[0], "url": "/portal"})
+    resp.set_cookie("ptoken", token, httponly=True, secure=True, samesite="strict", max_age=VISTA_MINUTOS * 60, path="/")
+    return resp
