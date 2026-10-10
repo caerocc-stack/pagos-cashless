@@ -675,3 +675,8 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
     .modal-overlay { position: static; background: none; backdrop-filter: none; }
     .modal { box-shadow: none; max-height: none; }
 }
+
+/* Previsualización de importación de facturas */
+.imp-tabla td:last-child { min-width: 230px; }
+.imp-tabla td:nth-child(5), .imp-tabla td:nth-child(6) { min-width: 170px; }
+.imp-tabla td:first-child { width: 1%; }

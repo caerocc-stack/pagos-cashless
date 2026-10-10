@@ -3587,7 +3587,7 @@ const ACCIONES_AUDITORIA = {
     usuario_editado: 'Usuario modificado', clave_temporal: 'Clave temporal asignada',
     link_reset_enviado: 'Link de clave enviado', usuario_desbloqueado: 'Usuario desbloqueado',
     sesiones_cerradas: 'Sesiones cerradas por admin', cerrar_sesiones: 'Cerró sesión en todos lados',
-    actualizar_cuenta: 'Actualizó sus datos', limpieza_finanzas: 'Dejó finanzas en cero',
+    actualizar_cuenta: 'Actualizó sus datos', limpieza_finanzas: 'Dejó finanzas en cero', importacion_facturas: 'Importó facturas desde planilla',
 };
 
 async function cargarUsuarios() {
@@ -3696,6 +3696,88 @@ async function accionUsuario(id, accion) {
         toast((r && r.mensaje) || 'Listo');
         cargarUsuarios();
     } catch (err) { toast(err.message, 'error'); }
+}
+
+// =========================================================
+// --- IMPORTAR FACTURAS DESDE PLANILLA ---
+// =========================================================
+let impFilas = [];
+
+function abrirImportarFacturas() {
+    document.getElementById('modal-content').innerHTML = `
+        <h3>Importar facturas desde una planilla</h3>
+        <ol class="tf-pasos">
+            <li>Descargá la <a href="/api/importar-gastos/plantilla">plantilla de Excel</a> (o usá la planilla que te armamos con las facturas escaneadas).</li>
+            <li>Completá una fila por comprobante y subila acá. <b>Nada se guarda</b> hasta que revises y confirmes.</li>
+        </ol>
+        <input type="file" id="imp-archivo" accept=".xlsx,.csv" onchange="previsualizarImportacion(this)">
+        <div id="imp-resultado"></div>`;
+    const m = document.querySelector('#modal-overlay .modal');
+    m.classList.add('modal-ancho');
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function previsualizarImportacion(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const cont = document.getElementById('imp-resultado');
+    cont.innerHTML = '<p class="muted">Leyendo la planilla…</p>';
+    try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await fetch('/api/importar-gastos/previsualizar', { method: 'POST', credentials: 'same-origin', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'No se pudo leer la planilla');
+        impFilas = data.filas;
+        const r = data.resumen;
+        const etiqueta = { nuevo: '<span class="badge badge-activa">Nueva</span>', duplicado: '<span class="badge">Ya cargada</span>',
+                           repetido: '<span class="badge">Repetida en la planilla</span>', error: '<span class="badge badge-inactiva">Con error</span>' };
+        const filas = impFilas.map((f, i) => `<tr class="${f.estado === 'error' ? 'fila-alerta' : f.estado !== 'nuevo' ? 'fila-inactiva' : ''}">
+            <td><input type="checkbox" class="imp-sel" data-i="${i}" ${f.estado === 'nuevo' ? 'checked' : 'disabled'} aria-label="Importar fila ${f.fila}"></td>
+            <td>${f.fila}</td>
+            <td>${fmtFecha(f.fecha)}</td>
+            <td>${escapeHtml(f.tipo || '')}<br><small class="muted">${escapeHtml([f.punto_venta, f.numero].filter(Boolean).join('-'))}</small></td>
+            <td>${escapeHtml(f.razon_social || '—')}<br><small class="muted">${escapeHtml(f.cuit || 'sin CUIT')}</small></td>
+            <td>${escapeHtml(f.concepto || '')}<br><small class="muted">${escapeHtml([f.rubro, f.categoria, f.destino].filter(Boolean).join(' · '))}</small></td>
+            <td class="num" style="${f.importe < 0 ? 'color:var(--danger)' : ''}">${f.importe != null ? fmtMoneda(f.importe) : '—'}</td>
+            <td>${escapeHtml(f.medio_pago)}${f.fecha_pago ? `<br><small class="muted">${fmtFecha(f.fecha_pago)}</small>` : ''}</td>
+            <td>${etiqueta[f.estado] || ''}${[...f.errores, ...f.avisos].map(t => `<br><small style="color:var(--${f.errores.includes(t) ? 'danger' : 'text-muted'})">${escapeHtml(t)}</small>`).join('')}</td>
+        </tr>`).join('');
+        const hayEfectivo = impFilas.some(f => f.estado === 'nuevo' && f.medio_pago === 'Efectivo');
+        cont.innerHTML = `
+            <div class="gasto-resumen" style="margin-top:1rem">
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Nuevas</div><div class="gasto-kpi-valor" style="color:var(--success)">${r.nuevo}</div><div class="gasto-kpi-sub">${fmtMoneda(r.total_nuevos)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Ya cargadas</div><div class="gasto-kpi-valor">${r.duplicado + r.repetido}</div><div class="gasto-kpi-sub">se omiten</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Con error</div><div class="gasto-kpi-valor" style="color:var(--danger)">${r.error}</div><div class="gasto-kpi-sub">corregilas en el Excel</div></div>
+            </div>
+            <table class="imp-tabla"><thead><tr><th></th><th>Fila</th><th>Fecha</th><th>Comprobante</th><th>Proveedor</th><th>Concepto</th><th class="num">Importe</th><th>Pago</th><th>Estado</th></tr></thead>
+            <tbody>${filas}</tbody></table>
+            ${hayEfectivo ? `<label class="check-inline" style="margin:0.75rem 0"><input type="checkbox" id="imp-caja" checked>
+                Registrar los pagos en <b>efectivo</b> como egresos en el Libro de caja</label>` : ''}
+            <p class="muted">Las pagadas por <b>transferencia o débito</b> quedan pendientes y se concilian solas al subir el extracto del banco.</p>
+            <div class="form-actions"><button class="btn btn-primary" id="imp-ok" onclick="confirmarImportacion()" ${r.nuevo ? '' : 'disabled'}>Importar las seleccionadas</button>
+                <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
+    } catch (err) {
+        cont.innerHTML = `<p style="color:var(--danger);font-weight:600;margin-top:0.75rem">${escapeHtml(err.message)}</p>`;
+    } finally { input.value = ''; }
+}
+
+async function confirmarImportacion() {
+    const sel = [...document.querySelectorAll('.imp-sel:checked')].map(c => impFilas[Number(c.dataset.i)]);
+    if (!sel.length) return toast('No hay filas seleccionadas', 'error');
+    const btn = document.getElementById('imp-ok');
+    btn.disabled = true;
+    try {
+        const caja = document.getElementById('imp-caja');
+        const r = await api('/api/importar-gastos/confirmar', { method: 'POST', body: JSON.stringify({
+            filas: sel.map(f => ({ fecha: f.fecha, tipo: f.tipo, punto_venta: f.punto_venta, numero: f.numero, cuit: f.cuit,
+                razon_social: f.razon_social, importe: f.importe, concepto: f.concepto, rubro: f.rubro, categoria: f.categoria,
+                destino: f.destino, medio_pago: f.medio_pago, fecha_pago: f.fecha_pago, notas: f.notas })),
+            efectivo_a_caja: caja ? caja.checked : false }) });
+        toast(r.mensaje);
+        cerrarModal();
+        cargarGastos();
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
 }
 
 // =========================================================
