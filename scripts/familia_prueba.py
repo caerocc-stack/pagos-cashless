@@ -1,13 +1,15 @@
 """
 Carga (o borra) una familia de prueba para ver el Portal de familias con datos ficticios.
 
-    python scripts/familia_prueba.py correo@ejemplo.com          -> crea/actualiza
-    python scripts/familia_prueba.py correo@ejemplo.com --borrar -> elimina todo lo creado
+    python scripts/familia_prueba.py correo@ejemplo.com                -> crea/actualiza (2 hermanos)
+    python scripts/familia_prueba.py correo@ejemplo.com --grupo uno    -> crea/actualiza (1 alumna)
+    agregar --borrar para eliminar todo lo creado de ese grupo
 
-Crea 2 hermanos (apellido PRUEBA) con el correo indicado: Sofía (2°A, al día) y Tomás (5°B Mecánica,
-debe agosto a octubre), con pagos de cuota desde marzo y movimientos de la tarjeta.
-La primera clave del portal es el DNI de cualquiera de los dos (12345678 o 12345679).
-Todo queda marcado: pagos con hash "DEMO-PRUEBA-..." y alumnos con legajo 99901 / 99902.
+Grupo "hermanos": Sofía (2°A, al día, legajo 99901, DNI 12345678) y Tomás (5°B Mecánica, debe desde
+agosto, legajo 99902, DNI 12345679). Grupo "uno": Valentina (2°B, debe agosto y septiembre,
+legajo 99903, DNI 11223344). Cada grupo usa legajos propios, así no se pisan entre sí.
+La primera clave del portal es el DNI del alumno; se pide cambiarla al ingresar.
+Todo queda marcado: pagos con hash "DEMO-PRUEBA-..." y apellido PRUEBA.
 """
 import os
 import sys
@@ -56,7 +58,23 @@ HIJOS = [
 ]
 
 
-def borrar(db, email):
+GRUPOS = {
+    "hermanos": HIJOS,
+    "uno": [
+        {"legajo": "99903", "dni": "11223344", "nombre": "Valentina", "apellido": "PRUEBA", "curso": "2°B", "division": "B",
+         "area": "Ciclo Basico", "fecha_nacimiento": date(2012, 8, 21),
+         # pagó marzo (con matrícula) a julio; debe agosto y septiembre; octubre vence el 31/10
+         "pagos": [(date(2026, 3, 10), 95000, "PF"), (date(2026, 4, 9), 45000, "LK"), (date(2026, 5, 8), 45000, "TQR"),
+                   (date(2026, 6, 10), 45000, "LK"), (date(2026, 7, 9), 45000, "PF")],
+         "tarjeta": [(datetime(2026, 3, 17, 9, 5), "recarga", 8000, "Recarga en efectivo"),
+                     (datetime(2026, 4, 2, 10, 30), "consumo", -1400, "Fotocopias Historia"),
+                     (datetime(2026, 6, 18, 12, 15), "consumo", -2200, "Buffet"),
+                     (datetime(2026, 9, 23, 9, 50), "consumo", -950, "Fotocopias Biología")]},
+    ],
+}
+
+
+def borrar(db, email, HIJOS):
     alumnos = db.query(Alumno).filter(Alumno.legajo.in_([h["legajo"] for h in HIJOS])).all()
     ids = [a.id for a in alumnos]
     if ids:
@@ -78,7 +96,7 @@ def borrar(db, email):
     print(f"Borrados: {len(alumnos)} alumnos, {len(consultas)} consultas, cuenta del portal: {'sí' if cuenta else 'no había'}")
 
 
-def crear(db, email):
+def crear(db, email, HIJOS):
     for h in HIJOS:
         a = db.query(Alumno).filter(Alumno.legajo == h["legajo"]).first()
         if not a:
@@ -116,6 +134,9 @@ if __name__ == "__main__":
     correo = sys.argv[1].strip().lower()
     sesion = SessionLocal()
     try:
-        borrar(sesion, correo) if "--borrar" in sys.argv else crear(sesion, correo)
+        grupo = sys.argv[sys.argv.index("--grupo") + 1] if "--grupo" in sys.argv else "hermanos"
+        if grupo not in GRUPOS:
+            sys.exit(f"Grupo desconocido: {grupo}. Opciones: {', '.join(GRUPOS)}")
+        borrar(sesion, correo, GRUPOS[grupo]) if "--borrar" in sys.argv else crear(sesion, correo, GRUPOS[grupo])
     finally:
         sesion.close()
