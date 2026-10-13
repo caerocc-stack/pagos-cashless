@@ -29,7 +29,16 @@ DEFAULTS = {
         "¡Muchas gracias!\nAPAI - Asociación de Padres y Alumnos del I.N.A.C"
     ),
     "cuota_monto": "45000",
+    # --- Datos fiscales de APAI (se muestran a los proveedores para que facturen) ---
+    "apai_razon_social": "ASOCIACION DE PADRES Y ALUMNOS DEL INAC",
+    "apai_cuit": "33-69006861-9",
+    "apai_domicilio": "Av. Eva Perón 2200, Morón, Buenos Aires",
+    "apai_condicion_iva": "IVA Sujeto Exento",
+    # --- Módulos ---
+    "tarjeta_activa": "0",   # la tarjeta APAI está suspendida temporalmente
 }
+
+CLAVES_SISTEMA = ["apai_razon_social", "apai_cuit", "apai_domicilio", "apai_condicion_iva", "tarjeta_activa"]
 
 CLAVES_PLANTILLAS = [
     "recarga_asunto", "recarga_mensaje",
@@ -71,3 +80,12 @@ def aplicar_comodines(texto: str, alumno, monto_str: str) -> str:
         .replace("{mes}", MESES[ahora.month - 1])
         .replace("{anio}", str(ahora.year))
     )
+
+
+def tarjeta_activa(db: Session) -> bool:
+    return get_config(db, "tarjeta_activa") == "1"
+
+
+def datos_apai(db: Session) -> dict:
+    return {"razon_social": get_config(db, "apai_razon_social"), "cuit": get_config(db, "apai_cuit"),
+            "domicilio": get_config(db, "apai_domicilio"), "condicion_iva": get_config(db, "apai_condicion_iva")}

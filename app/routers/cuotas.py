@@ -12,12 +12,12 @@ from sqlalchemy import or_, func, extract
 from app.database import get_db
 from app.models.pago_cuota import PagoCuota
 from app.models.alumno import Alumno
-from app.models.curso import Curso
+from app.models.curso import Curso, AlumnoCurso
 from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
-from app.cuenta_alumno import estado_cuenta, anio_de_pago
+from app.cuenta_alumno import estado_cuenta, anio_de_pago, plan_simple, MES_INICIO
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -278,13 +278,48 @@ def _base_alumno(alumno) -> dict:
             "modalidad": alumno.modalidad, "condicion": alumno.condicion}
 
 
-def _estado_de(alumno, curso, pagos, anio: int, mes_corte: int | None = None, detalle: bool = False) -> dict:
+def _estado_de(alumno, planes, pagos, anio: int, mes_corte: int | None = None, detalle: bool = False) -> dict:
     """Estado de cuenta cuota por cuota (ver app/cuenta_alumno.py). Sin `detalle` devuelve solo el resumen."""
-    info = estado_cuenta(alumno, curso, pagos, anio, hoy=ahora_ar().date(), mes_corte=mes_corte)
+    info = estado_cuenta(alumno, planes, pagos, anio, hoy=ahora_ar().date(), mes_corte=mes_corte)
     if not detalle:
         for k in ("items", "pagos", "proximo"):
             info.pop(k, None)
+        for c in info.get("cursos", []):
+            c.pop("items", None)
+    info["cursos_nombres"] = [c["nombre"] for c in info.get("cursos", [])]
     return {**_base_alumno(alumno), **info}
+
+
+def planes_de(alumno, cursos: list[Curso], extras: list[AlumnoCurso]) -> list[dict]:
+    """Cursos del alumno en el año: los cargados explícitamente (si cursa más de uno) o el de su padrón."""
+    if extras:
+        por_id = {c.id: c for c in cursos}
+        planes = [{"clave": f"ac{x.id}", "curso": por_id[x.curso_id], "nombre": por_id[x.curso_id].nombre,
+                   "mes_inicio": x.mes_inicio or MES_INICIO, "principal": bool(x.principal), "curso_id": x.curso_id,
+                   "alumno_curso_id": x.id}
+                  for x in sorted(extras, key=lambda x: (not x.principal, x.mes_inicio or MES_INICIO, x.id)) if x.curso_id in por_id]
+        if planes:
+            return planes
+    return plan_simple(curso_de_alumno(alumno, cursos))
+
+
+def cursos_vigentes(db: Session, anio: int) -> list[Curso]:
+    cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
+    return cursos or db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+
+
+def extras_por_alumno(db: Session, anio: int, alumno_id: int | None = None) -> dict[int, list[AlumnoCurso]]:
+    q = db.query(AlumnoCurso).filter(AlumnoCurso.anio == anio)
+    if alumno_id:
+        q = q.filter(AlumnoCurso.alumno_id == alumno_id)
+    salida: dict[int, list[AlumnoCurso]] = {}
+    for x in q.all():
+        salida.setdefault(x.alumno_id, []).append(x)
+    return salida
+
+
+def planes_alumno(db: Session, a: Alumno, anio: int) -> list[dict]:
+    return planes_de(a, cursos_vigentes(db, anio), extras_por_alumno(db, anio, a.id).get(a.id, []))
 
 
 def pagos_del_anio(db: Session, anio: int, alumno_id: int | None = None) -> dict[int, list]:
@@ -306,11 +341,10 @@ def _corte_texto(mes_corte: int | None) -> int:
 
 
 def _calcular(db: Session, anio: int, mes_corte: int | None):
-    cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
-    if not cursos:
-        cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    cursos = cursos_vigentes(db, anio)
     pagos = pagos_del_anio(db, anio)
-    return [_estado_de(a, curso_de_alumno(a, cursos), pagos.get(a.id, []), anio, mes_corte)
+    extras = extras_por_alumno(db, anio)
+    return [_estado_de(a, planes_de(a, cursos, extras.get(a.id, [])), pagos.get(a.id, []), anio, mes_corte)
             for a in db.query(Alumno).filter(Alumno.activo == True).all()]  # noqa: E712
 
 
@@ -338,9 +372,9 @@ def estado(anio: int | None = None, mes: int | None = None,
 def detalle_alumno(db: Session, a: Alumno, anio: int | None = None) -> dict:
     """Estado de cuenta completo de un alumno: cuotas, imputación de cada pago y próximo vencimiento."""
     anio = anio or ahora_ar().year
-    cursos = db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
-    curso = curso_de_alumno(a, cursos)
-    info = _estado_de(a, curso, pagos_del_anio(db, anio, a.id).get(a.id, []), anio, detalle=True)
+    planes = planes_alumno(db, a, anio)
+    info = _estado_de(a, planes, pagos_del_anio(db, anio, a.id).get(a.id, []), anio, detalle=True)
+    curso = planes[0]["curso"] if planes else None
     info["curso_param"] = {"nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
                            "matricula": float(curso.matricula or 0)} if curso else None
     return info
@@ -410,3 +444,21 @@ def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = 
         "cobranza_mensual": meses,
         "top_morosos": morosos,
     }
+
+
+class Imputacion(BaseModel):
+    curso_id: int | None = None
+
+
+@router.post("/pagos/{pago_id}/imputar")
+def imputar_pago(pago_id: int, data: Imputacion, db: Session = Depends(get_db)):
+    """Imputa a mano un pago a uno de los cursos del alumno (o lo deja en automático con curso_id null)."""
+    p = db.get(PagoCuota, pago_id)
+    if not p or not p.alumno_id:
+        raise HTTPException(404, "Pago no encontrado")
+    if data.curso_id is not None and not db.query(AlumnoCurso).filter(
+            AlumnoCurso.alumno_id == p.alumno_id, AlumnoCurso.curso_id == data.curso_id).first():
+        raise HTTPException(400, "Ese curso no está asignado al alumno")
+    p.curso_id = data.curso_id
+    db.commit()
+    return {"ok": True, "mensaje": "Imputación actualizada"}

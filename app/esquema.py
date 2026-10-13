@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.database import engine, Base, SessionLocal
 from app.auth import crear_usuario_inicial
 from app import models  # noqa: F401 (registra las tablas principales)
-from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario, seguridad, portal  # noqa: F401
+from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario, seguridad, portal, factura_recibida  # noqa: F401
 
 MIGRACIONES = [
     "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
@@ -83,6 +83,14 @@ MIGRACIONES = [
     "ALTER TABLE cupones_enviados ADD COLUMN IF NOT EXISTS barras_imagen TEXT",
     "CREATE INDEX IF NOT EXISTS ix_cupon_vence ON cupones_enviados (alumno_id, vence_ultimo)",
     "CREATE INDEX IF NOT EXISTS ix_cupon_lote ON cupones_enviados (lote)",
+    "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS curso_id INTEGER REFERENCES cursos(id)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS origen VARCHAR(20)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS revisado BOOLEAN DEFAULT TRUE",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS vencimiento DATE",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS cae VARCHAR(20)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS factura_recibida_id INTEGER REFERENCES facturas_recibidas(id)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS creado_por VARCHAR(60)",
+    "CREATE INDEX IF NOT EXISTS ix_gasto_comprobante ON gastos (cuit, punto_venta, numero)",
 ]
 
 

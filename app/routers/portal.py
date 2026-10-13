@@ -37,7 +37,7 @@ from app.routers.cupones_siro import cupones_vigentes, ultimo_codigo_pago
 from app.seguridad import (ip_cliente, auditar, segundos_bloqueo, registrar_fallo, limpiar_fallos, error_password,
                            crear_token_acceso, consumir_token_acceso)
 from app.storage_util import crear_subida_firmada
-from app import consultas_util as cu
+from app import consultas_util as cu, config_util
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/portal", tags=["Portal de familias"])
@@ -221,7 +221,7 @@ def me(c: CuentaPadre = Depends(get_padre), db: Session = Depends(get_db)):
     hijos = hijos_de(db, c.email)
     no_leidas = db.query(Consulta).filter(Consulta.cuenta_id == c.id, Consulta.leida_autor.is_(False)).count()
     return {"email": c.email, "debe_cambiar_password": bool(c.debe_cambiar_password), "consultas_sin_leer": no_leidas,
-            "vista_admin": getattr(c, "vista_admin", None),
+            "vista_admin": getattr(c, "vista_admin", None), "tarjeta_activa": config_util.tarjeta_activa(db),
             "hijos": [{"id": a.id, "nombre": a.nombre, "apellido": a.apellido, "curso": a.curso,
                        "division": a.division, "legajo": a.legajo} for a in hijos]}
 
@@ -311,7 +311,8 @@ def resumen_alumno(alumno_id: int, c: CuentaPadre = Depends(get_padre), db: Sess
                    "codigo_pago": ultimo_codigo_pago(db, a.id)},
         "cuotas": {k: e.get(k) for k in (
             "anio", "estado", "pagado", "esperado", "deuda", "deuda_anterior", "deuda_total", "items", "pagos",
-            "cuotas_adeudadas", "matricula_adeudada", "meses_adeudados", "detalle_deuda", "proximo", "saldo_a_favor")}
+            "cuotas_adeudadas", "matricula_adeudada", "meses_adeudados", "detalle_deuda", "proximo", "saldo_a_favor",
+            "cursos")}
         | {"curso": e.get("curso_param")},
         "tarjeta": {
             "saldo": float(saldo.monto) if saldo else 0.0,
@@ -359,9 +360,10 @@ def _dto_consulta(x: Consulta, db: Session, con_mensajes=False) -> dict:
 
 
 @router.get("/ayuda")
-def ayuda():
+def ayuda(db: Session = Depends(get_db)):
+    sin_tarjeta = not config_util.tarjeta_activa(db)
     return [{"id": k, "titulo": v["titulo"], "desc": v["desc"], "ayuda": v["ayuda"], "comprobante": v["comprobante"]}
-            for k, v in cu.CATEGORIAS.items() if k in cu.CATEGORIAS_PORTAL]
+            for k, v in cu.CATEGORIAS.items() if k in cu.CATEGORIAS_PORTAL and not (sin_tarjeta and k == "tarjeta")]
 
 
 @router.post("/adjunto-firma")

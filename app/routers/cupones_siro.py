@@ -22,10 +22,8 @@ from sqlalchemy.orm import Session
 from app.auth import requiere_admin
 from app.database import get_db
 from app.models.alumno import Alumno
-from app.models.curso import Curso
 from app.models.portal import CuponEnviado
-from app.routers.cuotas import _indices, _matchear
-from app.routers.cursos import curso_de_alumno
+from app.routers.cuotas import _indices, _matchear, planes_de, extras_por_alumno, cursos_vigentes
 from app.seguridad import auditar, qr_svg_data_uri
 from app.tz import ahora_ar
 
@@ -96,8 +94,9 @@ def _palabras(s: str) -> set[str]:
 
 def _analizar(db: Session, cupones: list[CuponPDF]) -> list[dict]:
     by_leg, by_dni = _indices(db)
-    cursos = db.query(Curso).filter(Curso.activo.is_(True)).all()
     hoy = ahora_ar().date()
+    cursos = cursos_vigentes(db, hoy.year)
+    extras = extras_por_alumno(db, hoy.year)
     barras = [c.codigo_barras for c in cupones if c.codigo_barras]
     ya = {b for (b,) in db.query(CuponEnviado.codigo_barras).filter(CuponEnviado.codigo_barras.in_(barras)).all()} if barras else set()
     salida = []
@@ -109,13 +108,16 @@ def _analizar(db: Session, cupones: list[CuponPDF]) -> list[dict]:
             avisos.append("el nombre del cupón no coincide con el del padrón")
         importe = c.vencimientos[0].importe
         if a:
-            curso = curso_de_alumno(a, cursos)
-            if curso:
-                validos = {Decimal(str(curso.cuota or 0)), Decimal(str(curso.matricula or 0))}
+            planes = planes_de(a, cursos, extras.get(a.id, []))
+            if planes:
+                validos = set()
+                for pl in planes:
+                    validos |= {Decimal(str(pl["curso"].cuota or 0)), Decimal(str(pl["curso"].matricula or 0))}
                 if a.cuota_personalizada:
                     validos.add(Decimal(str(a.cuota_personalizada)))
                 if importe not in validos:
-                    avisos.append(f"importe distinto al del curso {curso.nombre} (cuota ${curso.cuota:,.0f})".replace(",", "."))
+                    nombres = ", ".join(f"{pl['nombre']} ${pl['curso'].cuota:,.0f}".replace(",", ".") for pl in planes)
+                    avisos.append(f"importe distinto al de sus cursos ({nombres}): ¿le falta agregar un curso?")
         vence = max(v.fecha for v in c.vencimientos)
         salida.append({
             "pagina": c.pagina, "identificador": c.identificador, "nombre_cupon": c.nombre,

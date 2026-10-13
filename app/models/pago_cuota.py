@@ -24,6 +24,7 @@ class PagoCuota(Base):
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
 
     origen: Mapped[str | None] = mapped_column(String(120))
+    curso_id: Mapped[int | None] = mapped_column(ForeignKey("cursos.id"))  # imputación manual a un curso (alumnos con más de uno)
     hash: Mapped[str] = mapped_column(String(40), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 

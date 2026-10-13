@@ -240,11 +240,21 @@ const _escCC = s => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(
 // Una ficha por matrícula y por cuota, con su estado (pagada, adeudada, a vencer…)
 function htmlCuotasGrid(e) {
     if (!e.items || !e.items.length) return '';
+    if (e.cursos && e.cursos.length > 1) {  // un bloque por curso
+        return e.cursos.map(c => `<div class="cc-curso"><b>${_escCC(c.nombre)}</b>
+            <span class="${c.deuda > 0 ? 'cc-curso-mal' : 'cc-curso-ok'}">${c.deuda > 0 ? _escCC(c.detalle_deuda) + ' · ' + fmtMoneda(c.deuda) : 'Al día'}</span></div>`
+            + _gridItems(c.items, true)).join('');
+    }
+    return _gridItems(e.items, false);
+}
+
+function _gridItems(items, sinSufijo) {
     let primera = true;
-    return '<div class="cc-grid">' + e.items.map(it => {
+    return '<div class="cc-grid">' + items.map(it => {
         let est = it.estado;
         if (est === 'a_vencer') { est = primera ? 'a_vencer' : 'futura'; primera = false; }
-        const nombre = it.concepto === 'Matrícula' ? 'Matrícula' : (e.items.length > 2 ? MESES_CORTOS[it.mes - 1] : it.concepto);
+        const concepto = sinSufijo ? it.concepto.replace(/ \(.*\)$/, '') : it.concepto;
+        const nombre = it.es_matricula ? 'Matrícula' : (items.length > 2 ? MESES_CORTOS[it.mes - 1] : concepto);
         const det = { pagada: 'Pagada', parcial: 'Falta ' + fmtMoneda(it.saldo), adeudada: 'Debe ' + fmtMoneda(it.saldo),
             a_vencer: 'Vence ' + fmtFecha(it.vence), futura: fmtMoneda(it.importe) }[est];
         return `<div class="cc-item cc-${est}" title="${_escCC(it.concepto)} · vence ${fmtFecha(it.vence)}"><b>${_escCC(nombre)}</b><small>${det}</small></div>`;
@@ -264,18 +274,24 @@ function htmlResumenDeuda(e) {
     partes.push(`Monto total de deuda: <b>${fmtMoneda(e.deuda_total)}</b>`);
     const meses = (e.meses_adeudados || []);
     const lista = meses.length ? (meses.length === 1 ? meses[0] : meses.slice(0, -1).join(', ') + ' y ' + meses[meses.length - 1]) : '';
+    const porCurso = e.cursos && e.cursos.length > 1
+        ? '<div>' + e.cursos.filter(c => c.deuda > 0).map(c => `<b>${_escCC(c.nombre)}</b>: ${_escCC(c.detalle_deuda.replace(/^Debe /, 'debe '))} (${fmtMoneda(c.deuda)})`).join('<br>') + '</div>' : '';
     return `<div class="cc-resumen cc-mal">${partes.join(' · ')}
-        ${lista ? `<div>Meses sin pago registrado: <b>${_escCC(lista)}</b>.</div>` : ''}
+        ${porCurso || (lista ? `<div>Meses sin pago registrado: <b>${_escCC(lista)}</b>.</div>` : '')}
         ${prox ? `<div class="cc-prox">${prox}</div>` : ''}</div>`;
 }
 
 // Cada pago con su fecha de pago, acreditación, medio y a qué cuota se imputó
-function htmlPagosImputados(pagos) {
+function htmlPagosImputados(pagos, cursos = null) {
     if (!pagos || !pagos.length) return '<p class="muted" style="padding:0.75rem 0">Todavía no hay pagos registrados este año.</p>';
+    const elegir = cursos && cursos.length > 1 && typeof imputarPagoCurso === 'function';
     return '<ul class="cc-pagos">' + pagos.slice().reverse().map(p => {
         const acred = p.fecha_pago && p.fecha_pago !== p.fecha ? ` · acreditado el ${fmtFecha(p.fecha)}` : '';
+        const sel = elegir ? `<label class="cc-imp">Imputar a: <select onchange="imputarPagoCurso(${p.id}, this.value)">
+            <option value="">automático (por mes e importe)</option>${cursos.map(c => `<option value="${c.curso_id}" ${p.curso_id === c.curso_id ? 'selected' : ''}>${_escCC(c.nombre)}</option>`).join('')}
+            </select></label>` : '';
         return `<li><div><b>${fmtFecha(p.fecha_pago || p.fecha)}</b> <span class="muted">· ${_escCC(nombreCanal(p))}${acred}</span>
-            ${p.imputado_a ? `<div class="cc-imp">Pagó: ${_escCC(p.imputado_a)}</div>` : ''}</div>
+            ${p.imputado_a ? `<div class="cc-imp">Pagó: ${_escCC(p.imputado_a)}</div>` : ''}${sel}</div>
             <span class="cc-monto">${fmtMoneda(p.importe)}</span></li>`;
     }).join('') + '</ul>';
 }

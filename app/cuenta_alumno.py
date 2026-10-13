@@ -1,13 +1,16 @@
 """
-Estado de cuenta de un alumno, cuota por cuota.
+Estado de cuenta de un alumno, cuota por cuota y curso por curso.
 
 Reglas (definidas por la Asociación):
-- Cada cuota mensual vence el ÚLTIMO DÍA de su mes; la matrícula vence con la primera cuota (marzo).
+- Cada cuota mensual vence el ÚLTIMO DÍA de su mes; la matrícula vence con la primera cuota del curso.
   Una cuota que todavía no venció no es deuda: figura "a vencer".
 - Cada pago se imputa por su FECHA DE PAGO (no por la de acreditación): un pago hecho el 30/09 que
   se acredita en octubre paga la cuota de septiembre; uno del 09/10 acreditado el 12/10 paga octubre.
 - Primero cubre la cuota del mes en que se pagó; lo que sobra cubre lo más viejo que se deba
-  (matrícula y cuotas atrasadas, en orden) y, si todavía sobra, queda a favor para las cuotas siguientes.
+  (matrícula y cuotas atrasadas, en orden) y, si todavía sobra, queda a favor.
+- Un alumno puede cursar más de un curso en el año (aeronavegantes, exámenes): cada curso tiene sus
+  cuotas. Si en el mes del pago hay cuotas de varios cursos, se elige la del curso cuyo importe
+  coincide con el pagado. Un pago puede imputarse a mano a un curso (pago.curso_id).
 """
 import calendar
 from datetime import date
@@ -41,45 +44,73 @@ def _lista_meses(meses: list[int]) -> str:
     return nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1]
 
 
-def estado_cuenta(alumno, curso, pagos, anio: int, hoy: date | None = None, mes_corte: int | None = None) -> dict:
+def plan_simple(curso, mes_inicio: int = MES_INICIO) -> list[dict]:
+    """Un único curso (el caso habitual)."""
+    return [{"clave": "principal", "curso": curso, "nombre": curso.nombre, "mes_inicio": mes_inicio,
+             "principal": True, "curso_id": getattr(curso, "id", None)}] if curso else []
+
+
+def _detalle(adeudadas: int, meses: list[int], matricula: Decimal) -> str:
+    partes = []
+    if matricula > 0:
+        partes.append("la matrícula")
+    if adeudadas:
+        partes.append(f"{adeudadas} cuota{'s' if adeudadas > 1 else ''} ({_lista_meses(meses)})")
+    return ("Debe " + " y ".join(partes)) if partes else ""
+
+
+def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes_corte: int | None = None) -> dict:
     """
-    pagos: pagos del alumno imputables a `anio` (ver anio_de_pago).
+    planes: lista de cursos del alumno en el año (ver plan_simple); por compatibilidad también acepta
+            un Curso suelto o None.
+    pagos:  pagos del alumno imputables a `anio` (ver anio_de_pago).
     Vencido = cuotas cuyo vencimiento ya pasó (respecto de `hoy`); si se indica `mes_corte`
     (filtro del personal) se toman como vencidas todas las cuotas hasta ese mes inclusive.
     """
+    if not isinstance(planes, list):
+        planes = plan_simple(planes)
     hoy = hoy or date.today()
     cond = (alumno.condicion or "").strip().lower()
     deuda_ant = _dec(alumno.deuda_anio_anterior)
     pagos = sorted(pagos, key=lambda p: (fecha_imputacion(p), p.id or 0))
     total_pagado = sum((_dec(p.importe) for p in pagos), CERO)
+    varios = len(planes) > 1
 
     base = {"anio": anio, "pagado": float(total_pagado), "deuda_anterior": float(deuda_ant), "items": [],
             "cuotas_adeudadas": 0, "matricula_adeudada": 0.0, "meses_adeudados": [], "detalle_deuda": "",
-            "proximo": None, "saldo_a_favor": 0.0, "cuotas_pagas": 0}
+            "proximo": None, "saldo_a_favor": 0.0, "cuotas_pagas": 0, "cursos": []}
 
     exento = cond in ("becado", "exento") or bool(getattr(alumno, "cuota_excluir", False))
-    if exento or not curso:
+    if exento or not planes:
         estado = (alumno.condicion or "Exento") if exento else "Sin curso"
         base.update(esperado=0.0, deuda=0.0, deuda_total=float(deuda_ant), estado=estado,
                     pagos=[_pago_dto(p, []) for p in pagos])
         return base
 
-    cuota = _dec(getattr(alumno, "cuota_personalizada", None) or curso.cuota)
-    matricula = _dec(curso.matricula)
-    n = max(0, min(int(curso.n_cuotas or 0), 12 - MES_INICIO + 1))
-
     def vencido(mes: int) -> bool:
         return mes <= mes_corte if mes_corte is not None else fin_de_mes(anio, mes) < hoy
 
+    # Cuotas de cada curso
     items = []
-    if matricula > 0:
-        items.append({"clave": "matricula", "concepto": "Matrícula", "mes": MES_INICIO, "importe": matricula})
-    for i in range(n):
-        mes = MES_INICIO + i
-        items.append({"clave": f"cuota-{mes}", "concepto": f"Cuota de {MESES[mes - 1]}" if n > 1 else "Cuota",
-                      "mes": mes, "importe": cuota})
-    for it in items:
-        it["pagado"] = CERO
+    for orden, pl in enumerate(planes):
+        c = pl["curso"]
+        cuota = _dec(getattr(alumno, "cuota_personalizada", None) if pl.get("principal") and getattr(alumno, "cuota_personalizada", None) else c.cuota)
+        matricula = _dec(c.matricula)
+        inicio = max(1, min(12, int(pl.get("mes_inicio") or MES_INICIO)))
+        n = max(0, min(int(c.n_cuotas or 0), 12 - inicio + 1))
+        pl["_cuota"], pl["_matricula"], pl["_n"], pl["_orden"] = cuota, matricula, n, orden
+        sufijo = f" ({pl['nombre']})" if varios else ""
+        if matricula > 0:
+            items.append({"plan": pl["clave"], "orden": orden, "clave": "matricula", "concepto": "Matrícula" + sufijo,
+                          "mes": inicio, "importe": matricula, "pagado": CERO, "es_matricula": True})
+        for i in range(n):
+            mes = inicio + i
+            items.append({"plan": pl["clave"], "orden": orden, "clave": f"cuota-{mes}",
+                          "concepto": (f"Cuota de {MESES[mes - 1]}" if n > 1 else "Cuota") + sufijo,
+                          "mes": mes, "importe": cuota, "pagado": CERO, "es_matricula": False})
+    # Orden de antigüedad: por mes; dentro del mes, matrícula antes que cuota; y por orden de curso
+    items.sort(key=lambda it: (it["mes"], 0 if it["es_matricula"] else 1, it["orden"]))
+    plan_por_curso = {pl.get("curso_id"): pl["clave"] for pl in planes if pl.get("curso_id")}
 
     def aplicar(it, monto: Decimal, destino: list) -> Decimal:
         falta = it["importe"] - it["pagado"]
@@ -95,11 +126,14 @@ def estado_cuenta(alumno, curso, pagos, anio: int, hoy: date | None = None, mes_
     for p in pagos:
         resto, destino = _dec(p.importe), []
         f = fecha_imputacion(p)
-        if f.year == anio:  # 1) la cuota del mes en que pagó
-            propio = next((it for it in items if it["clave"] == f"cuota-{f.month}"), None)
-            if propio:
-                resto = aplicar(propio, resto, destino)
-        for it in items:  # 2) lo más viejo que se deba (matrícula primero)
+        forzado = plan_por_curso.get(getattr(p, "curso_id", None))
+        candidatos = [it for it in items if not forzado or it["plan"] == forzado]
+        if f.year == anio:  # 1) la cuota del mes en que pagó (si hay de varios cursos, la del importe pagado)
+            propias = [it for it in candidatos if it["clave"] == f"cuota-{f.month}" and it["importe"] > it["pagado"]]
+            if propias:
+                exacta = next((it for it in propias if it["importe"] - it["pagado"] == resto), None)
+                resto = aplicar(exacta or propias[0], resto, destino)
+        for it in candidatos:  # 2) lo más viejo que se deba
             if resto <= 0:
                 break
             resto = aplicar(it, resto, destino)
@@ -108,15 +142,16 @@ def estado_cuenta(alumno, curso, pagos, anio: int, hoy: date | None = None, mes_
             destino.append("saldo a favor")
         imputaciones.append(_pago_dto(p, destino))
 
-    esperado = deuda = CERO
-    adeudadas, meses_deuda = 0, []
-    matricula_debe = CERO
-    proximo = None
-    salida = []
+    # Resumen general y por curso
+    tot = {"esperado": CERO, "deuda": CERO, "adeudadas": 0, "matricula": CERO}
+    meses_gral, proximo, salida = [], None, []
+    por_plan = {pl["clave"]: {"esperado": CERO, "deuda": CERO, "adeudadas": 0, "meses": [], "matricula": CERO,
+                              "items": [], "proximo": None} for pl in planes}
     for it in items:
         saldo = it["importe"] - it["pagado"]
         venc = fin_de_mes(anio, it["mes"])
         es_vencido = vencido(it["mes"])
+        pp = por_plan[it["plan"]]
         if saldo <= 0:
             est = "pagada"
         elif es_vencido:
@@ -124,45 +159,68 @@ def estado_cuenta(alumno, curso, pagos, anio: int, hoy: date | None = None, mes_
         else:
             est = "a_vencer"
         if es_vencido:
-            esperado += it["importe"]
+            pp["esperado"] += it["importe"]
             if saldo > 0:
-                deuda += saldo
-                if it["clave"] == "matricula":
-                    matricula_debe = saldo
+                pp["deuda"] += saldo
+                if it["es_matricula"]:
+                    pp["matricula"] += saldo
                 else:
-                    adeudadas += 1
-                    meses_deuda.append(it["mes"])
-        elif saldo > 0 and proximo is None:
-            proximo = {"concepto": it["concepto"], "vence": venc.isoformat(), "importe": float(saldo)}
-        salida.append({"concepto": it["concepto"], "mes": it["mes"], "vence": venc.isoformat(),
-                       "importe": float(it["importe"]), "pagado": float(it["pagado"]), "saldo": float(max(saldo, CERO)),
-                       "estado": est, "vencida": es_vencido})
+                    pp["adeudadas"] += 1
+                    pp["meses"].append(it["mes"])
+        elif saldo > 0:
+            prox = {"concepto": it["concepto"], "vence": venc.isoformat(), "importe": float(saldo)}
+            if pp["proximo"] is None:
+                pp["proximo"] = prox
+            if proximo is None:
+                proximo = prox
+        dto = {"concepto": it["concepto"], "mes": it["mes"], "vence": venc.isoformat(), "importe": float(it["importe"]),
+               "pagado": float(it["pagado"]), "saldo": float(max(saldo, CERO)), "estado": est, "vencida": es_vencido,
+               "curso": next(pl["nombre"] for pl in planes if pl["clave"] == it["plan"]), "plan": it["plan"],
+               "es_matricula": it["es_matricula"]}
+        salida.append(dto)
+        pp["items"].append(dto)
 
-    partes = []
-    if matricula_debe > 0:
-        partes.append("la matrícula")
-    if adeudadas:
-        partes.append(f"{adeudadas} cuota{'s' if adeudadas > 1 else ''} ({_lista_meses(meses_deuda)})")
-    detalle = ("Debe " + " y ".join(partes)) if partes else ""
+    cursos = []
+    for pl in planes:
+        pp = por_plan[pl["clave"]]
+        tot["esperado"] += pp["esperado"]; tot["deuda"] += pp["deuda"]
+        tot["adeudadas"] += pp["adeudadas"]; tot["matricula"] += pp["matricula"]
+        meses_gral += [(m, pl["nombre"]) for m in pp["meses"]]
+        cursos.append({"clave": pl["clave"], "nombre": pl["nombre"], "curso_id": pl.get("curso_id"),
+                       "principal": bool(pl.get("principal")), "mes_inicio": pl.get("mes_inicio") or MES_INICIO,
+                       "cuota": float(pl["_cuota"]), "matricula": float(pl["_matricula"]), "n_cuotas": pl["_n"],
+                       "esperado": float(pp["esperado"]), "deuda": float(pp["deuda"]), "cuotas_adeudadas": pp["adeudadas"],
+                       "matricula_adeudada": float(pp["matricula"]), "meses_adeudados": [MESES[m - 1] for m in pp["meses"]],
+                       "detalle_deuda": _detalle(pp["adeudadas"], pp["meses"], pp["matricula"]),
+                       "estado": "Al día" if pp["deuda"] <= 0 else "Con deuda", "proximo": pp["proximo"], "items": pp["items"]})
 
-    if deuda <= 0:
+    if varios:
+        detalle = " · ".join(f"{c['nombre']}: {c['detalle_deuda'][0].lower()}{c['detalle_deuda'][1:]}" for c in cursos if c["detalle_deuda"])
+        meses_txt = [f"{MESES[m - 1]} ({nombre})" for m, nombre in meses_gral]
+    else:
+        detalle = cursos[0]["detalle_deuda"]
+        meses_txt = cursos[0]["meses_adeudados"]
+
+    if tot["deuda"] <= 0:
         estado = "Al día"
     elif total_pagado <= 0:
         estado = "Sin pagos"
     else:
         estado = "Moroso"
 
+    principal = cursos[0]
     base.update(
-        esperado=float(esperado), deuda=float(deuda), deuda_total=float(deuda + deuda_ant), estado=estado,
-        items=salida, cuotas_adeudadas=adeudadas, matricula_adeudada=float(matricula_debe),
-        meses_adeudados=[MESES[m - 1] for m in meses_deuda], detalle_deuda=detalle, proximo=proximo,
-        saldo_a_favor=float(a_favor), cuotas_pagas=sum(1 for s in salida if s["estado"] == "pagada" and s["concepto"] != "Matrícula"),
-        pagos=imputaciones, cuota=float(cuota), matricula=float(matricula), n_cuotas=n,
+        esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + deuda_ant), estado=estado,
+        items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),
+        meses_adeudados=meses_txt, detalle_deuda=detalle, proximo=proximo, saldo_a_favor=float(a_favor),
+        cuotas_pagas=sum(1 for s in salida if s["estado"] == "pagada" and not s["es_matricula"]),
+        pagos=imputaciones, cuota=principal["cuota"], matricula=principal["matricula"], n_cuotas=principal["n_cuotas"],
+        cursos=cursos,
     )
     return base
 
 
 def _pago_dto(p, destino: list) -> dict:
     return {"id": p.id, "fecha": str(p.fecha), "fecha_pago": str(p.fecha_pago) if p.fecha_pago else None,
-            "importe": float(p.importe), "canal": p.canal, "via": p.via,
+            "importe": float(p.importe), "canal": p.canal, "via": p.via, "curso_id": getattr(p, "curso_id", None),
             "imputado_a": ", ".join(dict.fromkeys(destino)) if destino else None}

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -12,12 +12,48 @@ from app.models.banco import MovimientoBanco, ExtractoBancario
 from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
 from app.storage_util import subir_comprobante, crear_subida_firmada, storage_configurado
 from app.tz import ahora_ar
+from app.auth import get_current_user
+from app.factura_pdf import cuit_valido
 
 router = APIRouter(prefix="/api/gastos", tags=["Gastos"])
 
 
 def _norm_cuit(cuit) -> str:
     return "".join(ch for ch in str(cuit or "") if ch.isdigit())
+
+
+def _entero(x) -> int | None:
+    d = _norm_cuit(x)
+    return int(d) if d else None
+
+
+def gasto_duplicado(db: Session, cuit, punto_venta, numero, tipo=None, excluir_id: int | None = None) -> Gasto | None:
+    """Mismo proveedor + punto de venta + número (+ tipo si se conoce) = el mismo comprobante."""
+    c, pv, nro = _norm_cuit(cuit), _entero(punto_venta), _entero(numero)
+    if not (c and nro):
+        return None
+    for g in db.query(Gasto).filter(Gasto.cuit == c).all():
+        if g.id == excluir_id or _entero(g.numero) != nro or (pv is not None and _entero(g.punto_venta) not in (pv, None)):
+            continue
+        if tipo and g.tipo_comprobante and g.tipo_comprobante != tipo:
+            continue
+        return g
+    return None
+
+
+def _error_duplicado(g: Gasto):
+    raise HTTPException(409, f"Ese comprobante ya está cargado: {g.razon_social or g.cuit} "
+                             f"{g.punto_venta or ''}-{g.numero or ''} del {g.fecha:%d/%m/%Y} (gasto #{g.id}).")
+
+
+def _estado(g: Gasto, hoy: date) -> str:
+    if not g.revisado:
+        return "por_revisar"
+    if g.forma_pago or Decimal(str(g.importe)) < 0:
+        return "pagada"
+    if g.vencimiento and g.vencimiento < hoy:
+        return "vencida"
+    return "pendiente"
 
 
 @router.get("/storage-estado")
@@ -83,9 +119,19 @@ def listar(
     forma_pago: str | None = None,
     mes: int | None = None,
     anio: int | None = None,
+    estado: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(Gasto)
+    hoy = ahora_ar().date()
+    if estado == "por_revisar":
+        query = query.filter(Gasto.revisado.is_(False))
+    elif estado == "pagada":
+        query = query.filter(Gasto.revisado.isnot(False), or_(Gasto.forma_pago.isnot(None), Gasto.importe < 0))
+    elif estado in ("pendiente", "vencida"):
+        query = query.filter(Gasto.revisado.isnot(False), Gasto.forma_pago.is_(None), Gasto.importe > 0)
+        if estado == "vencida":
+            query = query.filter(Gasto.vencimiento < hoy)
     if q:
         t = f"%{q.strip()}%"
         query = query.filter(or_(
@@ -121,7 +167,15 @@ def resumen(mes: int | None = None, anio: int | None = None, db: Session = Depen
         .group_by(Gasto.categoria).all()
     )
     cantidad = query.count()
+    hoy = ahora_ar().date()
+    impagas = db.query(Gasto).filter(Gasto.forma_pago.is_(None), Gasto.importe > 0).all()
+    suma = lambda lista: float(sum((Decimal(str(g.importe)) for g in lista), Decimal("0")))
+    vencidas = [g for g in impagas if g.vencimiento and g.vencimiento < hoy]
+    semana = [g for g in impagas if g.vencimiento and hoy <= g.vencimiento <= hoy + timedelta(days=7)]
     return {
+        "a_pagar": {"total": suma(impagas), "cantidad": len(impagas), "vencido": suma(vencidas), "vencidas": len(vencidas),
+                    "esta_semana": suma(semana), "semana": len(semana)},
+        "por_revisar": db.query(Gasto).filter(Gasto.revisado.is_(False)).count(),
         "total": float(total),
         "cantidad": cantidad,
         "por_categoria": [
@@ -254,6 +308,22 @@ def totales_proveedores(db: Session = Depends(get_db)):
     return {str(pid): {"total": float(t), "cantidad": n, "ultima": str(u) if u else None} for pid, t, n, u in filas}
 
 
+@router.get("/sugerencias")
+def sugerencias(cuit: str | None = None, proveedor_id: int | None = None, db: Session = Depends(get_db)):
+    """Rubro, categoría, destino y concepto de la última factura del proveedor (para completar más rápido)."""
+    q = db.query(Gasto)
+    if proveedor_id:
+        q = q.filter(Gasto.proveedor_id == proveedor_id)
+    elif cuit:
+        q = q.filter(Gasto.cuit == _norm_cuit(cuit))
+    else:
+        return {}
+    g = q.filter(Gasto.revisado.isnot(False)).order_by(Gasto.fecha.desc(), Gasto.id.desc()).first()
+    if not g:
+        return {}
+    return {"rubro": g.rubro, "categoria": g.categoria, "destino": g.destino, "concepto": g.concepto}
+
+
 @router.get("/{gasto_id}", response_model=GastoResponse)
 def obtener(gasto_id: int, db: Session = Depends(get_db)):
     g = db.get(Gasto, gasto_id)
@@ -263,9 +333,18 @@ def obtener(gasto_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=GastoResponse, status_code=201)
-def crear(data: GastoCreate, db: Session = Depends(get_db)):
+def crear(data: GastoCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     d = data.model_dump()
     cuit = _norm_cuit(d.get("cuit"))
+    if cuit and not cuit_valido(cuit):
+        raise HTTPException(400, "El CUIT no es válido (revisá los 11 dígitos).")
+    dup = gasto_duplicado(db, cuit, d.get("punto_venta"), d.get("numero"), d.get("tipo_comprobante"))
+    if dup:
+        _error_duplicado(dup)
+    if cuit:
+        d["cuit"] = cuit
+    d["creado_por"] = user["nombre"]
+    d["origen"] = "portal" if d.get("factura_recibida_id") else "manual"
     prov = None
     if d.get("proveedor_id"):
         prov = db.get(Proveedor, d["proveedor_id"])
@@ -289,6 +368,13 @@ def crear(data: GastoCreate, db: Session = Depends(get_db)):
 
     g = Gasto(**d)
     db.add(g)
+    db.flush()
+    if g.factura_recibida_id:  # se cargó a mano desde la bandeja de facturas recibidas
+        from app.models.factura_recibida import FacturaRecibida
+        fr = db.get(FacturaRecibida, g.factura_recibida_id)
+        if fr:
+            fr.estado, fr.gasto_id = "cargada", g.id
+            g.adjunto_url = g.adjunto_url or f"/api/facturas-recibidas/{fr.id}/archivo"
     db.commit()
     db.refresh(g)
     return g
@@ -300,6 +386,14 @@ def actualizar(gasto_id: int, data: GastoUpdate, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
     cambios = _completar_proveedor(data.model_dump(exclude_unset=True), db)
+    if "cuit" in cambios and cambios["cuit"]:
+        cambios["cuit"] = _norm_cuit(cambios["cuit"])
+        if not cuit_valido(cambios["cuit"]):
+            raise HTTPException(400, "El CUIT no es válido (revisá los 11 dígitos).")
+    dup = gasto_duplicado(db, cambios.get("cuit", g.cuit), cambios.get("punto_venta", g.punto_venta),
+                          cambios.get("numero", g.numero), cambios.get("tipo_comprobante", g.tipo_comprobante), excluir_id=g.id)
+    if dup:
+        _error_duplicado(dup)
     for campo, valor in cambios.items():
         setattr(g, campo, valor)
     db.commit()
@@ -428,6 +522,20 @@ def eliminar(gasto_id: int, db: Session = Depends(get_db)):
         e.comisiones_gasto_id = None
     for nc in db.query(Gasto).filter(Gasto.nc_de_id == g.id).all():
         nc.nc_de_id = None
+    from app.models.factura_recibida import FacturaRecibida
+    for fr in db.query(FacturaRecibida).filter(FacturaRecibida.gasto_id == g.id).all():
+        fr.gasto_id, fr.estado = None, "revisar"
     db.delete(g)
     db.commit()
     return {"ok": True, "mensaje": "Gasto eliminado"}
+
+
+@router.post("/{gasto_id}/revisado")
+def marcar_revisado(gasto_id: int, db: Session = Depends(get_db)):
+    """Confirma una factura que llegó del portal de proveedores (queda como cualquier otra)."""
+    g = db.get(Gasto, gasto_id)
+    if not g:
+        raise HTTPException(404, "Gasto no encontrado")
+    g.revisado = True
+    db.commit()
+    return {"ok": True, "mensaje": "Factura revisada"}

@@ -65,5 +65,12 @@ class Gasto(Base):
 
     notas: Mapped[str | None] = mapped_column(String(400))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+    # Circuito de la factura
+    origen: Mapped[str | None] = mapped_column(String(20))             # manual / planilla / portal / extracto
+    revisado: Mapped[bool] = mapped_column(Boolean, default=True)       # las que llegan del portal entran sin revisar
+    vencimiento: Mapped[date | None] = mapped_column(Date)              # fecha de vencimiento para pagarla
+    cae: Mapped[str | None] = mapped_column(String(20))
+    factura_recibida_id: Mapped[int | None] = mapped_column(ForeignKey("facturas_recibidas.id"))
+    creado_por: Mapped[str | None] = mapped_column(String(60))
 
     proveedor: Mapped["Proveedor"] = relationship()

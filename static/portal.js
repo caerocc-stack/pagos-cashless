@@ -119,6 +119,8 @@ async function cargarApp() {
     $('p-email').textContent = yo.email;
     mostrar('v-app');
     bandaVistaAdmin();
+    document.querySelector('.p-tabs [data-tab="tarjeta"]').hidden = !yo.tarjeta_activa;
+    if (!yo.tarjeta_activa && tabActual === 'tarjeta') tabActual = 'cuotas';
     if (!yo.hijos.length) {
         $('p-hijos').innerHTML = '';
         $('p-tab').innerHTML = '<div class="card p-vacio">No encontramos alumnos activos con este correo. Escribinos a la Asociación.</div>';
@@ -167,8 +169,8 @@ function renderKpis() {
         <div class="gasto-kpi"><div class="gasto-kpi-label">Próximo vencimiento</div>
             <div class="gasto-kpi-valor">${c.proximo ? fmtFecha(c.proximo.vence) : '—'}</div>
             <div class="gasto-kpi-sub">${c.proximo ? escapeHtml(c.proximo.concepto) + ' · ' + fmtMoneda(c.proximo.importe) : 'no quedan cuotas este año'}</div></div>
-        <div class="gasto-kpi"><div class="gasto-kpi-label">Saldo de la tarjeta</div>
-            <div class="gasto-kpi-valor">${fmtMoneda(t.saldo)}</div><div class="gasto-kpi-sub">para fotocopias y compras</div></div>
+        ${yo.tarjeta_activa ? `<div class="gasto-kpi"><div class="gasto-kpi-label">Saldo de la tarjeta</div>
+            <div class="gasto-kpi-valor">${fmtMoneda(t.saldo)}</div><div class="gasto-kpi-sub">para fotocopias y compras</div></div>` : ''}
         ${cupon ? `<button class="p-pagar" onclick="irTab('cupones')"><svg class="ic"><use href="#i-wallet"/></svg>
             <span><b>Pagar ${escapeHtml(cupon.concepto || 'el cupón')}</b><small>vence el ${fmtFecha(cupon.vence)} · QR, online, home banking o efectivo</small></span></button>` : ''}`;
 }
@@ -190,7 +192,10 @@ function tabCuotas() {
             <p class="muted" style="font-size:0.84rem">Cada cuota vence el último día de su mes. Los pagos se imputan por la fecha en que se hicieron
             (si pagás el 30/09 y se acredita en octubre, cuenta para septiembre) y pueden demorar 48 a 72 horas hábiles en aparecer.</p>
         </div>
-        ${c.curso ? `<div class="card"><h3>Valores ${c.anio} · ${escapeHtml(c.curso.nombre)}</h3>
+        ${c.cursos && c.cursos.length > 1 ? `<div class="card"><h3>Cursos ${c.anio}</h3><dl class="p-datos">
+            ${c.cursos.map(x => `<div><dt>${escapeHtml(x.nombre)}</dt><dd>${fmtMoneda(x.cuota)} × ${x.n_cuotas}${x.matricula ? ' + matrícula ' + fmtMoneda(x.matricula) : ''}</dd></div>`).join('')}
+            <div><dt>Pagado en ${c.anio}</dt><dd>${fmtMoneda(c.pagado)}</dd></div></dl></div>`
+        : c.curso ? `<div class="card"><h3>Valores ${c.anio} · ${escapeHtml(c.curso.nombre)}</h3>
             <dl class="p-datos">
                 <div><dt>Cuota mensual</dt><dd>${fmtMoneda(c.curso.cuota)}</dd></div>
                 <div><dt>Cantidad de cuotas</dt><dd>${c.curso.n_cuotas}</dd></div>

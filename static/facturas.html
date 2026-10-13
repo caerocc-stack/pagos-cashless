@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#15233b">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex">
+    <title>Facturas a APAI · Portal de proveedores</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/portal.css">
+    <link rel="stylesheet" href="/static/facturas.css">
+</head>
+<body class="portal">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="i-building" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/></symbol>
+    </svg>
+
+    <header class="p-top">
+        <div class="p-marca">
+            <img src="/static/logo.png" alt="" class="p-logo">
+            <div><div class="p-t1">Portal de proveedores</div><div class="p-t2">Asociación de Padres y Alumnos del I.N.A.C.</div></div>
+        </div>
+    </header>
+
+    <main class="p-main f-main" id="contenido">
+        <div class="f-intro">
+            <h1>Enviá tu factura a APAI</h1>
+            <p class="muted">Subí acá las facturas que le emitiste a la Asociación. No hace falta registrarse: las recibimos al instante en nuestro sistema.</p>
+        </div>
+
+        <section class="card f-datos" aria-labelledby="t-datos">
+            <h2 id="t-datos"><svg class="ic"><use href="#i-building"/></svg>Datos para facturar</h2>
+            <dl id="f-apai" class="f-apai"><div class="muted">Cargando…</div></dl>
+            <p class="f-nota">La factura tiene que estar a nombre de la Asociación, con este CUIT.</p>
+        </section>
+
+        <section class="card" aria-labelledby="t-subir">
+            <h2 id="t-subir"><svg class="ic"><use href="#i-upload"/></svg>Subí tus facturas</h2>
+            <form id="f-form" onsubmit="enviar(event)" novalidate>
+                <label class="f-zona" id="f-zona" for="f-archivos">
+                    <input type="file" id="f-archivos" accept="application/pdf,.pdf" multiple onchange="agregarArchivos(this.files)">
+                    <svg class="ic"><use href="#i-file"/></svg>
+                    <b>Tocá para elegir los PDF</b>
+                    <span>o arrastralos acá · podés subir varios a la vez · hasta 4 MB cada uno</span>
+                </label>
+                <ul class="f-lista" id="f-lista" aria-live="polite"></ul>
+
+                <div class="f-campos">
+                    <div><label for="f-proveedor">Tu nombre o razón social <span class="muted">(opcional)</span></label>
+                        <input type="text" id="f-proveedor" maxlength="160" autocomplete="organization"></div>
+                    <div><label for="f-email">Tu correo <span class="muted">(opcional, por si hay que consultarte algo)</span></label>
+                        <input type="email" id="f-email" maxlength="150" autocomplete="email"></div>
+                    <div class="f-ancho"><label for="f-comentario">Comentario <span class="muted">(opcional)</span></label>
+                        <textarea id="f-comentario" rows="2" maxlength="500" placeholder="Ej: a quién le entregaste el pedido, orden de compra, forma de pago acordada…"></textarea></div>
+                    <div class="f-trampa" aria-hidden="true"><label for="f-web">No completar</label><input type="text" id="f-web" tabindex="-1" autocomplete="off"></div>
+                </div>
+                <div class="p-msg" id="f-msg" role="alert" hidden></div>
+                <button type="submit" class="btn btn-primary p-ancho" id="f-enviar" disabled>Enviar facturas</button>
+            </form>
+        </section>
+
+        <p class="f-pie muted">Los archivos se guardan de forma privada y solo los ve la administración de APAI.</p>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/formato.js"></script>
+    <script src="/static/pdf.min.js"></script>
+    <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/pdf.worker.min.js';</script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
+    <script src="/static/facturas.js"></script>
+</body>
+</html>

@@ -95,8 +95,14 @@ def _generar_y_enviar(db: Session, tipo: str, alumno, monto) -> dict:
     return {"email_enviado": True, "url": cupon.get("url")}
 
 
+def _sin_tarjeta(db: Session, tipo: str):
+    if tipo == "recarga" and not config_util.tarjeta_activa(db):
+        raise HTTPException(403, "La tarjeta APAI está suspendida temporalmente: no se envían cupones de recarga.")
+
+
 @router.post("/enviar")
 def enviar_cupon(data: EnvioRequest, db: Session = Depends(get_db)):
+    _sin_tarjeta(db, data.tipo)
     if data.tipo not in ("recarga", "cuota"):
         raise HTTPException(400, "Tipo de cupón inválido")
     alumno = db.get(Alumno, data.alumno_id)
@@ -167,6 +173,7 @@ def cuota_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
 
 @router.post("/recarga-masiva")
 def recarga_masiva(data: CuotaMasivaRequest, db: Session = Depends(get_db)):
+    _sin_tarjeta(db, "recarga")
     """Envia un cupon de recarga con monto fijo a un area o curso completo."""
     if not siro.siro_configurado():
         raise HTTPException(400, "SIRO todavía no está configurado. Cargá las credenciales para activar el envío.")

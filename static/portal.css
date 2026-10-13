@@ -111,3 +111,4 @@ body.portal { background: var(--bg); }
 .p-pagar .ic { width: 28px; height: 28px; flex: none; }
 .p-pagar b { display: block; font-size: 1rem; }
 .p-pagar small { display: block; opacity: 0.9; font-size: 0.8rem; }
+.p-tabs .cuota-tab[hidden] { display: none !important; }

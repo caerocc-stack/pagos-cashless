@@ -742,3 +742,25 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 @media (max-width: 640px) { .cupon { grid-template-columns: 1fr; } .cupon-qr { order: 2; } .cupon-qr img { max-width: 200px; } }
 .cs-progreso { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin: 0.6rem 0 0.3rem; }
 .cs-progreso div { height: 100%; width: 0; background: var(--primary); transition: width 0.2s; }
+
+/* Tarjeta APAI suspendida */
+.sin-tarjeta .modulo-tarjeta { display: none !important; }
+
+/* Alumnos con más de un curso */
+.cc-curso { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.8rem; margin-top: 0.9rem; font-size: 0.95rem; }
+.cc-curso-ok { color: var(--success); font-size: 0.85rem; font-weight: 600; }
+.cc-curso-mal { color: var(--danger); font-size: 0.85rem; font-weight: 600; }
+.cc-imp select { font-size: 0.8rem; padding: 0.15rem 0.3rem; min-height: 0; width: auto; margin-left: 0.25rem; }
+.ac-lista { list-style: none; margin: 0.4rem 0 0.6rem; padding: 0; }
+.ac-lista li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
+.ac-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.ac-form select { width: auto; }
+
+/* Gastos: estados de las facturas */
+.gasto-estados { margin-bottom: 0.6rem; }
+.gasto-estados .side-badge, .gasto-tab .side-badge { margin-left: 0.35rem; }
+.badge-revisar { background: var(--warning-soft); color: var(--warning); }
+.gasto-vence { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
+.gasto-vence.vencida { color: var(--danger); font-weight: 700; }
+#gasto-revision:not([hidden]) { display: block; margin-bottom: 0.9rem; line-height: 1.5; }
+#gasto-revision[hidden] { display: none; }

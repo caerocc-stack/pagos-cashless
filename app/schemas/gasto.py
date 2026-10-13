@@ -21,6 +21,9 @@ class GastoCreate(BaseModel):
     adjunto_url: str | None = None
     nc_de_id: int | None = None
     notas: str | None = None
+    vencimiento: date | None = None
+    cae: str | None = None
+    factura_recibida_id: int | None = None
 
 
 class GastoUpdate(BaseModel):
@@ -42,6 +45,9 @@ class GastoUpdate(BaseModel):
     nc_de_id: int | None = None
     conciliado: bool | None = None
     notas: str | None = None
+    vencimiento: date | None = None
+    cae: str | None = None
+    revisado: bool | None = None
 
 
 class GastoResponse(BaseModel):
@@ -66,5 +72,11 @@ class GastoResponse(BaseModel):
     conciliado: bool
     notas: str | None = None
     created_at: datetime
+    origen: str | None = None
+    revisado: bool | None = True
+    vencimiento: date | None = None
+    cae: str | None = None
+    factura_recibida_id: int | None = None
+    creado_por: str | None = None
 
     model_config = {"from_attributes": True}

@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Numeric, Integer
+from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.tz import ahora_ar
@@ -26,4 +26,20 @@ class Curso(Base):
 
     anio: Mapped[int] = mapped_column(Integer, default=2026)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+
+
+class AlumnoCurso(Base):
+    """Curso que hace un alumno en un año. Sirve para los que cursan más de uno a la vez
+    (habitual en aeronavegantes y exámenes). Si un alumno no tiene filas, se usa el curso
+    que surge de su campo `curso` (como siempre)."""
+    __tablename__ = "alumno_cursos"
+    __table_args__ = (UniqueConstraint("alumno_id", "curso_id", "anio", name="uq_alumno_curso_anio"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id", ondelete="CASCADE"), nullable=False, index=True)
+    curso_id: Mapped[int] = mapped_column(ForeignKey("cursos.id"), nullable=False)
+    anio: Mapped[int] = mapped_column(Integer, nullable=False)
+    mes_inicio: Mapped[int] = mapped_column(Integer, default=3)      # mes de la primera cuota
+    principal: Mapped[bool] = mapped_column(Boolean, default=False)  # el curso del padrón
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

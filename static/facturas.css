@@ -1,0 +1,41 @@
+/* Portal de proveedores: mismos tokens que el resto del sistema */
+.f-main { max-width: 760px; }
+.f-intro { margin: 0.5rem 0 1.2rem; }
+.f-intro h1 { font-size: 1.55rem; margin-bottom: 0.3rem; }
+.card h2 { display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem; margin-bottom: 0.8rem; }
+.card h2 .ic { color: var(--primary); }
+.f-apai { display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; }
+.f-apai > div { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+.f-apai > div:last-child { border-bottom: 0; }
+.f-apai dt { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.f-apai dd { margin: 0.1rem 0 0; font-weight: 600; color: var(--heading); font-size: 1.02rem; word-break: break-word; }
+.f-nota { margin-top: 0.7rem; font-size: 0.86rem; color: var(--text-muted); }
+.f-zona { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; padding: 1.6rem 1rem; text-align: center; cursor: pointer;
+    border: 2px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface-2); transition: border-color 0.15s, background 0.15s; }
+.f-zona:hover, .f-zona.arrastrando { border-color: var(--primary); background: var(--primary-soft); }
+.f-zona:focus-within { outline: 3px solid var(--primary-soft); outline-offset: 2px; }
+.f-zona input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.f-zona .ic { width: 34px; height: 34px; color: var(--primary); }
+.f-zona b { font-size: 1rem; }
+.f-zona span { font-size: 0.84rem; color: var(--text-muted); }
+.f-lista { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.f-lista li { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.f-lista .ic { flex: none; color: var(--text-muted); }
+.f-lista .f-nom { flex: 1; min-width: 0; }
+.f-lista .f-nom b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; }
+.f-lista .f-nom small { display: block; color: var(--text-muted); font-size: 0.8rem; }
+.f-lista li.ok { border-color: transparent; background: var(--success-soft); }
+.f-lista li.ok .ic { color: var(--success); }
+.f-lista li.mal { border-color: var(--danger); background: var(--danger-soft); }
+.f-lista li.mal .ic { color: var(--danger); }
+.f-lista li.enviando { opacity: 0.7; }
+.f-quitar { background: none; border: 0; cursor: pointer; color: var(--text-muted); padding: 0.3rem; border-radius: 6px; min-width: 32px; min-height: 32px; }
+.f-quitar:hover { background: var(--surface-3); color: var(--danger); }
+.f-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1rem; margin-top: 1rem; }
+.f-campos label { display: block; margin: 0.6rem 0 0.3rem; }
+.f-ancho { grid-column: 1 / -1; }
+.f-trampa { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.f-pie { text-align: center; font-size: 0.82rem; margin-top: 0.5rem; }
+@media (max-width: 640px) { .f-campos { grid-template-columns: 1fr; } .f-intro h1 { font-size: 1.3rem; } }
+.card label.f-zona { display: flex; flex-direction: column; margin: 0; }
+.f-zona b, .f-zona span { display: block; }

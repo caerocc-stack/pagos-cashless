@@ -18,7 +18,7 @@ const PAGINAS = {
     cuotas: ['Cobranzas y alumnos', 'Cuotas y estado de cuenta', 'Pagos recibidos por SIRO, deuda de cada alumno, estadísticas y valores de cada curso.'],
     alumnos: ['Cobranzas y alumnos', 'Alumnos', 'Padrón completo: datos personales, curso, condición y saldo de la tarjeta.'],
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
-    'cupones-siro': ['Cobranzas y alumnos', 'Cupones de SIRO', 'Subí el PDF de cupones que descargás de SIRO: cada familia los ve en el portal hasta su vencimiento.'],
+    'cupones-siro': ['Cobranzas y alumnos', 'Cupones de pago', 'Enviá el cupón de la cuota por correo y publicá en el portal los cupones que descargás de SIRO.'],
     consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
     operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
@@ -553,7 +553,7 @@ async function verAlumno(id) {
             <p><strong>Legajo:</strong> ${escapeHtml(a.legajo)} | <strong>DNI:</strong> ${escapeHtml(a.dni)} | <strong>Curso:</strong> ${escapeHtml(a.curso)}</p>
             <p><strong>Área:</strong> ${escapeHtml(a.area || '-')} | <strong>Email:</strong> ${a.email ? escapeHtml(a.email) : '<span style="color:var(--text-muted)">sin email</span>'} | <strong>Cód. SIRO:</strong> ${escapeHtml(a.codigo_siro || '-')}</p>
             <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:var(--danger)">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
-            <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
+            <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo modulo-tarjeta"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
                 <button class="btn btn-success btn-sm" onclick="compartirWhatsAppAlumno(${a.id})">Compartir WhatsApp</button>
@@ -563,8 +563,9 @@ async function verAlumno(id) {
             </div>`;
 
         if (cuenta) html += htmlCuentaAlumno(cuenta, cupones);
+        setTimeout(() => cargarCursosAlumno(id), 0);
 
-        html += '<h4 style="margin-top:1rem">Tarjetas</h4>';
+        html += '<div class="modulo-tarjeta"><h4 style="margin-top:1rem">Tarjetas</h4>';
         if (tarjetas.length === 0) {
             html += '<p style="color:var(--text-muted)">Sin tarjetas asignadas</p>';
         } else {
@@ -590,6 +591,7 @@ async function verAlumno(id) {
             }).join('');
             html += '</tbody></table>';
         }
+        html += '</div>';
 
         document.getElementById('modal-content').innerHTML = html;
         const ov = document.getElementById('modal-overlay');
@@ -647,14 +649,12 @@ async function ejecutarReintegro(e) {
 const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-let cuponTipoActual = 'cuota';
+let cuponTipoActual = 'recarga';
 
 function cuponTab(tipo) {
-    cuponTipoActual = tipo === 'cuota' ? 'cuota' : 'recarga';
-    document.getElementById('cupon-cuota').style.display = tipo === 'cuota' ? 'grid' : 'none';
+    cuponTipoActual = 'recarga';
     document.getElementById('cupon-recarga').style.display = tipo === 'recarga' ? 'grid' : 'none';
     document.getElementById('cupon-recargalote').style.display = tipo === 'recargalote' ? 'grid' : 'none';
-    document.getElementById('tab-cuota').className = 'btn btn-sm' + (tipo === 'cuota' ? ' btn-primary' : '');
     document.getElementById('tab-recarga').className = 'btn btn-sm' + (tipo === 'recarga' ? ' btn-primary' : '');
     document.getElementById('tab-recargalote').className = 'btn btn-sm' + (tipo === 'recargalote' ? ' btn-primary' : '');
 }
@@ -715,7 +715,7 @@ async function enviarCuotaMasiva() {
     const curso = document.getElementById('cuota-curso').value;
     const area = document.getElementById('cuota-area').value;
     const monto = parseFloat(document.getElementById('cuota-monto').value);
-    const div = document.getElementById('cupon-resultado');
+    const div = document.getElementById('cuota-resultado');
     const mes = MESES_ES[new Date().getMonth()];
     const dest = curso || area || 'TODAS las áreas';
     if (!confirm(`Vas a enviar el cupón de la cuota de ${mes} ($${monto.toLocaleString('es-AR')}) a ${dest}. Los alumnos excluidos no lo reciben, y los que tengan monto personalizado reciben el suyo. ¿Continuar?`)) return;
@@ -1277,6 +1277,7 @@ async function cargarUsuario() {
         if (typeof dashSaludoYFecha === 'function') dashSaludoYFecha();
         if (user.debe_cambiar_password) abrirCambioObligatorio();
         else if (esAdmin && !user.totp_activo) avisoActivar2FA();
+        await cargarSistema();
         irAlHash();  // con los permisos ya aplicados, abrir la sección del enlace
         actualizarContadorConsultas();
         setInterval(actualizarContadorConsultas, 120000);
@@ -1567,24 +1568,22 @@ async function dashKPIs() {
     const grid = document.getElementById('dash-kpis');
     if (!grid) return;
     const total = alumnosCache.length;
-    const conSaldo = alumnosCache.filter(a => Number(a.saldo) > 0).length;
-    const saldoTotal = alumnosCache.reduce((s, a) => s + Number(a.saldo || 0), 0);
-    let movsHoy = 0;
-    try {
-        const hoy = await api('/api/operaciones/diario');
-        movsHoy = hoy.length;
-    } catch (e) { /* sin sesion o sin datos */ }
-    grid.innerHTML = `
-        <div class="dash-kpi"><div class="dash-kpi-label">Saldo total en tarjetas</div>
-            <div class="dash-kpi-valor" data-num="${saldoTotal}" data-prefijo="$">$0</div>
-            <div class="dash-kpi-sub">${conSaldo} alumnos con saldo</div></div>
-        <div class="dash-kpi"><div class="dash-kpi-label">Alumnos registrados</div>
-            <div class="dash-kpi-valor" data-num="${total}">0</div>
-            <div class="dash-kpi-sub">en el padrón</div></div>
-        <div class="dash-kpi"><div class="dash-kpi-label">Movimientos de hoy</div>
-            <div class="dash-kpi-valor" data-num="${movsHoy}">0</div>
-            <div class="dash-kpi-sub">operaciones</div></div>
-        <div class="dash-kpi"><div class="dash-kpi-label">Estado del sistema</div>
+    const kpi = (label, valor, sub, prefijo = '') => `<div class="dash-kpi"><div class="dash-kpi-label">${label}</div>
+        <div class="dash-kpi-valor" data-num="${valor}" data-prefijo="${prefijo}">${prefijo}0</div><div class="dash-kpi-sub">${sub}</div></div>`;
+    let html = kpi('Alumnos registrados', total, 'en el padrón');
+    if (sistemaCfg.tarjeta_activa) {
+        const conSaldo = alumnosCache.filter(a => Number(a.saldo) > 0).length;
+        const saldoTotal = alumnosCache.reduce((s, a) => s + Number(a.saldo || 0), 0);
+        let movsHoy = 0;
+        try { movsHoy = (await api('/api/operaciones/diario')).length; } catch { /* sin datos */ }
+        html = kpi('Saldo total en tarjetas', saldoTotal, `${conSaldo} alumnos con saldo`, '$') + html + kpi('Movimientos de hoy', movsHoy, 'operaciones');
+    } else {
+        let porRevisar = 0, consultas = 0;
+        try { porRevisar = (await api('/api/facturas-recibidas/contador')).por_revisar; } catch {}
+        try { consultas = (await api('/api/consultas/contador')).sin_leer; } catch {}
+        html += kpi('Facturas por revisar', porRevisar, 'recibidas de proveedores') + kpi('Consultas sin leer', consultas, 'de familias y del personal');
+    }
+    grid.innerHTML = html + `<div class="dash-kpi"><div class="dash-kpi-label">Estado del sistema</div>
             <div class="dash-kpi-valor" style="color:var(--green)"><span class="dash-online-dot"></span> En línea</div>
             <div class="dash-kpi-sub">conectado a la base</div></div>`;
     grid.querySelectorAll('.dash-kpi-valor[data-num]').forEach(el =>
@@ -1767,8 +1766,11 @@ async function cargarGastos() {
         const anio = document.getElementById('gasto-f-anio').value;
         const p = new URLSearchParams();
         if (cat) p.set('categoria', cat);
-        if (mes) p.set('mes', mes);
-        if (anio) p.set('anio', anio);
+        if (gastoEstado) p.set('estado', gastoEstado);
+        else {  // los filtros de estado muestran todo lo pendiente, sin importar el mes
+            if (mes) p.set('mes', mes);
+            if (anio) p.set('anio', anio);
+        }
         gastosCache = await api('/api/gastos/?' + p.toString());
         filtrarGastos();
         cargarResumenGastos(mes, anio);
@@ -1788,10 +1790,19 @@ async function cargarResumenGastos(mes, anio) {
             `<div class="gasto-kpi"><div class="gasto-kpi-label">${escapeHtml(c.categoria)}</div>
                 <div class="gasto-kpi-valor">${fmtMoneda(c.total)}</div>
                 <div class="gasto-kpi-sub">${c.cantidad} comprob.</div></div>`).join('');
+        const ap = r.a_pagar || {};
         cont.innerHTML =
             `<div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total del período</div>
                 <div class="gasto-kpi-valor">${fmtMoneda(r.total)}</div>
-                <div class="gasto-kpi-sub">${r.cantidad} comprobantes</div></div>` + cats;
+                <div class="gasto-kpi-sub">${r.cantidad} comprobantes</div></div>
+             <div class="gasto-kpi"><div class="gasto-kpi-label">A pagar (todas)</div>
+                <div class="gasto-kpi-valor">${fmtMoneda(ap.total || 0)}</div>
+                <div class="gasto-kpi-sub">${ap.cantidad || 0} facturas impagas</div></div>
+             <div class="gasto-kpi"><div class="gasto-kpi-label">Vencido</div>
+                <div class="gasto-kpi-valor" style="color:var(--${ap.vencido ? 'danger' : 'text-muted'})">${fmtMoneda(ap.vencido || 0)}</div>
+                <div class="gasto-kpi-sub">${ap.vencidas || 0} facturas · vence esta semana ${fmtMoneda(ap.esta_semana || 0)}</div></div>` + cats;
+        const b = document.getElementById('badge-por-revisar');
+        if (b) { b.textContent = r.por_revisar || 0; b.hidden = !r.por_revisar; }
     } catch (err) { /* sin datos */ }
 }
 
@@ -1804,6 +1815,14 @@ function filtrarGastos() {
 }
 
 const CATEGORIAS_GASTO = ['Oficina', 'Infraestructura', 'Escuela', 'Honorarios'];
+
+let gastoEstado = '';
+
+function filtrarEstadoGasto(btn) {
+    document.querySelectorAll('#gasto-estados .chip').forEach(b => b.classList.toggle('chip-activo', b === btn));
+    gastoEstado = btn.dataset.estado;
+    cargarGastos();
+}
 
 function renderGastos(lista) {
     document.getElementById('body-gastos').innerHTML = lista.map(g => {
@@ -1819,13 +1838,17 @@ function renderGastos(lista) {
         const selCat = `<select class="cat-select${g.categoria ? '' : ' cat-vacia'}" onchange="cambiarCategoriaGasto(${g.id}, this.value)">${opts}</select>`;
         // Estado de pago
         let pago;
-        if (g.forma_pago) {
+        const hoy = hoyISO();
+        const vence = g.vencimiento ? `<div class="gasto-vence${!g.forma_pago && g.vencimiento < hoy ? ' vencida' : ''}">vence ${fmtFecha(g.vencimiento)}</div>` : '';
+        if (g.revisado === false) {
+            pago = `<span class="badge badge-revisar">Por revisar</span> <button class="btn btn-sm btn-primary" onclick="editarGasto(${g.id})">Revisar</button>${vence}`;
+        } else if (g.forma_pago) {
             const fp = g.fecha_pago ? g.fecha_pago.split('-').reverse().join('/') : '';
             const icono = g.forma_pago === 'Efectivo' ? '💵' : '🏦';
             pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}${fp ? ' · ' + fp : ''}</span>
                 <button class="btn btn-sm" title="Deshacer" onclick="desvincularPagoGasto(${g.id})">✕</button>`;
         } else {
-            pago = `<button class="btn btn-sm btn-primary" onclick="abrirVincularPago(${g.id})">Vincular pago</button>`;
+            pago = `<button class="btn btn-sm btn-primary" onclick="abrirVincularPago(${g.id})">Vincular pago</button>${vence}`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -1936,6 +1959,7 @@ function gastoProveedorElegido() {
         document.getElementById('gasto-razon').value = p.razon_social || '';
         document.getElementById('gasto-cuit').value = p.cuit || '';
         if (p.rubro) document.getElementById('gasto-rubro').value = p.rubro;
+        sugerirDatosProveedor({ proveedor_id: p.id });
     }
     gastoLlenarNCde();
 }
@@ -2068,6 +2092,8 @@ function aplicarDatosAfip(d) {
             provEncontrado = false;
         }
     }
+    if (d.cuit) sugerirDatosProveedor({ cuit: String(d.cuit) });
+    if (d.codAut) document.getElementById('gasto-cae').value = String(d.codAut);
     if (d.ptoVta != null) document.getElementById('gasto-pv').value = String(d.ptoVta).padStart(4, '0');
     if (d.nroCmp != null) document.getElementById('gasto-numero').value = String(d.nroCmp).padStart(8, '0');
     if (d.importe != null) document.getElementById('gasto-importe').value = d.importe;
@@ -2182,7 +2208,9 @@ function mostrarFormGasto() {
     document.getElementById('gasto-edit-id').value = '';
     ['gasto-pv', 'gasto-numero', 'gasto-razon', 'gasto-cuit', 'gasto-importe',
         'gasto-rubro', 'gasto-concepto', 'gasto-destino', 'gasto-adjunto',
-        'gasto-notas'].forEach(id => document.getElementById(id).value = '');
+        'gasto-notas', 'gasto-vencimiento', 'gasto-cae', 'gasto-recibida-id'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('gasto-revision').hidden = true;
+    document.getElementById('gasto-btn-revisar').hidden = true;
     document.getElementById('gasto-fecha').value = hoyISO();
     document.getElementById('gasto-tipo').value = '';
     document.getElementById('gasto-proveedor').value = '';
@@ -2219,6 +2247,14 @@ function editarGasto(id) {
     document.getElementById('gasto-concepto').value = g.concepto || '';
     document.getElementById('gasto-destino').value = g.destino || '';
     document.getElementById('gasto-adjunto').value = g.adjunto_url || '';
+    document.getElementById('gasto-vencimiento').value = g.vencimiento || '';
+    document.getElementById('gasto-cae').value = g.cae || '';
+    document.getElementById('gasto-recibida-id').value = '';
+    const rev = document.getElementById('gasto-revision');
+    rev.hidden = g.revisado !== false;
+    rev.innerHTML = g.revisado === false ? `Esta factura llegó del <b>portal de proveedores</b> y se cargó sola. Revisá los datos
+        (y completá concepto, rubro, destino y categoría) y tocá <b>«Guardar y marcar revisada»</b>.${g.notas ? '<br>' + escapeHtml(g.notas) : ''}` : '';
+    document.getElementById('gasto-btn-revisar').hidden = g.revisado !== false;
     gastoMostrarVerAdjunto();
     const est = document.getElementById('gasto-lector-estado');
     if (est) { est.textContent = ''; est.className = 'gasto-lector-estado'; }
@@ -2255,7 +2291,12 @@ async function guardarGasto(e) {
         adjunto_url: document.getElementById('gasto-adjunto').value || null,
         nc_de_id: (esNC && ncDe) ? Number(ncDe) : null,
         notas: document.getElementById('gasto-notas').value || null,
+        vencimiento: document.getElementById('gasto-vencimiento').value || null,
+        cae: document.getElementById('gasto-cae').value || null,
     };
+    const recibida = document.getElementById('gasto-recibida-id').value;
+    if (recibida && !editId) body.factura_recibida_id = Number(recibida);
+    if (e.submitter && e.submitter.dataset.revisar) body.revisado = true;
     try {
         if (editId) {
             await api(`/api/gastos/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -2267,6 +2308,7 @@ async function guardarGasto(e) {
         cerrarFormGasto();
         proveedoresCache = [];  // se recarga (puede haberse creado un proveedor nuevo)
         cargarGastos();
+        actualizarBadgeRecibidas();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -2880,7 +2922,7 @@ function filtrarEstado() {
         <tr>
             <td>${escapeHtml(x.legajo)}</td>
             <td>${escapeHtml(x.apellido)}, ${escapeHtml(x.nombre)}</td>
-            <td>${escapeHtml(x.curso || '-')}</td>
+            <td>${escapeHtml(x.curso || '-')}${x.cursos_nombres && x.cursos_nombres.length > 1 ? `<br><span class="badge">${x.cursos_nombres.length} cursos</span>` : ''}</td>
             <td>${escapeHtml(x.area || '-')}</td>
             <td style="text-align:right">${fmtMoneda(x.pagado)}</td>
             <td style="text-align:right">${fmtMoneda(x.esperado)}</td>
@@ -2894,6 +2936,7 @@ function filtrarEstado() {
 async function verEstadoAlumno(id) {
     try {
         const [e, cupones] = await Promise.all([api(`/api/cuotas/estado/${id}`), api(`/api/cupones-siro/alumno/${id}`).catch(() => [])]);
+        setTimeout(() => cargarCursosAlumno(id), 0);
         document.getElementById('modal-content').innerHTML = `
             <h2 style="margin-top:0">${escapeHtml(e.apellido)}, ${escapeHtml(e.nombre)}</h2>
             <p style="color:var(--text-muted);margin-top:-.4rem">Legajo ${escapeHtml(e.legajo)} · ${escapeHtml(e.curso || '')} · ${escapeHtml(e.area || '')}</p>
@@ -2913,9 +2956,10 @@ function htmlCuentaAlumno(e, cupones) {
     return `<h4 style="margin:1rem 0 0.2rem">Estado de cuenta ${e.anio} · ${estadoBadge(e.estado)}</h4>
         <p class="muted" style="margin:0">${cp ? `${escapeHtml(cp.nombre)} · cuota ${fmtMoneda(e.cuota || cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matrícula ' + fmtMoneda(cp.matricula) : ''} · ` : ''}pagado en el año ${fmtMoneda(e.pagado)}</p>
         ${htmlResumenDeuda(e)}
+        <div id="ac-${e.id}" class="ac-bloque"></div>
         ${htmlCuotasGrid(e)}
         <h4 style="margin:0.8rem 0 0.2rem">Pagos del año</h4>
-        ${htmlPagosImputados(e.pagos)}
+        ${htmlPagosImputados(e.pagos, e.cursos)}
         <h4 style="margin:1rem 0 0.4rem">Cupones vigentes en el portal</h4>
         ${cupones && cupones.length ? cupones.map(htmlCupon).join('') : '<p class="muted">No tiene cupones vigentes cargados.</p>'}`;
 }
@@ -3609,6 +3653,7 @@ const ACCIONES_AUDITORIA = {
 };
 
 async function cargarUsuarios() {
+    renderConfigSistema();
     try {
         const [lista, audit] = await Promise.all([api('/api/usuarios/'), api('/api/usuarios/auditoria')]);
         usuariosCache = lista;
@@ -3854,9 +3899,10 @@ let chartGaRubro = null, chartGaMes = null, chartGaProv = null;
 
 function gastosTab(tab) {
     document.querySelectorAll('.gasto-tab').forEach(b => b.classList.toggle('activo', b.dataset.tab === tab));
-    ['facturas', 'analisis', 'proveedores'].forEach(t =>
+    ['facturas', 'analisis', 'proveedores', 'recibidas'].forEach(t =>
         document.getElementById('gastos-tab-' + t).style.display = t === tab ? 'block' : 'none');
     if (tab === 'facturas') cargarGastos();
+    else if (tab === 'recibidas') cargarRecibidas();
     else if (!gaDatos) gaRango(gaRangoActual);
     else if (tab === 'analisis') dibujarAnalisisGastos();
     else renderGastosProveedores();
@@ -4464,4 +4510,212 @@ async function borrarLoteCupones(lote) {
         const r = await api('/api/cupones-siro/lotes/' + encodeURIComponent(lote), { method: 'DELETE' });
         toast(`Se quitaron ${r.borrados} cupones`); cargarLotesCupones();
     } catch (e) { toast(e.message, 'error'); }
+}
+
+
+// =========================================================
+// CONFIGURACIÓN DEL SISTEMA: datos fiscales de APAI y módulos
+// =========================================================
+let sistemaCfg = { tarjeta_activa: false, apai: {} };
+
+async function cargarSistema() {
+    try { sistemaCfg = await api('/api/config/sistema'); } catch {}
+    actualizarBadgeRecibidas();
+    document.body.classList.toggle('sin-tarjeta', !sistemaCfg.tarjeta_activa);
+    if (!sistemaCfg.tarjeta_activa && ['cobrar', 'operaciones', 'tarjetas', 'reportes'].includes(location.hash.slice(1))) history.replaceState(null, '', location.pathname);
+    dashKPIs();
+}
+
+function renderConfigSistema() {
+    const c = document.getElementById('config-sistema');
+    if (!c) return;
+    const a = sistemaCfg.apai || {};
+    const url = location.origin + '/facturas';
+    c.innerHTML = `
+        <h3 style="margin-bottom:0.3rem">Datos de APAI y módulos</h3>
+        <p class="muted" style="margin:0 0 0.8rem">Estos datos se muestran en el portal de facturas para que los proveedores facturen a nombre de APAI.</p>
+        <div class="form-grid">
+            <div style="grid-column:1/-1"><label for="cfg-razon">Razón social</label><input id="cfg-razon" value="${escapeHtml(a.razon_social || '')}"></div>
+            <div><label for="cfg-cuit">CUIT</label><input id="cfg-cuit" value="${escapeHtml(a.cuit || '')}"></div>
+            <div><label for="cfg-iva">Condición frente al IVA</label><input id="cfg-iva" value="${escapeHtml(a.condicion_iva || '')}"></div>
+            <div style="grid-column:1/-1"><label for="cfg-dom">Domicilio</label><input id="cfg-dom" value="${escapeHtml(a.domicilio || '')}"></div>
+            <div style="grid-column:1/-1"><label class="check-inline"><input type="checkbox" id="cfg-tarjeta" ${sistemaCfg.tarjeta_activa ? 'checked' : ''}>
+                Tarjeta APAI activa <span class="muted">(desmarcada: se ocultan cobros, recargas, tarjetas y consumos, y las familias no ven el saldo)</span></label></div>
+        </div>
+        <div class="form-actions" style="align-items:center">
+            <button class="btn btn-primary btn-3d" onclick="guardarConfigSistema()">Guardar</button>
+            <span class="muted">Portal de facturas para proveedores: <a href="${url}" target="_blank" rel="noopener">${url}</a>
+            <button class="btn btn-sm btn-ghost" onclick="copiarTexto('${url}','Enlace copiado')">Copiar enlace</button></span>
+        </div>`;
+}
+
+async function guardarConfigSistema() {
+    try {
+        await api('/api/config/sistema', { method: 'POST', body: JSON.stringify({
+            apai_razon_social: document.getElementById('cfg-razon').value, apai_cuit: document.getElementById('cfg-cuit').value,
+            apai_domicilio: document.getElementById('cfg-dom').value, apai_condicion_iva: document.getElementById('cfg-iva').value,
+            tarjeta_activa: document.getElementById('cfg-tarjeta').checked }) });
+        toast('Configuración guardada');
+        await cargarSistema(); renderConfigSistema();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+
+// =========================================================
+// CURSOS DEL ALUMNO (más de uno en el año: aeronavegantes, exámenes)
+// =========================================================
+async function cargarCursosAlumno(id) {
+    const cont = document.getElementById('ac-' + id);
+    if (!cont) return;
+    try {
+        const anio = new Date().getFullYear();
+        const [mios, todos] = await Promise.all([api(`/api/alumnos/${id}/cursos`), api(`/api/cursos/?anio=${anio}`)]);
+        const esAdmin = usuarioActual.rol === 'admin';
+        const libres = todos.filter(c => c.activo && !mios.some(m => m.curso_id === c.id));
+        cont.innerHTML = `<h4 style="margin:0.8rem 0 0">Cursos ${anio}</h4>
+            <ul class="ac-lista">${mios.map(m => `<li><span><b>${escapeHtml(m.nombre)}</b>${m.principal && mios.length > 1 ? ' <span class="badge">principal</span>' : ''}
+                <span class="muted"> · cuota ${fmtMoneda(m.cuota)} × ${m.n_cuotas}${m.matricula ? ' + matrícula ' + fmtMoneda(m.matricula) : ''} · desde ${MESES_ES[m.mes_inicio - 1]}</span></span>
+                ${esAdmin && m.id && mios.length > 1 ? `<button class="btn btn-sm btn-ghost" onclick="quitarCursoAlumno(${id}, ${m.id})">Quitar</button>` : ''}</li>`).join('')
+                || '<li class="muted">No se encontró su curso en la configuración de cursos.</li>'}</ul>
+            ${esAdmin && libres.length ? `<div class="ac-form">
+                <label>Sumar otro curso <select id="ac-curso-${id}">${libres.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)} (${fmtMoneda(c.cuota)} × ${c.n_cuotas})</option>`).join('')}</select></label>
+                <label>desde <select id="ac-mes-${id}">${MESES_ES.map((m, i) => `<option value="${i + 1}" ${i + 1 === new Date().getMonth() + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+                <button class="btn btn-sm btn-outline" onclick="agregarCursoAlumno(${id})">Agregar curso</button></div>` : ''}`;
+    } catch (e) { cont.innerHTML = ''; }
+}
+
+async function agregarCursoAlumno(id) {
+    try {
+        const r = await api(`/api/alumnos/${id}/cursos`, { method: 'POST', body: JSON.stringify({
+            curso_id: Number(document.getElementById('ac-curso-' + id).value), mes_inicio: Number(document.getElementById('ac-mes-' + id).value) }) });
+        toast(r.mensaje); verAlumno(id);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function quitarCursoAlumno(id, filaId) {
+    if (!confirm('¿Quitar este curso del alumno? Sus cuotas dejan de contarse.')) return;
+    try { const r = await api(`/api/alumnos/${id}/cursos/${filaId}`, { method: 'DELETE' }); toast(r.mensaje); verAlumno(id); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+async function imputarPagoCurso(pagoId, cursoId) {
+    try {
+        await api(`/api/cuotas/pagos/${pagoId}/imputar`, { method: 'POST', body: JSON.stringify({ curso_id: cursoId ? Number(cursoId) : null }) });
+        toast('Imputación actualizada');
+        const m = document.querySelector('.ac-bloque');
+        if (m) verAlumno(Number(m.id.slice(3)));
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+
+// =========================================================
+// GASTOS: sugerencias por proveedor y facturas recibidas del portal
+// =========================================================
+async function sugerirDatosProveedor(param) {
+    try {
+        const r = await api('/api/gastos/sugerencias?' + new URLSearchParams(param));
+        for (const [campo, id] of [['rubro', 'gasto-rubro'], ['concepto', 'gasto-concepto'], ['destino', 'gasto-destino']]) {
+            const el = document.getElementById(id);
+            if (r[campo] && !el.value) el.value = r[campo];
+        }
+    } catch { /* sin historial */ }
+}
+
+let recibidasEstado = '';
+let recibidasCache = [];
+
+async function actualizarBadgeRecibidas() {
+    try {
+        const c = await api('/api/facturas-recibidas/contador');
+        const b = document.getElementById('badge-recibidas');
+        if (b) { b.textContent = c.sin_cargar; b.hidden = !c.sin_cargar; }
+        const r = document.getElementById('badge-por-revisar');
+        if (r) { r.textContent = c.sin_revisar; r.hidden = !c.sin_revisar; }
+    } catch {}
+}
+
+function filtrarRecibidas(btn) {
+    document.querySelectorAll('#rec-estados .chip').forEach(b => b.classList.toggle('chip-activo', b === btn));
+    recibidasEstado = btn.dataset.estado;
+    cargarRecibidas();
+}
+
+async function cargarRecibidas() {
+    try {
+        recibidasCache = await api('/api/facturas-recibidas/' + (recibidasEstado ? '?estado=' + recibidasEstado : ''));
+        const esAdmin = usuarioActual.rol === 'admin';
+        const chip = { cargada: 'badge-activa', revisar: 'badge-revisar', duplicada: '', descartada: '' };
+        document.getElementById('body-recibidas').innerHTML = recibidasCache.map(x => {
+            const d = x.datos || {};
+            const comp = [d.tipo, d.numero ? `${d.punto_venta || ''}-${d.numero}` : ''].filter(Boolean).join(' ');
+            const acciones = [];
+            if (x.gasto) acciones.push(`<button class="btn btn-sm ${x.gasto.revisado ? '' : 'btn-primary'}" onclick="abrirGastoRecibido(${x.gasto.id})">${x.gasto.revisado ? 'Ver gasto' : 'Revisar'}</button>`);
+            if (x.estado === 'revisar' && esAdmin) {
+                acciones.push(`<button class="btn btn-sm btn-primary" onclick="cargarRecibidaAMano(${x.id})">Cargar</button>`);
+                acciones.push(`<button class="btn btn-sm btn-ghost" onclick="reintentarRecibida(${x.id})" title="Busca el QR de AFIP en esta computadora">Leer QR</button>`);
+                acciones.push(`<button class="btn btn-sm btn-ghost" onclick="descartarRecibida(${x.id})">Descartar</button>`);
+            }
+            return `<tr>
+                <td>${fmtFechaHora(x.recibida)}</td>
+                <td><a href="/api/facturas-recibidas/${x.id}/archivo" target="_blank" rel="noopener">${escapeHtml(x.archivo)}</a>
+                    ${x.comentario ? `<div class="muted" style="font-size:0.8rem">💬 ${escapeHtml(x.comentario)}</div>` : ''}</td>
+                <td>${escapeHtml(d.razon_social || x.proveedor_declarado || '—')}${d.cuit ? `<div class="muted" style="font-size:0.8rem">CUIT ${escapeHtml(d.cuit)}</div>` : ''}
+                    ${x.email ? `<div class="muted" style="font-size:0.8rem">${escapeHtml(x.email)}</div>` : ''}</td>
+                <td>${escapeHtml(comp || '—')}${d.fecha ? `<div class="muted" style="font-size:0.8rem">${fmtFecha(d.fecha)}</div>` : ''}</td>
+                <td class="num">${d.importe != null ? fmtMoneda(d.importe) : '—'}</td>
+                <td><span class="badge ${chip[x.estado] || ''}">${escapeHtml(x.estado_texto)}</span>
+                    ${x.motivo ? `<div class="muted" style="font-size:0.78rem">${escapeHtml(x.motivo)}</div>` : ''}</td>
+                <td>${acciones.join(' ')}</td></tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:1.2rem">No hay facturas recibidas con este filtro.</td></tr>';
+        actualizarBadgeRecibidas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function abrirGastoRecibido(id) {
+    gastosTab('facturas');
+    await cargarGastos();
+    if (!gastosCache.some(g => g.id === id)) {  // puede estar fuera del período elegido
+        filtrarEstadoGasto(document.querySelector('#gasto-estados [data-estado="por_revisar"]'));
+        await cargarGastos();
+    }
+    editarGasto(id);
+}
+
+function cargarRecibidaAMano(id) {
+    const x = recibidasCache.find(r => r.id === id);
+    if (!x) return;
+    const d = x.datos || {};
+    gastosTab('facturas');
+    mostrarFormGasto();
+    const set = (campo, v) => { if (v != null && v !== '') document.getElementById(campo).value = v; };
+    set('gasto-fecha', d.fecha); set('gasto-pv', d.punto_venta); set('gasto-numero', d.numero);
+    set('gasto-cuit', d.cuit); set('gasto-razon', d.razon_social || x.proveedor_declarado);
+    set('gasto-importe', d.importe); set('gasto-concepto', d.concepto); set('gasto-vencimiento', d.vencimiento); set('gasto-cae', d.cae);
+    if (d.tipo) document.getElementById('gasto-tipo').value = d.tipo;
+    document.getElementById('gasto-adjunto').value = `/api/facturas-recibidas/${x.id}/archivo`;
+    document.getElementById('gasto-recibida-id').value = x.id;
+    if (d.cuit) sugerirDatosProveedor({ cuit: d.cuit });
+    gastoMostrarVerAdjunto();
+    const rev = document.getElementById('gasto-revision');
+    rev.hidden = false;
+    rev.innerHTML = `Cargando a mano la factura <b>${escapeHtml(x.archivo)}</b> recibida del portal (<a href="/api/facturas-recibidas/${x.id}/archivo" target="_blank" rel="noopener">abrir PDF</a>).
+        ${x.motivo ? escapeHtml(x.motivo) + '.' : ''}`;
+}
+
+async function reintentarRecibida(id) {
+    toast('Buscando el QR de AFIP en la factura…');
+    try {
+        const blob = await (await fetch(`/api/facturas-recibidas/${id}/archivo`, { credentials: 'same-origin' })).blob();
+        const qr = await escanearQR(new File([blob], 'factura.pdf', { type: 'application/pdf' }));
+        if (!qr) return toast('No se encontró el QR de AFIP: cargala a mano con «Cargar».', 'error');
+        const r = await api(`/api/facturas-recibidas/${id}/reprocesar`, { method: 'POST', body: JSON.stringify({ qr }) });
+        toast(r.estado === 'cargada' ? 'Leída: quedó en Facturas → Por revisar' : r.mensaje, r.estado === 'cargada' ? 'success' : 'error');
+        cargarRecibidas();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function descartarRecibida(id) {
+    if (!confirm('¿Descartar esta factura? No se carga como gasto (el PDF queda guardado).')) return;
+    try { await api(`/api/facturas-recibidas/${id}/descartar`, { method: 'POST' }); toast('Factura descartada'); cargarRecibidas(); }
+    catch (e) { toast(e.message, 'error'); }
 }

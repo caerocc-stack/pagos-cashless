@@ -91,12 +91,12 @@
                 <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
                 <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
                 <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
-                <button class="nav-btn side-item" data-section="cupones-siro" onclick="cargarLotesCupones();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Cupones de SIRO</button>
+                <button class="nav-btn side-item" data-section="cupones-siro" onclick="cargarLotesCupones();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Cupones de pago</button>
                 <button class="nav-btn side-item" data-section="consultas" onclick="cargarConsultas();cerrarSidebarMobile()"><svg class="ic"><use href="#i-chat"/></svg>Consultas de familias <span class="side-badge" id="side-badge-consultas" hidden></span></button>
             </div>
         </div>
 
-        <div class="side-group">
+        <div class="side-group modulo-tarjeta">
             <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Tarjeta APAI</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
                 <button class="nav-btn side-item" data-section="cobrar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-scan"/></svg>Cobrar</button>
@@ -178,8 +178,8 @@
                 </div>
             </div>
 
-            <div class="dash-grupo-tit">Tarjeta APAI</div>
-            <div class="dash-grid" data-grupo="tarjeta">
+            <div class="dash-grupo-tit modulo-tarjeta">Tarjeta APAI</div>
+            <div class="dash-grid modulo-tarjeta" data-grupo="tarjeta">
                 <div class="dash-card" data-color="red" tabindex="0" role="button" data-tags="cobrar venta fotocopia" onclick="dashIr('cobrar')">
                     <div class="dash-icon"><svg class="ic"><use href="#i-scan"/></svg></div>
                     <div class="dash-nombre">Cobrar</div>
@@ -457,43 +457,18 @@
                 </div>
 
                 <div class="card" style="grid-column:1/-1">
-                    <h3>Cupones APAI Pay (cuota y recarga)</h3>
+                    <h3>Cupones de recarga de la tarjeta</h3>
+                    <p class="muted" style="margin:-0.3rem 0 0.8rem">El cupón de la cuota mensual se envía desde <a href="#cupones-siro" onclick="mostrarSeccion('cupones-siro')">Cobranzas y alumnos → Cupones de pago</a>.</p>
                     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
-                        <button type="button" class="btn btn-primary btn-sm" id="tab-cuota" onclick="cuponTab('cuota')">Cuota del mes</button>
-                        <button type="button" class="btn btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga individual</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="tab-recarga" onclick="cuponTab('recarga')">Recarga individual</button>
                         <button type="button" class="btn btn-sm" id="tab-recargalote" onclick="cuponTab('recargalote')">Recarga en lote</button>
                         <span style="flex:1"></span>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaEmail()"><svg class="ic"><use href="#i-eye"/></svg>Vista previa</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="cuponTipoActual='recarga';vistaPreviaEmail()"><svg class="ic"><use href="#i-eye"/></svg>Vista previa</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()"><svg class="ic"><use href="#i-pencil"/></svg>Editar plantillas</button>
                     </div>
 
-                    <!-- CUOTA -->
-                    <div id="cupon-cuota" class="ops-grid" style="align-items:end">
-                        <div>
-                            <label>Área a enviar</label>
-                            <select id="cuota-area" onchange="actualizarCuotaInfo()">
-                                <option value="">Todas las áreas</option>
-                                <option value="Ciclo Basico">Ciclo Básico</option>
-                                <option value="Avionica">Aviónica</option>
-                                <option value="Mecanica">Mecánica</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>Curso (opcional)</label>
-                            <select id="cuota-curso" onchange="actualizarCuotaInfo()"><option value="">Todos los cursos</option></select>
-                        </div>
-                        <div>
-                            <label>Monto de la cuota ($)</label>
-                            <input type="number" id="cuota-monto" min="1" step="0.01" value="45000">
-                        </div>
-                        <div>
-                            <div id="cuota-info" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem"></div>
-                            <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
-                        </div>
-                    </div>
-
                     <!-- RECARGA -->
-                    <div id="cupon-recarga" class="ops-grid" style="display:none;align-items:end">
+                    <div id="cupon-recarga" class="ops-grid" style="align-items:end">
                         <div>
                             <label>Alumno</label>
                             <div class="buscador-alumno" id="wrap-cupon">
@@ -610,6 +585,43 @@
         <!-- CUPONES DE SIRO (PDF descargado de SIRO -> portal de familias) -->
         <section id="sec-cupones-siro" class="section">
             <div class="card">
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.4rem">
+                    <h3 style="margin:0">Enviar el cupón de la cuota por correo</h3>
+                    <span style="flex:1"></span>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="cuponTipoActual='cuota';vistaPreviaEmail()"><svg class="ic"><use href="#i-eye"/></svg>Vista previa</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="abrirPlantillas()"><svg class="ic"><use href="#i-pencil"/></svg>Editar plantillas</button>
+                </div>
+                <p class="muted" style="margin-bottom:0.8rem">Genera el cupón del mes y se lo envía a cada familia por correo (los alumnos excluidos no lo reciben y los que tienen monto personalizado reciben el suyo).</p>
+                    <!-- CUOTA -->
+                    <div id="cupon-cuota" class="ops-grid" style="align-items:end">
+                        <div>
+                            <label>Área a enviar</label>
+                            <select id="cuota-area" onchange="actualizarCuotaInfo()">
+                                <option value="">Todas las áreas</option>
+                                <option value="Ciclo Basico">Ciclo Básico</option>
+                                <option value="Avionica">Aviónica</option>
+                                <option value="Mecanica">Mecánica</option>
+                                <option value="Aeronavegantes">Aeronavegantes</option>
+                                <option value="Examenes">Exámenes</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Curso (opcional)</label>
+                            <select id="cuota-curso" onchange="actualizarCuotaInfo()"><option value="">Todos los cursos</option></select>
+                        </div>
+                        <div>
+                            <label>Monto de la cuota ($)</label>
+                            <input type="number" id="cuota-monto" min="1" step="0.01" value="45000">
+                        </div>
+                        <div>
+                            <div id="cuota-info" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem"></div>
+                            <button type="button" class="btn btn-red btn-3d" style="width:100%" onclick="enviarCuotaMasiva()">Enviar cuota del mes</button>
+                        </div>
+                    </div>
+
+                <div id="cuota-resultado" class="resultado" style="display:none;margin-top:1rem"></div>
+            </div>
+            <div class="card">
                 <h3>Subir cupones de SIRO</h3>
                 <p class="muted" style="margin-bottom:0.8rem">Descargá de SIRO el PDF con los cupones (uno por página) y subilo acá. Podés subir varios a la vez
                 (Ciclo Básico, Mecánica, Aviónica, MMH, exámenes…). El archivo se lee en esta computadora: al sistema solo llegan los datos de cada cupón
@@ -690,6 +702,8 @@
                 <tbody id="body-auditoria"></tbody>
             </table>
 
+            <div class="card" id="config-sistema" style="margin-top:2rem"></div>
+
             <div class="section-titulo" style="margin-top:2rem;font-size:1.1rem">Mantenimiento</div>
             <div class="card zona-riesgo">
                 <div>
@@ -753,9 +767,18 @@
                 <button class="cuota-tab gasto-tab activo" data-tab="facturas" onclick="gastosTab('facturas')">Facturas</button>
                 <button class="cuota-tab gasto-tab" data-tab="analisis" onclick="gastosTab('analisis')">Análisis y gráficos</button>
                 <button class="cuota-tab gasto-tab" data-tab="proveedores" onclick="gastosTab('proveedores')">Por proveedor</button>
+                <button class="cuota-tab gasto-tab" data-tab="recibidas" onclick="gastosTab('recibidas')">Recibidas de proveedores <span class="side-badge" id="badge-recibidas" hidden></span></button>
             </div>
 
             <div id="gastos-tab-facturas">
+
+            <div class="concept-chips gasto-estados" id="gasto-estados" role="group" aria-label="Estado de las facturas">
+                <button type="button" class="chip chip-activo" data-estado="" onclick="filtrarEstadoGasto(this)">Todas</button>
+                <button type="button" class="chip" data-estado="por_revisar" onclick="filtrarEstadoGasto(this)">Por revisar <span class="side-badge" id="badge-por-revisar" hidden></span></button>
+                <button type="button" class="chip" data-estado="pendiente" onclick="filtrarEstadoGasto(this)">Pendientes de pago</button>
+                <button type="button" class="chip" data-estado="vencida" onclick="filtrarEstadoGasto(this)">Vencidas</button>
+                <button type="button" class="chip" data-estado="pagada" onclick="filtrarEstadoGasto(this)">Pagadas</button>
+            </div>
 
             <div class="toolbar">
                 <input type="text" id="buscar-gasto" placeholder="Buscar por proveedor, CUIT, concepto, rubro, destino o N° ...">
@@ -784,8 +807,11 @@
                     <span id="gasto-lector-estado" class="gasto-lector-estado"></span>
                 </div>
 
+                <div id="gasto-revision" class="aviso-banda" hidden></div>
                 <form onsubmit="guardarGasto(event)">
                     <input type="hidden" id="gasto-edit-id">
+                    <input type="hidden" id="gasto-cae">
+                    <input type="hidden" id="gasto-recibida-id">
                     <div class="form-grid">
                         <div><label>Fecha del comprobante</label><input type="date" id="gasto-fecha" required></div>
                         <div><label>Tipo de comprobante</label><select id="gasto-tipo"></select></div>
@@ -797,6 +823,7 @@
                         <div><label>Razón social</label><input type="text" id="gasto-razon" placeholder="se completa con el QR / proveedor"></div>
                         <div><label>CUIT</label><input type="text" id="gasto-cuit" placeholder="se completa con el QR"></div>
                         <div><label>Importe (IVA incluido)</label><input type="number" step="0.01" id="gasto-importe" required placeholder="0.00"></div>
+                        <div><label>Vence el <span style="color:var(--text-muted);font-weight:400">(para pagarla)</span></label><input type="date" id="gasto-vencimiento"></div>
                         <div><label>Rubro <span style="color:var(--text-muted);font-weight:400">(del proveedor)</span></label><input type="text" id="gasto-rubro" placeholder="ej: Librería, Ferretería..."></div>
                         <div style="grid-column:1/-1"><label>Concepto <span style="color:var(--text-muted);font-weight:400">(qué se compró — se carga a mano)</span></label><input type="text" id="gasto-concepto" placeholder="ej: Resmas A4, tóner..."></div>
                         <div style="grid-column:1/-1"><label>Destino en la escuela</label><input type="text" id="gasto-destino" placeholder="ej: Taller de Avionica, Secretaría..."></div>
@@ -813,7 +840,8 @@
                         <div style="grid-column:1/-1"><label>Notas</label><input type="text" id="gasto-notas" placeholder="opcional"></div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary btn-3d">Guardar</button>
+                        <button type="submit" class="btn btn-primary btn-3d" id="gasto-btn-revisar" data-revisar="1" hidden>Guardar y marcar revisada</button>
+                        <button type="submit" class="btn btn-primary btn-3d" id="gasto-btn-guardar">Guardar</button>
                         <button type="button" class="btn btn-ghost" onclick="cerrarFormGasto()">Cancelar</button>
                     </div>
                 </form>
@@ -861,6 +889,28 @@
                         <h3 style="margin-top:1.25rem">Por destino en la escuela</h3><div id="ga-tabla-destino"></div>
                         <h3 style="margin-top:1.25rem">Por forma de pago</h3><div id="ga-tabla-pago"></div></div>
                 </div>
+            </div>
+
+            <!-- RECIBIDAS DEL PORTAL DE PROVEEDORES -->
+            <div id="gastos-tab-recibidas" style="display:none">
+                <div class="card" style="margin-bottom:1rem">
+                    <p style="margin:0">Los proveedores suben sus facturas en el <b>portal de proveedores</b>, sin cuenta:
+                        <a href="/facturas" target="_blank" rel="noopener" id="link-portal-fact">/facturas</a>
+                        <button class="btn btn-sm btn-ghost" onclick="copiarTexto(location.origin + '/facturas', 'Enlace copiado')">Copiar enlace para mandar</button></p>
+                    <p class="muted" style="margin:0.4rem 0 0">Cada factura se lee sola (QR de AFIP y texto del PDF). Si tiene todos los datos entra a <b>Facturas → Por revisar</b>;
+                        si no, queda acá para cargarla a mano.</p>
+                </div>
+                <div class="concept-chips" id="rec-estados" role="group" aria-label="Estado">
+                    <button type="button" class="chip chip-activo" data-estado="" onclick="filtrarRecibidas(this)">Todas</button>
+                    <button type="button" class="chip" data-estado="revisar" onclick="filtrarRecibidas(this)">Para cargar a mano</button>
+                    <button type="button" class="chip" data-estado="cargada" onclick="filtrarRecibidas(this)">Cargadas</button>
+                    <button type="button" class="chip" data-estado="duplicada" onclick="filtrarRecibidas(this)">Repetidas</button>
+                    <button type="button" class="chip" data-estado="descartada" onclick="filtrarRecibidas(this)">Descartadas</button>
+                </div>
+                <table id="tabla-recibidas">
+                    <thead><tr><th>Recibida</th><th>Archivo</th><th>Proveedor</th><th>Comprobante</th><th class="num">Importe</th><th>Estado</th><th></th></tr></thead>
+                    <tbody id="body-recibidas"></tbody>
+                </table>
             </div>
 
             <!-- POR PROVEEDOR -->

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -78,10 +78,29 @@ async def headers_seguridad(request: Request, call_next):
 # Se aplica la dependencia a nivel de router para que cualquier endpoint nuevo
 # quede protegido por defecto (defensa en profundidad).
 _auth = [Depends(get_current_user)]
+
+
+def _tarjeta_habilitada(request: Request):
+    """La tarjeta APAI puede estar suspendida: se puede consultar el historial, pero no operar."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    from app.database import SessionLocal
+    from app import config_util
+    db = SessionLocal()
+    try:
+        activa = config_util.tarjeta_activa(db)
+    finally:
+        db.close()
+    if not activa:
+        from fastapi import HTTPException
+        raise HTTPException(403, "La tarjeta APAI está suspendida temporalmente.")
+
+
+_tarjeta = _auth + [Depends(_tarjeta_habilitada)]
 app.include_router(auth_router.router)
 app.include_router(alumnos.router, dependencies=_auth)
-app.include_router(tarjetas.router, dependencies=_auth)
-app.include_router(operaciones.router, dependencies=_auth)
+app.include_router(tarjetas.router, dependencies=_tarjeta)
+app.include_router(operaciones.router, dependencies=_tarjeta)
 app.include_router(cupones.router, dependencies=_auth)
 app.include_router(reportes.router, dependencies=_auth)
 app.include_router(admin.router, dependencies=_auth)
@@ -98,6 +117,8 @@ app.include_router(mantenimiento.router, dependencies=_auth)
 app.include_router(importar_gastos.router, dependencies=_auth)
 app.include_router(consultas.router, dependencies=_auth)
 app.include_router(cupones_siro.router, dependencies=_auth)
+app.include_router(facturas_recibidas.router, dependencies=_auth)
+app.include_router(facturas_recibidas.publico)  # portal público de facturas (sin cuenta)
 # Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
 app.include_router(portal.router)
 
@@ -124,6 +145,12 @@ def login_page():
 @app.get("/portal")
 def portal_page():
     return FileResponse(str(STATIC_DIR / "portal.html"))
+
+
+@app.get("/facturas")
+def facturas_page():
+    """Portal público para que los proveedores suban sus facturas (sin cuenta)."""
+    return FileResponse(str(STATIC_DIR / "facturas.html"))
 
 
 @app.get("/restablecer")

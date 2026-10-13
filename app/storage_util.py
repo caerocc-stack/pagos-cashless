@@ -149,3 +149,50 @@ def crear_subida_firmada(filename: str) -> dict:
         "upload_url": f"{url}/storage/v1{firma['url']}",
         "public_url": f"{url}/storage/v1/object/public/{bucket}/{ruta}",
     }
+
+
+# ---------------------------------------------------------------- depósito PRIVADO (facturas de proveedores)
+BUCKET_PRIVADO = "facturas-proveedores"
+
+
+def _asegurar_bucket_privado(url: str, key: str):
+    cuerpo = json.dumps({"name": BUCKET_PRIVADO, "id": BUCKET_PRIVADO, "public": False}).encode()
+    try:
+        _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
+    except urllib.error.HTTPError as e:
+        cb = _leer_cuerpo(e)
+        if e.code not in (400, 409) and "exist" not in cb.lower():
+            raise ValueError(_traducir(e.code, cb))
+
+
+def subir_privado(contenido: bytes, extension: str = "pdf", content_type: str = "application/pdf") -> str:
+    """Sube a un depósito privado (sin URL pública). Devuelve la ruta interna."""
+    url, key, _ = _cfg()
+    if not (url and key):
+        raise ValueError("Supabase Storage no está configurado.")
+    ruta = f"{ahora_ar():%Y/%m}/{uuid.uuid4().hex}.{extension}"
+    destino = f"{url}/storage/v1/object/{BUCKET_PRIVADO}/{ruta}"
+
+    def subir():
+        return _request("POST", destino, key, contenido, content_type)
+    try:
+        subir()
+    except urllib.error.HTTPError as e:
+        cuerpo = _leer_cuerpo(e)
+        if not _es_bucket_inexistente(e.code, cuerpo):
+            raise ValueError(_traducir(e.code, cuerpo))
+        _asegurar_bucket_privado(url, key)
+        try:
+            subir()
+        except urllib.error.HTTPError as e2:
+            raise ValueError(_traducir(e2.code, _leer_cuerpo(e2)))
+    return ruta
+
+
+def url_privada_firmada(ruta: str, segundos: int = 300) -> str:
+    """Enlace temporal para ver un archivo del depósito privado."""
+    url, key, _ = _cfg()
+    with _request("POST", f"{url}/storage/v1/object/sign/{BUCKET_PRIVADO}/{ruta}", key,
+                  json.dumps({"expiresIn": segundos}).encode(), "application/json") as resp:
+        firma = json.loads(resp.read())
+    return f"{url}/storage/v1{firma.get('signedURL') or firma.get('signedUrl')}"
