@@ -44,8 +44,9 @@ def _lista_meses(meses: list[int]) -> str:
     return nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1]
 
 
-def plan_simple(curso, mes_inicio: int = MES_INICIO) -> list[dict]:
+def plan_simple(curso, mes_inicio: int | None = None) -> list[dict]:
     """Un único curso (el caso habitual)."""
+    mes_inicio = mes_inicio or getattr(curso, "mes_inicio", None) or MES_INICIO
     return [{"clave": "principal", "curso": curso, "nombre": curso.nombre, "mes_inicio": mes_inicio,
              "principal": True, "curso_id": getattr(curso, "id", None)}] if curso else []
 
@@ -121,19 +122,40 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         destino.append(it["concepto"])
         return monto - usa
 
+    # Matrícula del año ya pagada por fuera (p. ej. abonada en el año anterior)
+    if getattr(alumno, "matricula_paga", False):
+        for it in items:
+            if it["es_matricula"] and it["plan"] == planes[0]["clave"]:
+                it["pagado"] = it["importe"]
+
     imputaciones = []
     a_favor = CERO
+    ant_saldo = deuda_ant  # deuda del año anterior que todavía queda
     for p in pagos:
         resto, destino = _dec(p.importe), []
         f = fecha_imputacion(p)
         forzado = plan_por_curso.get(getattr(p, "curso_id", None))
         candidatos = [it for it in items if not forzado or it["plan"] == forzado]
-        if f.year == anio:  # 1) la cuota del mes en que pagó (si hay de varios cursos, la del importe pagado)
+        # 0) la matrícula se reconoce por su monto
+        mat = next((it for it in candidatos if it["es_matricula"] and resto > 0 and it["importe"] - it["pagado"] == resto), None)
+        if mat:
+            resto = aplicar(mat, resto, destino)
+        if resto > 0 and f.year == anio:  # 1) la cuota del mes en que pagó (si hay de varios cursos, la del importe pagado)
             propias = [it for it in candidatos if it["clave"] == f"cuota-{f.month}" and it["importe"] > it["pagado"]]
             if propias:
                 exacta = next((it for it in propias if it["importe"] - it["pagado"] == resto), None)
                 resto = aplicar(exacta or propias[0], resto, destino)
-        for it in candidatos:  # 2) lo más viejo que se deba
+        for it in candidatos:  # 2) lo más viejo que ya venció
+            if resto <= 0:
+                break
+            if vencido(it["mes"]):
+                resto = aplicar(it, resto, destino)
+        if resto > 0 and ant_saldo > 0 and not forzado:  # 3) deuda del año anterior
+            usa = min(resto, ant_saldo)
+            ant_saldo -= usa
+            resto -= usa
+            destino.append(f"deuda {anio - 1}")
+        for it in candidatos:  # 4) adelanto de cuotas que todavía no vencieron
             if resto <= 0:
                 break
             resto = aplicar(it, resto, destino)
@@ -210,7 +232,9 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
 
     principal = cursos[0]
     base.update(
-        esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + deuda_ant), estado=estado,
+        esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + ant_saldo), estado=estado,
+        deuda_anterior=float(ant_saldo), deuda_anterior_original=float(deuda_ant),
+        imputado_deuda_anterior=float(deuda_ant - ant_saldo),
         items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),
         meses_adeudados=meses_txt, detalle_deuda=detalle, proximo=proximo, saldo_a_favor=float(a_favor),
         cuotas_pagas=sum(1 for s in salida if s["estado"] == "pagada" and not s["es_matricula"]),

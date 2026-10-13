@@ -26,6 +26,7 @@ class Alumno(Base):
     deuda_anio_anterior: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
     cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    matricula_paga: Mapped[bool] = mapped_column(Boolean, default=False)  # matrícula del año pagada por fuera (p. ej. en 2025)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 

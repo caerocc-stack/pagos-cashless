@@ -33,7 +33,7 @@ def _indices(db: Session):
     by_leg, by_dni = {}, {}
     for a in db.query(Alumno).all():
         leg = _dig(a.legajo)
-        if leg:
+        if leg and str(a.legajo).strip().isdigit():  # "D<dni>" = sin legajo: no se busca por legajo
             by_leg.setdefault(leg[-5:], a)
         d = _dig(a.dni)
         if len(d) >= 7:  # DNI real (los placeholders 'SL...' quedan afuera)
@@ -295,7 +295,7 @@ def planes_de(alumno, cursos: list[Curso], extras: list[AlumnoCurso]) -> list[di
     if extras:
         por_id = {c.id: c for c in cursos}
         planes = [{"clave": f"ac{x.id}", "curso": por_id[x.curso_id], "nombre": por_id[x.curso_id].nombre,
-                   "mes_inicio": x.mes_inicio or MES_INICIO, "principal": bool(x.principal), "curso_id": x.curso_id,
+                   "mes_inicio": x.mes_inicio or por_id[x.curso_id].mes_inicio or MES_INICIO, "principal": bool(x.principal), "curso_id": x.curso_id,
                    "alumno_curso_id": x.id}
                   for x in sorted(extras, key=lambda x: (not x.principal, x.mes_inicio or MES_INICIO, x.id)) if x.curso_id in por_id]
         if planes:

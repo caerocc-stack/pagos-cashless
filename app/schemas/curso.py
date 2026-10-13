@@ -10,6 +10,7 @@ class CursoBase(BaseModel):
     divisiones: str | None = None
     cuota: Decimal = Decimal("0")
     n_cuotas: int = 10
+    mes_inicio: int | None = 3
     matricula: Decimal = Decimal("0")
     cuota_anio_anterior: Decimal = Decimal("0")
     cobra_cuotas_viejas: bool = False
@@ -28,6 +29,7 @@ class CursoUpdate(BaseModel):
     divisiones: str | None = None
     cuota: Decimal | None = None
     n_cuotas: int | None = None
+    mes_inicio: int | None = None
     matricula: Decimal | None = None
     cuota_anio_anterior: Decimal | None = None
     cobra_cuotas_viejas: bool | None = None

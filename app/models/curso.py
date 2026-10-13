@@ -20,6 +20,7 @@ class Curso(Base):
 
     cuota: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     n_cuotas: Mapped[int] = mapped_column(Integer, default=10)       # cantidad de meses
+    mes_inicio: Mapped[int] = mapped_column(Integer, default=3)      # mes de la primera cuota (ORR B: agosto)
     matricula: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     cuota_anio_anterior: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     cobra_cuotas_viejas: Mapped[bool] = mapped_column(Boolean, default=False)

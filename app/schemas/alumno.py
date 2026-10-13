@@ -19,6 +19,7 @@ class AlumnoCreate(BaseModel):
     deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
+    matricula_paga: bool | None = False
 
 
 class AlumnoUpdate(BaseModel):
@@ -37,6 +38,7 @@ class AlumnoUpdate(BaseModel):
     deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool | None = None
     cuota_personalizada: Decimal | None = None
+    matricula_paga: bool | None = None
     activo: bool | None = None
 
 
@@ -57,6 +59,7 @@ class AlumnoResponse(BaseModel):
     deuda_anio_anterior: Decimal | None = None
     cuota_excluir: bool = False
     cuota_personalizada: Decimal | None = None
+    matricula_paga: bool | None = False
     activo: bool
     created_at: datetime
 

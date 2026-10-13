@@ -84,6 +84,8 @@ MIGRACIONES = [
     "CREATE INDEX IF NOT EXISTS ix_cupon_vence ON cupones_enviados (alumno_id, vence_ultimo)",
     "CREATE INDEX IF NOT EXISTS ix_cupon_lote ON cupones_enviados (lote)",
     "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS curso_id INTEGER REFERENCES cursos(id)",
+    "ALTER TABLE cursos ADD COLUMN IF NOT EXISTS mes_inicio INTEGER DEFAULT 3",
+    "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS matricula_paga BOOLEAN DEFAULT FALSE",
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS origen VARCHAR(20)",
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS revisado BOOLEAN DEFAULT TRUE",
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS vencimiento DATE",
