@@ -161,8 +161,8 @@ def _asegurar_bucket_privado(url: str, key: str):
         _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
     except urllib.error.HTTPError as e:
         cb = _leer_cuerpo(e)
-        if e.code not in (400, 409) and "exist" not in cb.lower():
-            raise ValueError(_traducir(e.code, cb))
+        if e.code != 409 and "exist" not in cb.lower():
+            raise ValueError(f"No se pudo crear el depósito privado [{e.code}] {cb}")
 
 
 def subir_privado(contenido: bytes, extension: str = "pdf", content_type: str = "application/pdf") -> str:
