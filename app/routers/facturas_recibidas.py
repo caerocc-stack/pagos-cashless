@@ -141,8 +141,9 @@ async def recibir_factura(request: Request, archivo: UploadFile = File(...), env
         else:
             fr.contenido = contenido
     except ValueError as e:
-        print("ERROR guardando factura en Storage:", e, flush=True)
-        raise HTTPException(503, "No pudimos guardar el archivo en este momento. Probá de nuevo en unos minutos.")
+        # Si Storage falla (p. ej. clave de Supabase sin permisos) la factura no se pierde: queda en la base
+        print("AVISO: factura guardada en la base porque Storage falló:", e, flush=True)
+        fr.contenido = contenido
     db.add(fr)
     db.flush()
     d = procesar(db, fr, contenido, (qr or "")[:3000] or None)
