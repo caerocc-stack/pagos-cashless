@@ -2889,17 +2889,18 @@ async function cargarEstado() {
         const area = document.getElementById('estado-f-area').value;
         const est = document.getElementById('estado-f-estado').value;
         if (area) p.set('area', area);
-        if (est) p.set('estado', est);
+        if (est && est !== 'debe-anterior') p.set('estado', est);
         const r = await api('/api/cuotas/estado?' + p.toString());
-        estadoCache = r.alumnos || [];
+        estadoCache = (r.alumnos || []).filter(x => est !== 'debe-anterior' || (x.estado || '').startsWith('Al día ·'));
         const tot = estadoCache.length;
-        const aldia = estadoCache.filter(x => x.estado === 'Al día').length;
+        const aldia = estadoCache.filter(x => x.estado === 'Al día' || x.estado === 'Pagado').length;
+        const debeAnt = estadoCache.filter(x => x.deuda_anterior > 0).length;
         const mor = estadoCache.filter(x => x.estado === 'Moroso').length;
         const sinp = estadoCache.filter(x => x.estado === 'Sin pagos').length;
         const deuda = estadoCache.reduce((s, x) => s + (x.deuda_total ?? x.deuda), 0);
         document.getElementById('estado-resumen').innerHTML = `
             <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${tot}</div><div class="gasto-kpi-sub">cuotas vencidas hasta ${MESES[r.mes_corte - 1] ? MESES[r.mes_corte - 1].toLowerCase() : 'el mes ' + r.mes_corte}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Al día</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">&nbsp;</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Al día (sin deuda anterior)</div><div class="gasto-kpi-valor" style="color:var(--green)">${aldia}</div><div class="gasto-kpi-sub">${debeAnt} deben el año anterior</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Morosos / sin pagos</div><div class="gasto-kpi-valor" style="color:var(--warning)">${mor + sinp}</div><div class="gasto-kpi-sub">${mor} mor. · ${sinp} s/pago</div></div>
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda total</div><div class="gasto-kpi-valor">${fmtMoneda(deuda)}</div><div class="gasto-kpi-sub">al corte</div></div>`;
         filtrarEstado();
@@ -2907,8 +2908,12 @@ async function cargarEstado() {
 }
 
 function estadoBadge(e) {
-    const col = { 'Al día': 'var(--green)', 'Moroso': 'var(--red)', 'Sin pagos': '#d97706', 'Becado': 'var(--sky)', 'Exento': 'var(--sky)' }[e] || 'var(--text-muted)';
-    return `<span style="color:${col};font-weight:700">${escapeHtml(e)}</span>`;
+    e = e || '';
+    // "Al día · debe 2025": al día con el año, pero con deuda del anterior (no se mezcla con el verde)
+    const m = e.match(/^Al día · debe (\d{4})$/);
+    if (m) return `<span style="color:var(--green);font-weight:700">Al día</span> <span class="badge badge-revisar" title="Debe cuotas del ${m[1]}">debe ${m[1]}</span>`;
+    const col = { 'Al día': 'var(--green)', 'Pagado': 'var(--green)', 'Moroso': 'var(--red)', 'Sin pagos': '#d97706', 'Becado': 'var(--sky)', 'Exento': 'var(--sky)' }[e] || 'var(--text-muted)';
+    return `<span style="color:${col};font-weight:700">${escapeHtml(e)}${e === 'Pagado' ? ' ✓' : ''}</span>`;
 }
 
 function filtrarEstado() {
@@ -2967,101 +2972,160 @@ function htmlCuentaAlumno(e, cupones) {
 // ---- Estadisticas ----
 let chartCuotasMensual = null, chartCuotasArea = null, statsUltimo = null;
 
+// Estadísticas de cuotas: comparativa de cursos (como la hoja COMPARATIVA CURSOS de la planilla)
+let chartCuotasCvd = null;
+const COLORES_AREA = { 'Ciclo Basico': '#1f5fa8', 'Avionica': '#0e8a6a', 'Mecanica': '#c27a0e', 'Aeronavegantes': '#7a3fb0', 'Examenes': '#a01e22' };
+const NOMBRE_AREA = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Aeronavegantes': 'Aeronavegantes', 'Examenes': 'Exámenes' };
+const nomArea = a => NOMBRE_AREA[a] || a;
+const pct = (v, dec = 1) => fmtNumero(v || 0, dec) + '%';
+
 function exportarEstadisticasPDF() {
     if (!statsUltimo) { toast('Abrí primero las estadísticas', 'error'); return; }
     if (typeof window.jspdf === 'undefined') { toast('No se pudo cargar el generador de PDF', 'error'); return; }
-    const s = statsUltimo;
+    const s = statsUltimo, k = s.indicadores;
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'landscape' });
     const fmt = n => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
-    doc.setFontSize(15); doc.text('APAI Pay — Estadísticas de cuotas', 14, 16);
+    doc.setFontSize(15); doc.text('APAI — Comparativa de cursos', 14, 15);
     doc.setFontSize(10); doc.setTextColor(110);
-    doc.text(`Año ${s.anio} · corte mes ${s.mes_corte} · generado ${fmtFecha(hoyISO())}`, 14, 22);
+    doc.text(`${s.mes ? MESES[s.mes - 1] + ' ' : 'Año '}${s.anio} · generado ${fmtFecha(hoyISO())}`, 14, 21);
     doc.setTextColor(20);
-    doc.autoTable({
-        startY: 28, theme: 'plain',
-        body: [['Alumnos', s.kpis.alumnos], ['Esperado', fmt(s.kpis.esperado)],
-            ['Cobrado', fmt(s.kpis.cobrado)], ['Deuda', fmt(s.kpis.deuda)],
-            ['Cumplimiento', s.kpis.cumplimiento + '%']],
-        styles: { fontSize: 10 }, columnStyles: { 0: { fontStyle: 'bold' } },
-    });
-    const seccion = (titulo, arr) => {
-        doc.autoTable({
-            startY: doc.lastAutoTable.finalY + 6,
-            head: [[titulo, 'Alu', 'Cobrado', 'Deuda', '% Cumpl.']],
-            body: arr.map(d => [d.clave, d.alumnos, fmt(d.cobrado), fmt(d.deuda), d.cumplimiento + '%']),
-            styles: { fontSize: 9 }, headStyles: { fillColor: [61, 127, 196] },
-        });
-    };
-    seccion('Área', s.por_area);
-    seccion('Nivel', s.por_nivel);
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 6,
-        head: [['Top morosos', 'Curso', 'Área', 'Deuda']],
-        body: (s.top_morosos || []).map(m => [`${m.apellido}, ${m.nombre}`, m.curso || '', m.area || '', fmt(m.deuda)]),
-        styles: { fontSize: 9 }, headStyles: { fillColor: [160, 30, 34] },
-    });
-    doc.save(`estadisticas_cuotas_${s.anio}.pdf`);
+    doc.autoTable({ startY: 26, theme: 'plain', styles: { fontSize: 10 }, columnStyles: { 0: { fontStyle: 'bold' } },
+        body: [['Alumnos', k.alumnos], ['Cobrado', fmt(k.cobrado)], ['Esperado', fmt(k.esperado)], ['Deuda (esperado − cobrado)', fmt(k.deuda)],
+               ['% Cumplimiento', pct(k.cumplimiento)], ['Con deuda del año anterior', `${k.con_deuda_anterior} alumnos · ${fmt(k.deuda_anterior)}`]] });
+    const tabla = (titulo, filas) => doc.autoTable({ startY: doc.lastAutoTable.finalY + 6, styles: { fontSize: 8 }, headStyles: { fillColor: [21, 35, 59] },
+        head: [[titulo, 'Área', 'Alumnos', 'Becados', 'Al día', 'Pagado', 'Al día (debe ant.)', 'Moroso', 'Sin pagos', 'Cobrado', 'Esperado', 'Deuda', '% Cumpl.']],
+        body: filas.map(d => [d.clave, nomArea(d.area), d.alumnos, d.becados, d.al_dia, d.pagado, d.al_dia_debe_anterior, d.moroso, d.sin_pagos,
+                              fmt(d.cobrado), fmt(d.esperado), fmt(d.deuda), pct(d.cumplimiento)]) });
+    tabla('Curso', s.por_curso);
+    tabla('Grupo', s.por_grupo);
+    const m = s.mensual;
+    doc.autoTable({ startY: doc.lastAutoTable.finalY + 6, styles: { fontSize: 8 }, headStyles: { fillColor: [21, 35, 59] },
+        head: [['Mes', ...m.areas.map(nomArea), 'Total']],
+        body: [...m.meses.map(x => [MESES[x.mes - 1], ...m.areas.map(a => fmt(x.valores[a])), fmt(x.total)]),
+               ['TOTAL', ...m.areas.map(a => fmt(m.totales[a])), fmt(m.total)]] });
+    doc.save(`comparativa_cursos_${s.anio}${s.mes ? '_' + String(s.mes).padStart(2, '0') : ''}.pdf`);
 }
 
+function exportarEstadisticasCSV() {
+    if (!statsUltimo) return toast('Abrí primero las estadísticas', 'error');
+    const s = statsUltimo, filas = [['Curso', 'Área', 'Alumnos', 'Becados', 'Al día', 'Pagado', 'Al día (debe año anterior)', 'Moroso', 'Sin pagos', 'Cobrado', 'Esperado', 'Deuda', '% Cumpl.']];
+    s.por_curso.forEach(d => filas.push([d.clave, nomArea(d.area), d.alumnos, d.becados, d.al_dia, d.pagado, d.al_dia_debe_anterior, d.moroso, d.sin_pagos,
+        d.cobrado, d.esperado, d.deuda, String(d.cumplimiento).replace('.', ',')]));
+    filas.push([]); filas.push(['Mes', ...s.mensual.areas.map(nomArea), 'Total']);
+    s.mensual.meses.forEach(x => filas.push([MESES[x.mes - 1], ...s.mensual.areas.map(a => x.valores[a]), x.total]));
+    const csv = '﻿' + filas.map(f => f.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `comparativa_cursos_${s.anio}${s.mes ? '_' + s.mes : ''}.csv`;
+    a.click();
+}
+
+let statsFiltrosListos = false;
 async function cargarStats() {
     try {
-        const s = await api('/api/cuotas/estadisticas');
-        const k = s.kpis;
-        document.getElementById('stats-kpis').innerHTML = `
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${k.alumnos}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor" style="color:var(--green)">${fmtMoneda(k.cobrado)}</div></div>
-            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">${fmtMoneda(k.deuda)}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Cumplimiento</div><div class="gasto-kpi-valor">${k.cumplimiento}%</div><div class="gasto-kpi-sub">esperado ${fmtMoneda(k.esperado)}</div></div>`;
-
-        // tablas por agrupacion
-        const tabla = (titulo, arr) => `
-            <div class="chart-card" style="overflow:auto">
-                <h4 style="margin:0 0 .5rem">${titulo}</h4>
-                <table style="font-size:.85rem"><thead><tr><th>${titulo}</th><th>Alu</th><th style="text-align:right">Cobrado</th><th style="text-align:right">Deuda</th><th style="text-align:right">% Cumpl.</th></tr></thead>
-                <tbody>${arr.map(d => `<tr><td>${escapeHtml(String(d.clave))}</td><td>${d.alumnos}</td><td style="text-align:right">${fmtMoneda(d.cobrado)}</td><td style="text-align:right">${fmtMoneda(d.deuda)}</td><td style="text-align:right">${d.cumplimiento}%</td></tr>`).join('')}</tbody></table>
-            </div>`;
-        document.getElementById('stats-tablas').innerHTML =
-            `<div class="reportes-charts">${tabla('Área', s.por_area)}${tabla('Nivel', s.por_nivel)}</div>`;
+        const per = document.getElementById('st-periodo');
+        if (!statsFiltrosListos) {
+            per.innerHTML = '<option value="">Todo el año</option>' + MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+            statsFiltrosListos = true;
+        }
+        const p = new URLSearchParams();
+        const mes = per.value, area = document.getElementById('st-area').value, nivel = document.getElementById('st-nivel').value;
+        if (mes) p.set('mes', mes);
+        if (area) p.set('area', area);
+        if (nivel) p.set('nivel', nivel);
+        const s = await api('/api/cuotas/estadisticas?' + p);
         statsUltimo = s;
+        const llenar = (id, lista, todos, nombre) => {
+            const sel = document.getElementById(id), actual = sel.value;
+            sel.innerHTML = `<option value="">${todos}</option>` + lista.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(nombre ? nombre(v) : v)}</option>`).join('');
+            sel.value = lista.includes(actual) ? actual : '';
+        };
+        llenar('st-area', s.filtros.areas, 'Todas las áreas', nomArea);
+        llenar('st-nivel', s.filtros.niveles, 'Todos los niveles');
+        const k = s.indicadores;
+        document.getElementById('st-explica').textContent = s.mes
+            ? `${MESES[s.mes - 1]} ${s.anio}: lo que vencía en el mes y lo que se cobró en el mes. Los estados son al cierre de ${MESES[s.mes - 1].toLowerCase()}.`
+            : `Año ${s.anio} completo: «Esperado» es lo que tiene que pagar cada alumno en el año (sin becados); «Deuda» = esperado − cobrado. Los estados miran las cuotas ya vencidas.`;
+        document.getElementById('stats-kpis').innerHTML = `
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Alumnos</div><div class="gasto-kpi-valor">${k.alumnos}</div><div class="gasto-kpi-sub">${k.becados} becados</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(k.cobrado)}</div><div class="gasto-kpi-sub">${s.mes ? 'en ' + MESES[s.mes - 1].toLowerCase() : 'en el año'}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Esperado</div><div class="gasto-kpi-valor">${fmtMoneda(k.esperado)}</div><div class="gasto-kpi-sub">${s.mes ? 'vencía en el mes' : 'total del año'}</div></div>
+            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda</div><div class="gasto-kpi-valor">${fmtMoneda(k.deuda)}</div><div class="gasto-kpi-sub">vencida: ${fmtMoneda(k.deuda_vencida)}</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">% Cumplimiento</div><div class="gasto-kpi-valor">${pct(k.cumplimiento)}</div>
+                <div class="barra-pct"><span style="width:${Math.min(100, k.cumplimiento)}%"></span></div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Deben el año anterior</div><div class="gasto-kpi-valor" style="color:var(--warning)">${k.con_deuda_anterior}</div><div class="gasto-kpi-sub">${fmtMoneda(k.deuda_anterior)} pendientes</div></div>`;
+        const est = [['Al día', k.al_dia, 'ok', 'al día y sin deuda anterior'], ['Pagado', k.pagado, 'ok', 'año completo pagado'],
+            [`Al día · debe ${s.anio - 1}`, k.al_dia_debe_anterior, 'aviso', 'al día con el año, pero debe el anterior'],
+            ['Moroso', k.moroso, 'mal', 'tiene cuotas vencidas'], ['Sin pagos', k.sin_pagos, 'mal', 'no pagó nada este año'], ['Becados', k.becados, 'neutro', '']];
+        document.getElementById('stats-estados').innerHTML = est.map(([n, v, c, t]) =>
+            `<div class="st-estado st-${c}" title="${escapeHtml(t)}"><b>${v}</b><span>${escapeHtml(n)}</span><small>${k.alumnos ? pct(v / k.alumnos * 100, 0) : '0%'}</small></div>`).join('');
 
-        document.getElementById('body-morosos').innerHTML = (s.top_morosos || []).map(m => `
-            <tr><td>${escapeHtml(m.legajo)}</td><td>${escapeHtml(m.apellido)}, ${escapeHtml(m.nombre)}</td>
-            <td>${escapeHtml(m.curso || '-')}</td><td>${escapeHtml(m.area || '-')}</td>
-            <td style="text-align:right;color:var(--red)">${fmtMoneda(m.deuda)}</td></tr>`).join('') ||
-            '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin morosos</td></tr>';
+        // Desglose mensual por área ($ y % del mes)
+        const m = s.mensual;
+        document.getElementById('st-mensual').innerHTML = `<div class="tabla-wrap"><table class="st-tabla"><thead><tr><th>Mes</th>
+            ${m.areas.map(a => `<th class="num">${escapeHtml(nomArea(a))}</th><th class="num">%</th>`).join('')}<th class="num">Total del mes</th></tr></thead><tbody>
+            ${m.meses.map(x => `<tr class="${s.mes === x.mes ? 'st-sel' : ''}"><td>${MESES[x.mes - 1]}</td>
+                ${m.areas.map(a => `<td class="num">${fmtMoneda(x.valores[a])}</td><td class="num muted">${x.total ? pct(x.valores[a] / x.total * 100) : '—'}</td>`).join('')}
+                <td class="num"><b>${fmtMoneda(x.total)}</b></td></tr>`).join('')}
+            <tr class="st-total"><td>TOTAL ANUAL</td>${m.areas.map(a => `<td class="num">${fmtMoneda(m.totales[a])}</td><td class="num">${m.total ? pct(m.totales[a] / m.total * 100) : '—'}</td>`).join('')}
+                <td class="num">${fmtMoneda(m.total)}</td></tr></tbody></table></div>`;
 
+        const tabla = (filas, titulo) => `<div class="tabla-wrap"><table class="st-tabla"><thead><tr><th>${titulo}</th><th>Área</th><th class="num">Alumnos</th>
+            <th class="num">Becados</th><th class="num">Al día</th><th class="num">Pagado</th><th class="num" title="Al día con el año pero debe el anterior">Al día · debe ant.</th>
+            <th class="num">Moroso</th><th class="num">Sin pagos</th><th class="num">Cobrado</th><th class="num">Esperado</th><th class="num">Deuda</th><th class="num">% Cumpl.</th></tr></thead><tbody>
+            ${filas.map(d => `<tr><td><b>${escapeHtml(d.clave)}</b></td><td>${escapeHtml(nomArea(d.area))}</td><td class="num">${d.alumnos}</td><td class="num">${d.becados}</td>
+                <td class="num">${d.al_dia}</td><td class="num">${d.pagado}</td><td class="num">${d.al_dia_debe_anterior || ''}</td><td class="num">${d.moroso}</td><td class="num">${d.sin_pagos}</td>
+                <td class="num">${fmtMoneda(d.cobrado)}</td><td class="num">${fmtMoneda(d.esperado)}</td><td class="num">${fmtMoneda(d.deuda)}</td>
+                <td class="num"><span class="st-pct" style="--p:${Math.min(100, d.cumplimiento)}%">${pct(d.cumplimiento)}</span></td></tr>`).join('')
+                || '<tr><td colspan="13" class="muted" style="text-align:center">Sin datos con estos filtros</td></tr>'}
+            </tbody></table></div>`;
+        document.getElementById('st-cursos').innerHTML = tabla(s.por_curso, 'Curso');
+        document.getElementById('st-grupos').innerHTML = tabla(s.por_grupo, 'Grupo');
         dibujarChartsCuotas(s);
     } catch (err) { toast(err.message, 'error'); }
 }
 
 function dibujarChartsCuotas(s) {
     if (typeof Chart === 'undefined') return;
-    const css = getComputedStyle(document.documentElement);
-    const cGreen = css.getPropertyValue('--green').trim() || '#16a34a';
-    const cSky = css.getPropertyValue('--sky').trim() || '#3d7fc4';
-    const cText = css.getPropertyValue('--text-muted').trim() || '#888';
-    if (chartCuotasMensual) chartCuotasMensual.destroy();
-    if (chartCuotasArea) chartCuotasArea.destroy();
-    const gradByCtx = hex => c => chartGradient(c.chart.ctx, c.chart.chartArea, hex);
+    [chartCuotasMensual, chartCuotasArea, chartCuotasCvd].forEach(c => c && c.destroy());
+    const millones = v => '$' + (v >= 1e6 ? fmtNumero(v / 1e6, 1) + ' M' : v >= 1000 ? fmtNumero(v / 1000, 0) + ' mil' : v);
+    const m = s.mensual;
+    // Barras apiladas por área, una por mes; el mes elegido se resalta (los demás quedan tenues)
     chartCuotasMensual = new Chart(document.getElementById('chart-cuotas-mensual'), {
         type: 'bar',
         data: {
-            labels: s.cobranza_mensual.map(m => MESES[m.mes - 1].slice(0, 3)),
-            datasets: [{ label: 'Cobrado', data: s.cobranza_mensual.map(m => m.cobrado), backgroundColor: gradByCtx(cGreen), hoverBackgroundColor: cGreen, maxBarThickness: 38 }],
+            labels: m.meses.map(x => MESES[x.mes - 1].slice(0, 3)),
+            datasets: m.areas.map(a => ({ label: nomArea(a), maxBarThickness: 46, borderRadius: 0,
+                data: m.meses.map(x => x.valores[a]),
+                backgroundColor: m.meses.map(x => (!s.mes || s.mes === x.mes) ? COLORES_AREA[a] || '#64748b' : (COLORES_AREA[a] || '#64748b') + '44') })),
         },
-        options: {
-            plugins: { legend: { display: false } },
-            scales: { y: { ticks: { callback: v => '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1000 ? (v / 1000) + 'k' : v) } } },
-        },
+        options: { maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: millones } } },
+            plugins: { tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmtMoneda(c.raw)}`,
+                footer: it => 'Total del mes: ' + fmtMoneda(m.meses[it[0].dataIndex].total) } } },
+            onClick: (e, el) => { if (el.length) { document.getElementById('st-periodo').value = String(el[0].index + 1); cargarStats(); } } },
     });
+    // Barras horizontales con color parejo (sin degradado: el degradado vertical las hacía ver distintas)
+    const grupos = s.por_grupo;
+    const alto = Math.max(220, grupos.length * 26 + 50);
+    document.getElementById('st-wrap-cumpl').style.height = alto + 'px';
+    document.getElementById('st-wrap-cvd').style.height = alto + 'px';
+    const colorGrupo = g => COLORES_AREA[g.area] || '#64748b';
+    // Etiquetas cortas para que no se corten: "1° Ciclo Básico", "DESP AER A"
+    const corto = g => { const m2 = g.clave.match(/^Todos los (\S+) — (.+)$/); return m2 ? `${m2[1]} ${nomArea(m2[2])}` : g.clave.split(' — ')[0]; };
     chartCuotasArea = new Chart(document.getElementById('chart-cuotas-area'), {
         type: 'bar',
-        data: {
-            labels: s.por_area.map(d => d.clave),
-            datasets: [{ label: '% Cumplimiento', data: s.por_area.map(d => d.cumplimiento), backgroundColor: gradByCtx(cSky), hoverBackgroundColor: cSky, maxBarThickness: 30 }],
-        },
-        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { max: 100, ticks: { callback: v => v + '%' } } } },
+        data: { labels: grupos.map(corto), datasets: [{ label: '% Cumplimiento', data: grupos.map(g => g.cumplimiento), backgroundColor: grupos.map(colorGrupo), maxBarThickness: 18 }] },
+        options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + pct(c.raw) } } },
+                   scales: { x: { max: 100, ticks: { callback: v => v + '%' } }, y: { ticks: { font: { size: 11 } } } } },
+    });
+    chartCuotasCvd = new Chart(document.getElementById('chart-cuotas-cvd'), {
+        type: 'bar',
+        data: { labels: grupos.map(corto), datasets: [
+            { label: 'Cobrado', data: grupos.map(g => g.cobrado), backgroundColor: '#16a34a', maxBarThickness: 18, borderRadius: 0 },
+            { label: 'Deuda', data: grupos.map(g => g.deuda), backgroundColor: '#dc2626', maxBarThickness: 18, borderRadius: 0 }] },
+        options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { stacked: true, ticks: { callback: millones } }, y: { stacked: true, ticks: { font: { size: 11 } } } },
+                   plugins: { tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmtMoneda(c.raw)}` } } } },
     });
 }
 

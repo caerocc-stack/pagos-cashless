@@ -17,7 +17,7 @@ from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
-from app.cuenta_alumno import estado_cuenta, anio_de_pago, plan_simple, MES_INICIO
+from app.cuenta_alumno import estado_cuenta, anio_de_pago, plan_simple, MES_INICIO, estado_con_anterior
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -296,6 +296,7 @@ def planes_de(alumno, cursos: list[Curso], extras: list[AlumnoCurso]) -> list[di
         por_id = {c.id: c for c in cursos}
         planes = [{"clave": f"ac{x.id}", "curso": por_id[x.curso_id], "nombre": por_id[x.curso_id].nombre,
                    "mes_inicio": x.mes_inicio or por_id[x.curso_id].mes_inicio or MES_INICIO, "principal": bool(x.principal), "curso_id": x.curso_id,
+                   "etiqueta": x.etiqueta,
                    "alumno_curso_id": x.id}
                   for x in sorted(extras, key=lambda x: (not x.principal, x.mes_inicio or MES_INICIO, x.id)) if x.curso_id in por_id]
         if planes:
@@ -389,60 +390,108 @@ def estado_alumno(alumno_id: int, anio: int | None = None, db: Session = Depends
 
 
 @router.get("/estadisticas")
-def estadisticas(anio: int | None = None, mes: int | None = None, db: Session = Depends(get_db)):
+def estadisticas(anio: int | None = None, mes: int | None = None, area: str | None = None, nivel: str | None = None,
+                 db: Session = Depends(get_db)):
+    """Comparativa de cursos (como la hoja COMPARATIVA CURSOS de la planilla).
+    Sin `mes`: el año completo (esperado anual). Con `mes`: lo que vencía y lo que se cobró en ese mes,
+    con los estados al cierre de ese mes."""
     anio = anio or ahora_ar().year
-    mes_corte = _corte_texto(mes)
-    filas = _calcular(db, anio, mes)
+    if mes is not None and not 1 <= mes <= 12:
+        raise HTTPException(400, "Mes inválido")
+    hoy = ahora_ar().date()
+    cursos_cfg = cursos_vigentes(db, anio)
+    por_id_curso = {c.id: c for c in db.query(Curso).all()}
+    pagos = pagos_del_anio(db, anio)
+    extras = extras_por_alumno(db, anio)
+    ORDEN_AREAS = ["Ciclo Basico", "Avionica", "Mecanica", "Aeronavegantes", "Examenes"]
+    ESCUELA = {"Ciclo Basico", "Avionica", "Mecanica"}
 
-    def agrupar(clave):
-        g = {}
+    filas = []
+    for a in db.query(Alumno).filter(Alumno.activo == True).all():  # noqa: E712
+        planes = planes_de(a, cursos_cfg, extras.get(a.id, []))
+        ps = pagos.get(a.id, [])
+        info = estado_cuenta(a, planes, ps, anio, hoy=hoy, mes_corte=mes)
+        becado = info["estado"] in ("Becado", "Exento") or (a.condicion or "").lower() in ("becado", "exento")
+        for i, c in enumerate(info["cursos"]):
+            if mes:
+                plan_de_pago = lambda p: next((x["clave"] for x in info["cursos"] if x.get("curso_id") and x["curso_id"] == p.curso_id),
+                                              info["cursos"][0]["clave"])
+                cobrado = sum(float(p.importe) for p in ps if (p.fecha_pago or p.fecha).month == mes and plan_de_pago(p) == c["clave"])
+                esperado = 0.0 if becado else sum(it["importe"] for it in c.get("items", []) if it["mes"] == mes)
+            else:
+                cobrado, esperado = c["cobrado"], (0.0 if becado else c["esperado_anual"])
+            etq = c.get("etiqueta") or a.curso or "—"
+            ar = (a.area if c.get("principal") or len(info["cursos"]) == 1 else c.get("area")) or c.get("area") or "Sin área"
+            m = re.match(r"\s*(\d+)\s*°", etq)
+            niv = f"{m.group(1)}°" if m else "—"
+            estado = "Becado" if becado else c["estado"]
+            if not becado and i == 0:
+                estado = estado_con_anterior(estado, info.get("debe_anio_anterior"), anio)
+            filas.append({"curso": etq, "area": ar, "nivel": niv,
+                          "grupo": f"Todos los {niv} — {ar}" if ar in ESCUELA and niv != "—" else f"{etq} — {ar}",
+                          "estado": estado, "cobrado": cobrado, "esperado": esperado, "deuda_vencida": c.get("deuda", 0.0),
+                          "debe_anterior": bool(info.get("debe_anio_anterior")) and i == 0,
+                          "deuda_anterior": info.get("deuda_anterior", 0.0) if i == 0 else 0.0})
+
+    areas_disponibles = sorted({f["area"] for f in filas}, key=lambda x: (ORDEN_AREAS.index(x) if x in ORDEN_AREAS else 99, x))
+    niveles_disponibles = sorted({f["nivel"] for f in filas if f["nivel"] != "—"})
+    if area:
+        filas = [f for f in filas if f["area"] == area]
+    if nivel:
+        filas = [f for f in filas if f["nivel"] == nivel or f["curso"] == nivel]
+
+    def agrupar(clave_fn, orden_fn) -> list[dict]:
+        g: dict = {}
         for f in filas:
-            k = f.get(clave) or "—"
-            d = g.setdefault(k, {"clave": k, "alumnos": 0, "esperado": 0.0, "cobrado": 0.0,
-                                 "deuda": 0.0, "al_dia": 0, "morosos": 0, "sin_pagos": 0})
+            k = clave_fn(f)
+            d = g.setdefault(k, {"clave": k[0] if isinstance(k, tuple) else k, "area": f["area"], "nivel": f["nivel"],
+                                 "alumnos": 0, "becados": 0, "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0,
+                                 "moroso": 0, "sin_pagos": 0, "cobrado": 0.0, "esperado": 0.0, "deuda_vencida": 0.0,
+                                 "con_deuda_anterior": 0, "deuda_anterior": 0.0})
             d["alumnos"] += 1
+            e = f["estado"]
+            clave_estado = {"Becado": "becados", "Exento": "becados", "Al día": "al_dia", "Pagado": "pagado",
+                            "Moroso": "moroso", "Sin pagos": "sin_pagos"}.get(e, "al_dia_debe_anterior" if e.startswith("Al día ·") else None)
+            if clave_estado:
+                d[clave_estado] += 1
+            d["cobrado"] += f["cobrado"]
             d["esperado"] += f["esperado"]
-            d["cobrado"] += f["pagado"]
-            d["deuda"] += f["deuda_total"]
-            if f["estado"] == "Al día":
-                d["al_dia"] += 1
-            elif f["estado"] == "Moroso":
-                d["morosos"] += 1
-            elif f["estado"] == "Sin pagos":
-                d["sin_pagos"] += 1
+            d["deuda_vencida"] += f["deuda_vencida"]
+            if f["debe_anterior"]:
+                d["con_deuda_anterior"] += 1
+                d["deuda_anterior"] += f["deuda_anterior"]
         for d in g.values():
-            d["cumplimiento"] = round(d["cobrado"] / d["esperado"] * 100, 1) if d["esperado"] else 0
-        return sorted(g.values(), key=lambda x: str(x["clave"]))
+            d["deuda"] = max(0.0, d["esperado"] - d["cobrado"])
+            d["cumplimiento"] = round(d["cobrado"] / d["esperado"] * 100, 1) if d["esperado"] else (100.0 if d["cobrado"] else 0.0)
+        return sorted(g.values(), key=orden_fn)
 
-    estados = {}
-    for f in filas:
-        estados[f["estado"]] = estados.get(f["estado"], 0) + 1
+    orden_area = lambda d: (ORDEN_AREAS.index(d["area"]) if d["area"] in ORDEN_AREAS else 99, d["clave"])
+    por_curso = agrupar(lambda f: (f["curso"], f["area"]), orden_area)
+    por_grupo = agrupar(lambda f: f["grupo"], orden_area)
+    tot = agrupar(lambda f: "Total", lambda d: 0)
+    total = tot[0] if tot else {"alumnos": 0, "cobrado": 0.0, "esperado": 0.0, "deuda": 0.0, "cumplimiento": 0.0,
+                                "deuda_vencida": 0.0, "con_deuda_anterior": 0, "deuda_anterior": 0.0, "becados": 0,
+                                "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0, "moroso": 0, "sin_pagos": 0}
 
-    # Cobranza mensual del año
-    mensual = dict(
-        db.query(PagoCuota.mes, func.coalesce(func.sum(PagoCuota.importe), 0))
-        .filter(PagoCuota.anio == anio).group_by(PagoCuota.mes).all()
-    )
-    meses = [{"mes": m, "cobrado": float(mensual.get(m, 0))} for m in range(1, 13)]
+    # Cobranza por mes y área (fecha del pago; el área es la del curso al que se imputó)
+    alumnos_area = dict(db.query(Alumno.id, Alumno.area).all())
+    matriz: dict = {m: {} for m in range(1, 13)}
+    for aid, ps in pagos.items():
+        for p in ps:
+            f_p = p.fecha_pago or p.fecha
+            ar = (por_id_curso[p.curso_id].area if p.curso_id in por_id_curso else None) or alumnos_area.get(aid) or "Sin área"
+            matriz[f_p.month][ar] = matriz[f_p.month].get(ar, 0.0) + float(p.importe)
+    areas_m = sorted({ar for v in matriz.values() for ar in v}, key=lambda x: (ORDEN_AREAS.index(x) if x in ORDEN_AREAS else 99, x))
+    mensual = [{"mes": m, "valores": {ar: matriz[m].get(ar, 0.0) for ar in areas_m}, "total": sum(matriz[m].values())} for m in range(1, 13)]
+    tot_areas = {ar: sum(x["valores"][ar] for x in mensual) for ar in areas_m}
 
-    morosos = sorted([f for f in filas if f["deuda_total"] > 0], key=lambda f: -f["deuda_total"])[:15]
-
-    tot_esp = sum(f["esperado"] for f in filas)
-    tot_cob = sum(f["pagado"] for f in filas)
     return {
-        "anio": anio, "mes_corte": mes_corte,
-        "kpis": {
-            "alumnos": len(filas),
-            "esperado": tot_esp, "cobrado": tot_cob, "deuda": sum(f["deuda_total"] for f in filas),
-            "cumplimiento": round(tot_cob / tot_esp * 100, 1) if tot_esp else 0,
-        },
-        "por_estado": estados,
-        "por_area": agrupar("area"),
-        "por_nivel": agrupar("nivel"),
-        "por_division": agrupar("division"),
-        "por_modalidad": agrupar("modalidad"),
-        "cobranza_mensual": meses,
-        "top_morosos": morosos,
+        "anio": anio, "mes": mes, "mes_corte": mes or _corte_texto(None),
+        "filtros": {"areas": areas_disponibles, "niveles": niveles_disponibles},
+        "indicadores": total,
+        "por_curso": por_curso,
+        "por_grupo": por_grupo,
+        "mensual": {"areas": areas_m, "meses": mensual, "totales": tot_areas, "total": sum(tot_areas.values())},
     }
 
 

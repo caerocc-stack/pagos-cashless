@@ -43,4 +43,5 @@ class AlumnoCurso(Base):
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
     mes_inicio: Mapped[int] = mapped_column(Integer, default=3)      # mes de la primera cuota
     principal: Mapped[bool] = mapped_column(Boolean, default=False)  # el curso del padrón
+    etiqueta: Mapped[str | None] = mapped_column(String(30))         # cómo figura en el padrón (ORR B, TCP A)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

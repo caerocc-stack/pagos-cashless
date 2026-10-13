@@ -764,3 +764,20 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .gasto-vence.vencida { color: var(--danger); font-weight: 700; }
 #gasto-revision:not([hidden]) { display: block; margin-bottom: 0.9rem; line-height: 1.5; }
 #gasto-revision[hidden] { display: none; }
+
+/* Estadísticas de cuotas (comparativa de cursos) */
+.st-estados { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin: 0 0 1.25rem; }
+.st-estado { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.7rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); }
+.st-estado b { font-size: 1.35rem; font-family: var(--font-head); }
+.st-estado span { font-size: 0.82rem; font-weight: 600; }
+.st-estado small { font-size: 0.75rem; color: var(--text-muted); }
+.st-ok { border-left: 4px solid var(--success); }
+.st-aviso { border-left: 4px solid var(--warning); }
+.st-mal { border-left: 4px solid var(--danger); }
+.st-neutro { border-left: 4px solid var(--sky, #3d7fc4); }
+.st-tabla { font-size: 0.84rem; }
+.st-tabla td, .st-tabla th { white-space: nowrap; }
+.st-tabla tr.st-sel td { background: var(--primary-soft); font-weight: 600; }
+.st-tabla tr.st-total td { font-weight: 700; border-top: 2px solid var(--border-strong); }
+.st-pct { display: inline-block; min-width: 64px; padding: 0.1rem 0.4rem; border-radius: 6px; text-align: right;
+    background: linear-gradient(90deg, var(--success-soft) var(--p), transparent var(--p)); }

@@ -112,3 +112,4 @@ body.portal { background: var(--bg); }
 .p-pagar b { display: block; font-size: 1rem; }
 .p-pagar small { display: block; opacity: 0.9; font-size: 0.8rem; }
 .p-tabs .cuota-tab[hidden] { display: none !important; }
+.p-estado.aviso { background: var(--warning-soft); color: var(--warning); }

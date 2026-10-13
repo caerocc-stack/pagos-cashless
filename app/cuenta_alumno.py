@@ -13,6 +13,7 @@ Reglas (definidas por la Asociación):
   coincide con el pagado. Un pago puede imputarse a mano a un curso (pago.curso_id).
 """
 import calendar
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -51,6 +52,20 @@ def plan_simple(curso, mes_inicio: int | None = None) -> list[dict]:
              "principal": True, "curso_id": getattr(curso, "id", None)}] if curso else []
 
 
+def etiqueta_curso(pl: dict, alumno) -> str:
+    """Nombre corto del curso como figura en el padrón (1°A, DESP AER A, ORR B...)."""
+    if pl.get("etiqueta"):
+        return pl["etiqueta"]
+    if pl.get("principal") and getattr(alumno, "curso", None):
+        return alumno.curso
+    return re.sub(r"\s*\(.*\)$", "", pl.get("nombre") or "")
+
+
+def estado_con_anterior(estado: str, debe_anterior: bool, anio: int) -> str:
+    """Quien está al día con el año pero debe el anterior no se muestra igual que quien no debe nada."""
+    return f"Al día · debe {anio - 1}" if debe_anterior and estado in ("Al día", "Pagado") else estado
+
+
 def _detalle(adeudadas: int, meses: list[int], matricula: Decimal) -> str:
     partes = []
     if matricula > 0:
@@ -85,7 +100,11 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
     if exento or not planes:
         estado = (alumno.condicion or "Exento") if exento else "Sin curso"
         base.update(esperado=0.0, deuda=0.0, deuda_total=float(deuda_ant), estado=estado,
-                    pagos=[_pago_dto(p, []) for p in pagos])
+                    pagos=[_pago_dto(p, []) for p in pagos], debe_anio_anterior=deuda_ant > 0,
+                    cursos=[{"clave": pl["clave"], "nombre": pl["nombre"], "etiqueta": etiqueta_curso(pl, alumno),
+                             "area": getattr(pl["curso"], "area", None), "curso_id": pl.get("curso_id"),
+                             "principal": bool(pl.get("principal")), "estado": estado, "cobrado": float(total_pagado) if i == 0 else 0.0,
+                             "esperado_anual": 0.0, "deuda": 0.0, "items": []} for i, pl in enumerate(planes)])
         return base
 
     def vencido(mes: int) -> bool:
@@ -127,6 +146,7 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         for it in items:
             if it["es_matricula"] and it["plan"] == planes[0]["clave"]:
                 it["pagado"] = it["importe"]
+                it["prepago"] = it["importe"]  # cubierta, pero no es plata cobrada este año
 
     imputaciones = []
     a_favor = CERO
@@ -208,13 +228,21 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         tot["esperado"] += pp["esperado"]; tot["deuda"] += pp["deuda"]
         tot["adeudadas"] += pp["adeudadas"]; tot["matricula"] += pp["matricula"]
         meses_gral += [(m, pl["nombre"]) for m in pp["meses"]]
+        esperado_anual = sum((it["importe"] for it in items if it["plan"] == pl["clave"]), CERO)
+        cobrado = sum((it["pagado"] - it.get("prepago", CERO) for it in items if it["plan"] == pl["clave"]), CERO)
+        if pl is planes[0]:  # lo que fue a deuda anterior o quedó a favor se cuenta en el curso principal
+            cobrado += (deuda_ant - ant_saldo) + a_favor
+        completo = all(it["pagado"] >= it["importe"] for it in items if it["plan"] == pl["clave"])
+        est_plan = ("Moroso" if cobrado > 0 else "Sin pagos") if pp["deuda"] > 0 else ("Pagado" if completo else "Al día")
         cursos.append({"clave": pl["clave"], "nombre": pl["nombre"], "curso_id": pl.get("curso_id"),
+                       "etiqueta": etiqueta_curso(pl, alumno), "area": getattr(pl["curso"], "area", None),
+                       "esperado_anual": float(esperado_anual), "cobrado": float(cobrado), "completo": completo,
                        "principal": bool(pl.get("principal")), "mes_inicio": pl.get("mes_inicio") or MES_INICIO,
                        "cuota": float(pl["_cuota"]), "matricula": float(pl["_matricula"]), "n_cuotas": pl["_n"],
                        "esperado": float(pp["esperado"]), "deuda": float(pp["deuda"]), "cuotas_adeudadas": pp["adeudadas"],
                        "matricula_adeudada": float(pp["matricula"]), "meses_adeudados": [MESES[m - 1] for m in pp["meses"]],
                        "detalle_deuda": _detalle(pp["adeudadas"], pp["meses"], pp["matricula"]),
-                       "estado": "Al día" if pp["deuda"] <= 0 else "Con deuda", "proximo": pp["proximo"], "items": pp["items"]})
+                       "estado": est_plan, "proximo": pp["proximo"], "items": pp["items"]})
 
     if varios:
         detalle = " · ".join(f"{c['nombre']}: {c['detalle_deuda'][0].lower()}{c['detalle_deuda'][1:]}" for c in cursos if c["detalle_deuda"])
@@ -224,16 +252,17 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         meses_txt = cursos[0]["meses_adeudados"]
 
     if tot["deuda"] <= 0:
-        estado = "Al día"
+        estado = "Pagado" if all(c["completo"] for c in cursos) else "Al día"
     elif total_pagado <= 0:
         estado = "Sin pagos"
     else:
         estado = "Moroso"
+    estado = estado_con_anterior(estado, ant_saldo > 0, anio)
 
     principal = cursos[0]
     base.update(
         esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + ant_saldo), estado=estado,
-        deuda_anterior=float(ant_saldo), deuda_anterior_original=float(deuda_ant),
+        deuda_anterior=float(ant_saldo), deuda_anterior_original=float(deuda_ant), debe_anio_anterior=ant_saldo > 0,
         imputado_deuda_anterior=float(deuda_ant - ant_saldo),
         items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),
         meses_adeudados=meses_txt, detalle_deuda=detalle, proximo=proximo, saldo_a_favor=float(a_favor),

@@ -227,7 +227,8 @@ def main():
                 c = curso_de_fila[id(f)]
                 if c and c.id not in vistos:
                     vistos.add(c.id)
-                    db.add(AlumnoCurso(alumno_id=a.id, curso_id=c.id, anio=ANIO, mes_inicio=c.mes_inicio, principal=i == 0))
+                    db.add(AlumnoCurso(alumno_id=a.id, curso_id=c.id, anio=ANIO, mes_inicio=c.mes_inicio, principal=i == 0,
+                                       etiqueta=txt(f[5])[:30]))
 
     # ------------------------------------------------------------ pagos
     n_pagos, total = 0, Decimal("0")

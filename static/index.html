@@ -1126,6 +1126,8 @@
                     <select id="estado-f-estado" onchange="cargarEstado()">
                         <option value="">Todos los estados</option>
                         <option value="Al día">Al día</option>
+                        <option value="Pagado">Pagado (año completo)</option>
+                        <option value="debe-anterior">Al día pero debe el año anterior</option>
                         <option value="Moroso">Moroso</option>
                         <option value="Sin pagos">Sin pagos</option>
                         <option value="Becado">Becado</option>
@@ -1149,20 +1151,28 @@
             <!-- TAB: ESTADISTICAS -->
             <div id="cuotas-tab-stats" style="display:none">
                 <div class="toolbar">
-                    <button class="btn btn-outline" onclick="exportarEstadisticasPDF()"><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>
+                    <label for="st-periodo">Período</label>
+                    <select id="st-periodo" onchange="cargarStats()" aria-label="Período">
+                        <option value="">Todo el año</option>
+                    </select>
+                    <select id="st-area" onchange="cargarStats()" aria-label="Área"><option value="">Todas las áreas</option></select>
+                    <select id="st-nivel" onchange="cargarStats()" aria-label="Nivel"><option value="">Todos los niveles</option></select>
+                    <span style="flex:1"></span>
+                    <button class="btn btn-outline" onclick="exportarEstadisticasCSV()"><svg class="ic"><use href="#i-sheet"/></svg>Excel</button>
+                    <button class="btn btn-outline" onclick="exportarEstadisticasPDF()"><svg class="ic"><use href="#i-download"/></svg>PDF</button>
                 </div>
+                <p class="muted" id="st-explica" style="margin:-0.3rem 0 0.8rem"></p>
                 <div class="gasto-resumen" id="stats-kpis"></div>
+                <div class="st-estados" id="stats-estados"></div>
+                <div class="chart-card" style="margin-bottom:1.25rem"><h3>Cobranza por mes y por área</h3>
+                    <div class="chart-wrap" style="height:300px"><canvas id="chart-cuotas-mensual" aria-label="Gráfico: cobranza por mes y área"></canvas></div></div>
                 <div class="reportes-charts">
-                    <div class="chart-card"><h3>Cobranza mensual</h3><div class="chart-wrap"><canvas id="chart-cuotas-mensual"></canvas></div></div>
-                    <div class="chart-card"><h3>Cumplimiento por área</h3><div class="chart-wrap"><canvas id="chart-cuotas-area"></canvas></div></div>
+                    <div class="chart-card"><h3>% de cumplimiento por grupo</h3><div class="chart-wrap" id="st-wrap-cumpl"><canvas id="chart-cuotas-area" aria-label="Gráfico: cumplimiento por grupo"></canvas></div></div>
+                    <div class="chart-card"><h3>Cobrado vs. deuda por grupo</h3><div class="chart-wrap" id="st-wrap-cvd"><canvas id="chart-cuotas-cvd" aria-label="Gráfico: cobrado contra deuda por grupo"></canvas></div></div>
                 </div>
-                <h3 style="margin:1.2rem 0 .6rem">Por área / nivel / división</h3>
-                <div id="stats-tablas"></div>
-                <h3 style="margin:1.4rem 0 .6rem">Top morosos</h3>
-                <table id="tabla-morosos">
-                    <thead><tr><th>Legajo</th><th>Alumno</th><th>Curso</th><th>Área</th><th style="text-align:right">Deuda</th></tr></thead>
-                    <tbody id="body-morosos"></tbody>
-                </table>
+                <div class="chart-card" style="margin-bottom:1.25rem"><h3>Cobranza por área — desglose mensual</h3><div id="st-mensual"></div></div>
+                <div class="chart-card" style="margin-bottom:1.25rem"><h3>Detalle por curso</h3><div id="st-cursos"></div></div>
+                <div class="chart-card"><h3>Resumen agrupado por nivel y área</h3><div id="st-grupos"></div></div>
             </div>
 
             <!-- TAB: CURSOS -->

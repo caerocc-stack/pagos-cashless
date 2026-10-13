@@ -148,7 +148,7 @@ function renderChartCurso(datos) {
             datasets: [{
                 label: 'Consumo ($)',
                 data: top.map(d => d.total_consumo),
-                backgroundColor: (c) => (typeof chartGradient === 'function' ? chartGradient(c.chart.ctx, c.chart.chartArea, COLORES.sky) : COLORES.sky),
+                backgroundColor: COLORES.sky,  // barras horizontales: color parejo (el degradado es vertical)
                 hoverBackgroundColor: COLORES.sky,
                 maxBarThickness: 28,
             }],

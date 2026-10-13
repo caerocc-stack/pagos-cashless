@@ -150,7 +150,7 @@ async function elegirHijo(id) {
     } catch (err) { toast(err.message, 'error'); }
 }
 
-function claseEstado(e) { return /al día/i.test(e) ? 'ok' : /moroso|sin pagos/i.test(e) ? 'mal' : 'neutro'; }
+function claseEstado(e) { return /debe \d{4}/i.test(e) ? 'aviso' : /al día|pagado/i.test(e) ? 'ok' : /moroso|sin pagos/i.test(e) ? 'mal' : 'neutro'; }
 
 function renderKpis() {
     const c = datosHijo.cuotas, t = datosHijo.tarjeta;
