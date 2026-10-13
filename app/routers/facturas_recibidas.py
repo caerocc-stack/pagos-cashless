@@ -140,7 +140,8 @@ async def recibir_factura(request: Request, archivo: UploadFile = File(...), env
             fr.ruta_storage = subir_privado(contenido)
         else:
             fr.contenido = contenido
-    except ValueError:
+    except ValueError as e:
+        print("ERROR guardando factura en Storage:", e, flush=True)
         raise HTTPException(503, "No pudimos guardar el archivo en este momento. Probá de nuevo en unos minutos.")
     db.add(fr)
     db.flush()
