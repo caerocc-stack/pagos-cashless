@@ -1151,7 +1151,7 @@
             <!-- TAB: ESTADISTICAS -->
             <div id="cuotas-tab-stats" style="display:none">
                 <div class="toolbar">
-                    <label for="st-periodo">Período</label>
+                    <label for="st-periodo">Ver</label>
                     <select id="st-periodo" onchange="cargarStats()" aria-label="Período">
                         <option value="">Todo el año</option>
                     </select>
@@ -1170,7 +1170,12 @@
                     <div class="chart-card"><h3>% de cumplimiento por grupo</h3><div class="chart-wrap" id="st-wrap-cumpl"><canvas id="chart-cuotas-area" aria-label="Gráfico: cumplimiento por grupo"></canvas></div></div>
                     <div class="chart-card"><h3>Cobrado vs. deuda por grupo</h3><div class="chart-wrap" id="st-wrap-cvd"><canvas id="chart-cuotas-cvd" aria-label="Gráfico: cobrado contra deuda por grupo"></canvas></div></div>
                 </div>
-                <div class="chart-card" style="margin-bottom:1.25rem"><h3>Cobranza por área — desglose mensual</h3><div id="st-mensual"></div></div>
+                <div class="chart-card" style="margin-bottom:1.25rem">
+                    <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.6rem">
+                        <h3 style="margin:0">Cobranza por área — desglose mensual</h3><span style="flex:1"></span>
+                        <button class="btn btn-primary btn-sm" onclick="exportarDesglosePDF()"><svg class="ic"><use href="#i-download"/></svg>PDF para compartir</button>
+                    </div>
+                    <div id="st-mensual"></div></div>
                 <div class="chart-card" style="margin-bottom:1.25rem"><h3>Detalle por curso</h3><div id="st-cursos"></div></div>
                 <div class="chart-card"><h3>Resumen agrupado por nivel y área</h3><div id="st-grupos"></div></div>
             </div>

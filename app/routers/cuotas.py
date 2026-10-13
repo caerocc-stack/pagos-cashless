@@ -392,9 +392,9 @@ def estado_alumno(alumno_id: int, anio: int | None = None, db: Session = Depends
 @router.get("/estadisticas")
 def estadisticas(anio: int | None = None, mes: int | None = None, area: str | None = None, nivel: str | None = None,
                  db: Session = Depends(get_db)):
-    """Comparativa de cursos (como la hoja COMPARATIVA CURSOS de la planilla).
-    Sin `mes`: el año completo (esperado anual). Con `mes`: lo que vencía y lo que se cobró en ese mes,
-    con los estados al cierre de ese mes."""
+    """Comparativa de cursos (como la hoja COMPARATIVA CURSOS de la planilla), siempre A LA FECHA:
+    lo esperado son las cuotas ya vencidas (al día de hoy, o al cierre del `mes` elegido), así el
+    cumplimiento compara lo pagado con lo que ya se tenía que pagar. En diciembre equivale al anual."""
     anio = anio or ahora_ar().year
     if mes is not None and not 1 <= mes <= 12:
         raise HTTPException(400, "Mes inválido")
@@ -410,16 +410,19 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
     for a in db.query(Alumno).filter(Alumno.activo == True).all():  # noqa: E712
         planes = planes_de(a, cursos_cfg, extras.get(a.id, []))
         ps = pagos.get(a.id, [])
+        if mes:  # la foto al cierre del mes elegido solo considera lo pagado hasta ese mes
+            ps = [p for p in ps if (p.fecha_pago or p.fecha).month <= mes]
         info = estado_cuenta(a, planes, ps, anio, hoy=hoy, mes_corte=mes)
         becado = info["estado"] in ("Becado", "Exento") or (a.condicion or "").lower() in ("becado", "exento")
         for i, c in enumerate(info["cursos"]):
-            if mes:
-                plan_de_pago = lambda p: next((x["clave"] for x in info["cursos"] if x.get("curso_id") and x["curso_id"] == p.curso_id),
-                                              info["cursos"][0]["clave"])
-                cobrado = sum(float(p.importe) for p in ps if (p.fecha_pago or p.fecha).month == mes and plan_de_pago(p) == c["clave"])
-                esperado = 0.0 if becado else sum(it["importe"] for it in c.get("items", []) if it["mes"] == mes)
-            else:
-                cobrado, esperado = c["cobrado"], (0.0 if becado else c["esperado_anual"])
+            # Todo "a la fecha": lo esperado son las cuotas ya vencidas (al corte), no el total del año
+            plan_de_pago = lambda p: next((x["clave"] for x in info["cursos"] if x.get("curso_id") and x["curso_id"] == p.curso_id),
+                                          info["cursos"][0]["clave"])
+            hasta = mes or 12
+            cobrado = sum(float(p.importe) for p in ps if (p.fecha_pago or p.fecha).month <= hasta and plan_de_pago(p) == c["clave"])
+            cobrado_mes = sum(float(p.importe) for p in ps if mes and (p.fecha_pago or p.fecha).month == mes and plan_de_pago(p) == c["clave"])
+            esperado = 0.0 if becado else c.get("esperado", 0.0)
+            deuda_vencida = 0.0 if becado else c.get("deuda", 0.0)
             etq = c.get("etiqueta") or a.curso or "—"
             ar = (a.area if c.get("principal") or len(info["cursos"]) == 1 else c.get("area")) or c.get("area") or "Sin área"
             m = re.match(r"\s*(\d+)\s*°", etq)
@@ -429,7 +432,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
                 estado = estado_con_anterior(estado, info.get("debe_anio_anterior"), anio)
             filas.append({"curso": etq, "area": ar, "nivel": niv,
                           "grupo": f"Todos los {niv} — {ar}" if ar in ESCUELA and niv != "—" else f"{etq} — {ar}",
-                          "estado": estado, "cobrado": cobrado, "esperado": esperado, "deuda_vencida": c.get("deuda", 0.0),
+                          "estado": estado, "cobrado": cobrado, "cobrado_mes": cobrado_mes, "esperado": esperado, "deuda_vencida": deuda_vencida,
                           "debe_anterior": bool(info.get("debe_anio_anterior")) and i == 0,
                           "deuda_anterior": info.get("deuda_anterior", 0.0) if i == 0 else 0.0})
 
@@ -446,7 +449,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
             k = clave_fn(f)
             d = g.setdefault(k, {"clave": k[0] if isinstance(k, tuple) else k, "area": f["area"], "nivel": f["nivel"],
                                  "alumnos": 0, "becados": 0, "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0,
-                                 "moroso": 0, "sin_pagos": 0, "cobrado": 0.0, "esperado": 0.0, "deuda_vencida": 0.0,
+                                 "moroso": 0, "sin_pagos": 0, "cobrado": 0.0, "cobrado_mes": 0.0, "esperado": 0.0, "deuda_vencida": 0.0,
                                  "con_deuda_anterior": 0, "deuda_anterior": 0.0})
             d["alumnos"] += 1
             e = f["estado"]
@@ -455,21 +458,23 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
             if clave_estado:
                 d[clave_estado] += 1
             d["cobrado"] += f["cobrado"]
+            d["cobrado_mes"] += f["cobrado_mes"]
             d["esperado"] += f["esperado"]
             d["deuda_vencida"] += f["deuda_vencida"]
             if f["debe_anterior"]:
                 d["con_deuda_anterior"] += 1
                 d["deuda_anterior"] += f["deuda_anterior"]
         for d in g.values():
-            d["deuda"] = max(0.0, d["esperado"] - d["cobrado"])
-            d["cumplimiento"] = round(d["cobrado"] / d["esperado"] * 100, 1) if d["esperado"] else (100.0 if d["cobrado"] else 0.0)
+            # Deuda a la fecha = cuotas vencidas sin pagar; cumplimiento = parte de lo vencido que ya se pagó
+            d["deuda"] = d["deuda_vencida"]
+            d["cumplimiento"] = round((d["esperado"] - d["deuda"]) / d["esperado"] * 100, 1) if d["esperado"] else 100.0
         return sorted(g.values(), key=orden_fn)
 
     orden_area = lambda d: (ORDEN_AREAS.index(d["area"]) if d["area"] in ORDEN_AREAS else 99, d["clave"])
     por_curso = agrupar(lambda f: (f["curso"], f["area"]), orden_area)
     por_grupo = agrupar(lambda f: f["grupo"], orden_area)
     tot = agrupar(lambda f: "Total", lambda d: 0)
-    total = tot[0] if tot else {"alumnos": 0, "cobrado": 0.0, "esperado": 0.0, "deuda": 0.0, "cumplimiento": 0.0,
+    total = tot[0] if tot else {"alumnos": 0, "cobrado": 0.0, "cobrado_mes": 0.0, "esperado": 0.0, "deuda": 0.0, "cumplimiento": 0.0,
                                 "deuda_vencida": 0.0, "con_deuda_anterior": 0, "deuda_anterior": 0.0, "becados": 0,
                                 "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0, "moroso": 0, "sin_pagos": 0}
 

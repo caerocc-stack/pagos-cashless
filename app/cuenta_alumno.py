@@ -252,7 +252,7 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         meses_txt = cursos[0]["meses_adeudados"]
 
     if tot["deuda"] <= 0:
-        estado = "Pagado" if all(c["completo"] for c in cursos) else "Al día"
+        estado = "Pagado" if all(c["completo"] for c in cursos) else "Al día"  # Pagado = año (o curso) completo
     elif total_pagado <= 0:
         estado = "Sin pagos"
     else:
