@@ -5,7 +5,7 @@ from decimal import Decimal
 from datetime import date
 
 import xlrd
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, extract
@@ -15,6 +15,8 @@ from app.models.banco import MovimientoBanco, ExtractoBancario, CONCEPTOS_CONCIL
 from app.models.gasto import Gasto
 from app.models.proveedor import Proveedor
 from app.schemas.banco import BancoMovResponse
+from app.auth import requiere_admin
+from app.seguridad import auditar
 from app import extracto_roela
 
 router = APIRouter(prefix="/api/conciliacion", tags=["Conciliacion"])
@@ -226,6 +228,7 @@ def _dto_extracto(e: ExtractoBancario) -> dict:
         "saldo_final": float(e.saldo_final) if e.saldo_final is not None else None,
         "cierra": e.cierra, "movimientos": e.movimientos,
         "resumen": json.loads(e.resumen or "{}"), "comisiones_gasto_id": e.comisiones_gasto_id,
+        "creado": e.created_at.strftime("%Y-%m-%dT%H:%M:%S") if e.created_at else None,
     }
 
 
@@ -256,6 +259,72 @@ def registrar_comisiones(ext_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "mensaje": f"Gasto bancario de {periodo} registrado por ${total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
             "gasto_id": g.id}
+
+
+# ---------------------------------------------------------------- eliminar extractos (p. ej. los de prueba)
+
+def _borrar_movimientos(db: Session, movs: list, extractos: list) -> dict:
+    """Borra movimientos y extractos. Las facturas conciliadas vuelven a quedar pendientes; los gastos que se
+    habían creado DESDE el extracto (pagos sin factura y comisiones bancarias) se borran."""
+    from app.routers.gastos import borrar_gasto
+    liberadas = borrados = 0
+    for e in extractos:
+        if e.comisiones_gasto_id:
+            g = db.get(Gasto, e.comisiones_gasto_id)
+            e.comisiones_gasto_id = None
+            db.flush()
+            if g:
+                borrar_gasto(db, g)
+                borrados += 1
+    for mov in movs:
+        g = db.get(Gasto, mov.gasto_id) if mov.gasto_id else None
+        mov.gasto_id = None
+        db.flush()
+        if g:
+            if (g.notas or "").startswith("Creado desde el extracto"):
+                borrar_gasto(db, g)
+                borrados += 1
+            else:
+                g.conciliado = False
+                if not g.caja_mov_id:  # el pago lo marcaba el banco: vuelve a quedar pendiente
+                    g.forma_pago, g.fecha_pago = None, None
+                liberadas += 1
+        db.delete(mov)
+    db.flush()
+    for e in extractos:
+        db.delete(e)
+    return {"movimientos": len(movs), "extractos": len(extractos), "facturas_liberadas": liberadas, "gastos_borrados": borrados}
+
+
+def _mensaje_borrado(r: dict) -> str:
+    partes = [f"{r['extractos']} extracto(s) y {r['movimientos']} movimiento(s) eliminados"]
+    if r["facturas_liberadas"]:
+        partes.append(f"{r['facturas_liberadas']} factura(s) volvieron a quedar sin conciliar")
+    if r["gastos_borrados"]:
+        partes.append(f"{r['gastos_borrados']} gasto(s) creados desde el extracto se borraron")
+    return " · ".join(partes)
+
+
+@router.delete("/extractos/{ext_id}")
+def eliminar_extracto(ext_id: int, request: Request, db: Session = Depends(get_db), admin=Depends(requiere_admin)):
+    e = db.get(ExtractoBancario, ext_id)
+    if not e:
+        raise HTTPException(404, "Extracto no encontrado")
+    movs = db.query(MovimientoBanco).filter(MovimientoBanco.extracto_id == e.id).all()
+    nombre = e.archivo or f"#{e.id}"
+    r = _borrar_movimientos(db, movs, [e])
+    auditar(db, "extracto_eliminado", admin["sub"], f"{nombre}: {r['movimientos']} movimientos", request)
+    db.commit()
+    return {"ok": True, **r, "mensaje": _mensaje_borrado(r)}
+
+
+@router.delete("/extractos")
+def eliminar_todos_los_extractos(request: Request, db: Session = Depends(get_db), admin=Depends(requiere_admin)):
+    """Deja la conciliación vacía: todos los extractos y todos los movimientos del banco."""
+    r = _borrar_movimientos(db, db.query(MovimientoBanco).all(), db.query(ExtractoBancario).all())
+    auditar(db, "extractos_eliminados", admin["sub"], f"{r['extractos']} extractos, {r['movimientos']} movimientos", request)
+    db.commit()
+    return {"ok": True, **r, "mensaje": _mensaje_borrado(r)}
 
 
 # ---------------------------------------------------------------- listado y acciones

@@ -789,3 +789,6 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 button.st-estado { font: inherit; color: inherit; text-align: left; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
 button.st-estado:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 button.st-estado:focus-visible { outline: 3px solid var(--primary-soft); outline-offset: 2px; }
+
+.extractos-lista { margin-top: 0.9rem; }
+.extractos-lista-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }

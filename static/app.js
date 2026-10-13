@@ -2672,7 +2672,40 @@ async function cargarPanelExtracto() {
                        <button class="btn btn-sm btn-primary" onclick="registrarComisiones(${e.id})">Registrarlos como un gasto bancario</button>`}
             </div>` : ''}
         </div>`;
+        cont.innerHTML += htmlListaExtractos(lista);
     } catch (err) { cont.innerHTML = ''; }
+}
+
+// Lista de extractos importados con opción de eliminarlos (p. ej. los subidos de prueba)
+function htmlListaExtractos(lista) {
+    const esAdmin = usuarioActual.rol === 'admin';
+    return `<div class="card extractos-lista">
+        <div class="extractos-lista-head"><h3 style="margin:0">Extractos importados (${lista.length})</h3><span style="flex:1"></span>
+            ${esAdmin ? `<button class="btn btn-sm btn-danger" onclick="eliminarTodosExtractos()"><svg class="ic"><use href="#i-trash"/></svg>Eliminar todos los extractos</button>` : ''}</div>
+        <div class="tabla-wrap"><table><thead><tr><th>Período</th><th>Archivo</th><th class="num">Movimientos</th><th>Importado</th><th></th></tr></thead><tbody>
+        ${lista.map(e => `<tr><td><b>${fmtFecha(e.desde)} al ${fmtFecha(e.hasta)}</b></td><td>${escapeHtml(e.archivo || '')}</td>
+            <td class="num">${e.movimientos}</td><td>${e.creado ? fmtFechaHora(e.creado) : ''}</td>
+            <td>${esAdmin ? `<button class="btn btn-sm btn-ghost" onclick="eliminarExtracto(${e.id}, '${escapeHtml((e.archivo || '').replace(/'/g, ''))}')">Eliminar</button>` : ''}</td></tr>`).join('')}
+        </tbody></table></div></div>`;
+}
+
+const AVISO_BORRAR_EXTRACTO = 'Se borran los movimientos del banco. Las facturas que estaban conciliadas con ellos vuelven a quedar pendientes, y los gastos que se crearon desde el extracto (comisiones bancarias y pagos sin factura) se borran. No se puede deshacer.';
+
+async function eliminarExtracto(id, archivo) {
+    if (!confirm(`¿Eliminar el extracto ${archivo || ''}?
+
+${AVISO_BORRAR_EXTRACTO}`)) return;
+    try { const r = await api(`/api/conciliacion/extractos/${id}`, { method: 'DELETE' }); toast(r.mensaje); cargarConciliacion(); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+async function eliminarTodosExtractos() {
+    if (!confirm(`¿Eliminar TODOS los extractos bancarios importados?
+
+${AVISO_BORRAR_EXTRACTO}`)) return;
+    if (prompt('Para confirmar escribí BORRAR') !== 'BORRAR') return toast('No se borró nada', 'error');
+    try { const r = await api('/api/conciliacion/extractos', { method: 'DELETE' }); toast(r.mensaje); cargarConciliacion(); }
+    catch (e) { toast(e.message, 'error'); }
 }
 
 async function registrarComisiones(id) {
