@@ -1713,6 +1713,16 @@ async function eliminarProveedor(id) {
         toast(res.mensaje);
         cargarProveedores();
     } catch (err) {
+        if (/factura/.test(err.message)) {  // tiene facturas: se ofrece borrar todo junto
+            if (!confirm(err.message + ' ¿Eliminar el proveedor y TODAS sus facturas? Los pagos en efectivo que el sistema anotó en el libro de caja también se borran. No se puede deshacer.')) return;
+            try {
+                const res = await api(`/api/proveedores/${id}?con_facturas=true`, { method: 'DELETE' });
+                toast(res.mensaje);
+                proveedoresCache = [];
+                cargarProveedores();
+            } catch (e2) { toast(e2.message, 'error'); }
+            return;
+        }
         toast(err.message, 'error');
     }
 }
@@ -2316,7 +2326,8 @@ async function guardarGasto(e) {
 
 async function eliminarGasto(id) {
     const g = gastosCache.find(x => x.id === id);
-    if (!confirm(`¿Eliminar este gasto${g && g.razon_social ? ' de ' + g.razon_social : ''}?`)) return;
+    const efectivo = g && g.caja_mov_id ? ' También se borra el egreso que se anotó en el libro de caja al pagarla en efectivo.' : '';
+    if (!confirm(`¿Eliminar esta factura${g && g.razon_social ? ' de ' + g.razon_social : ''}${g ? ' por ' + fmtMoneda(g.importe) : ''}?${efectivo}`)) return;
     try {
         const res = await api(`/api/gastos/${id}`, { method: 'DELETE' });
         toast(res.mensaje);

@@ -510,11 +510,18 @@ def desvincular_pago(gasto_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "mensaje": "Pago desvinculado"}
 
 
-@router.delete("/{gasto_id}")
-def eliminar(gasto_id: int, db: Session = Depends(get_db)):
-    g = db.get(Gasto, gasto_id)
-    if not g:
-        raise HTTPException(404, "Gasto no encontrado")
+def borrar_gasto(db: Session, g: Gasto) -> bool:
+    """Borra el gasto liberando todo lo que apunta a él. Si se pagó en efectivo con un egreso de caja que
+    creó el sistema solo para esta factura, ese egreso también se borra. Devuelve si borró un egreso."""
+    caja_borrada = False
+    if g.caja_mov_id:
+        c = db.get(MovimientoCaja, g.caja_mov_id)
+        otros = db.query(Gasto).filter(Gasto.caja_mov_id == g.caja_mov_id, Gasto.id != g.id).count()
+        g.caja_mov_id = None
+        db.flush()
+        if c and not otros and c.tipo_movimiento == "Pago proveedor":
+            db.delete(c)
+            caja_borrada = True
     # Liberar lo que apunta a este gasto (si no, la base rechaza el borrado)
     for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).all():
         b.gasto_id, b.conciliado, b.conciliado_manual = None, False, False
@@ -524,10 +531,20 @@ def eliminar(gasto_id: int, db: Session = Depends(get_db)):
         nc.nc_de_id = None
     from app.models.factura_recibida import FacturaRecibida
     for fr in db.query(FacturaRecibida).filter(FacturaRecibida.gasto_id == g.id).all():
-        fr.gasto_id, fr.estado = None, "revisar"
+        # se eliminó a propósito: queda descartada (no vuelve a la bandeja para cargar)
+        fr.gasto_id, fr.estado, fr.motivo = None, "descartada", f"Se eliminó el gasto #{g.id}"
     db.delete(g)
+    return caja_borrada
+
+
+@router.delete("/{gasto_id}")
+def eliminar(gasto_id: int, db: Session = Depends(get_db)):
+    g = db.get(Gasto, gasto_id)
+    if not g:
+        raise HTTPException(404, "Gasto no encontrado")
+    caja = borrar_gasto(db, g)
     db.commit()
-    return {"ok": True, "mensaje": "Gasto eliminado"}
+    return {"ok": True, "mensaje": "Factura eliminada" + (" (y su egreso en el libro de caja)" if caja else "")}
 
 
 @router.post("/{gasto_id}/revisado")

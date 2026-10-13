@@ -68,10 +68,22 @@ def actualizar(prov_id: int, data: ProveedorUpdate, db: Session = Depends(get_db
 
 
 @router.delete("/{prov_id}")
-def eliminar(prov_id: int, db: Session = Depends(get_db)):
+def eliminar(prov_id: int, con_facturas: bool = False, db: Session = Depends(get_db)):
+    """Si el proveedor tiene facturas, avisa (409) y solo lo borra junto con ellas si se pide `con_facturas`."""
+    from app.models.gasto import Gasto
+    from app.routers.gastos import borrar_gasto
     p = db.get(Proveedor, prov_id)
     if not p:
         raise HTTPException(404, "Proveedor no encontrado")
+    facturas = db.query(Gasto).filter(Gasto.proveedor_id == p.id).all()
+    if facturas and not con_facturas:
+        total = sum(float(g.importe) for g in facturas)
+        raise HTTPException(409, f"{p.razon_social} tiene {len(facturas)} factura(s) cargada(s) por ${total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                                 + ". Para eliminarlo hay que eliminar también sus facturas.")
+    for g in facturas:
+        borrar_gasto(db, g)
+    db.flush()
     db.delete(p)
     db.commit()
-    return {"ok": True, "mensaje": f"Proveedor {p.razon_social} eliminado"}
+    extra = f" junto con {len(facturas)} factura(s)" if facturas else ""
+    return {"ok": True, "mensaje": f"Proveedor {p.razon_social} eliminado{extra}"}
