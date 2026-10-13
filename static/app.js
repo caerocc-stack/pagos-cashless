@@ -3184,11 +3184,13 @@ async function cargarStats() {
             <div class="gasto-kpi"><div class="gasto-kpi-label">% Cumplimiento</div><div class="gasto-kpi-valor">${pct(k.cumplimiento)}</div>
                 <div class="st-progreso"><span style="width:${Math.min(100, k.cumplimiento)}%"></span></div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Deben el año anterior</div><div class="gasto-kpi-valor" style="color:var(--warning)">${k.con_deuda_anterior}</div><div class="gasto-kpi-sub">${fmtMoneda(k.deuda_anterior)} pendientes</div></div>`;
-        const est = [['Al día', k.al_dia, 'ok', 'al día y sin deuda anterior'], ['Pagado', k.pagado, 'ok', 'año (o curso) completo pagado'],
-            [`Al día · debe ${s.anio - 1}`, k.al_dia_debe_anterior, 'aviso', 'al día con el año, pero debe el anterior'],
-            ['Moroso', k.moroso, 'mal', 'tiene cuotas vencidas'], ['Sin pagos', k.sin_pagos, 'mal', 'no pagó nada este año'], ['Becados', k.becados, 'neutro', '']];
-        document.getElementById('stats-estados').innerHTML = est.map(([n, v, c, t]) =>
-            `<div class="st-estado st-${c}" title="${escapeHtml(t)}"><b>${v}</b><span>${escapeHtml(n)}</span><small>${k.alumnos ? pct(v / k.alumnos * 100, 0) : '0%'}</small></div>`).join('');
+        const est = [['Al día', k.al_dia, 'ok', 'al día y sin deuda anterior', 'Al día'], ['Pagado', k.pagado, 'ok', 'año (o curso) completo pagado', 'Pagado'],
+            [`Al día · debe ${s.anio - 1}`, k.al_dia_debe_anterior, 'aviso', 'al día con el año, pero debe el anterior', 'debe-anterior'],
+            ['Moroso', k.moroso, 'mal', 'tiene cuotas vencidas', 'Moroso'], ['Sin pagos', k.sin_pagos, 'mal', 'no pagó nada este año', 'Sin pagos'],
+            ['Becados', k.becados, 'neutro', 'becados (no pagan cuota)', 'Becado']];
+        document.getElementById('stats-estados').innerHTML = est.map(([n, v, c, t, filtro]) =>
+            `<button type="button" class="st-estado st-${c}" title="Ver la lista: ${escapeHtml(t)}" onclick="verAlumnosConEstado('${filtro}')">
+                <b>${v}</b><span>${escapeHtml(n)}</span><small>${k.alumnos ? pct(v / k.alumnos * 100, 0) : '0%'} · ver lista →</small></button>`).join('');
 
         // Desglose mensual por área ($ y % del mes)
         const m = s.mensual;
@@ -5010,4 +5012,16 @@ async function descartarRecibida(id) {
     if (!confirm('¿Descartar esta factura? No se carga como gasto (el PDF queda guardado).')) return;
     try { await api(`/api/facturas-recibidas/${id}/descartar`, { method: 'POST' }); toast('Factura descartada'); cargarRecibidas(); }
     catch (e) { toast(e.message, 'error'); }
+}
+
+
+// Desde las estadísticas: abre el estado de cuenta filtrado por ese estado (y el área elegida)
+function verAlumnosConEstado(filtro) {
+    document.getElementById('estado-f-estado').value = filtro;
+    const area = document.getElementById('st-area').value;
+    const selArea = document.getElementById('estado-f-area');
+    if (selArea) selArea.value = [...selArea.options].some(o => o.value === area) ? area : '';
+    document.getElementById('buscar-estado').value = '';
+    cuotaTab('estado');
+    document.getElementById('tabla-estado').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
