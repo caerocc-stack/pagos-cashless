@@ -100,6 +100,41 @@ def leer_qr_afip(texto: str | None) -> dict | None:
         return None
 
 
+def juntar_espaciado(texto: str) -> str:
+    """Algunos PDF guardan el texto con espacios entre letras ('F A C T U R A  B 0 0 0 7'): se juntan."""
+    return re.sub(r"(?<!\S)(?:\S ){3,}\S(?!\S)", lambda m: m.group().replace(" ", ""), texto)
+
+
+EMPRESA = re.compile(r"\b(S\.?\s?A\.?\s?S?\.?|S\.?\s?R\.?\s?L\.?|S\.?\s?A\.?\s?C\.?\s?I\.?|S\.?\s?H\.?|COOP\w*|S\.?\s?C\.?)\s*$", re.I)
+NO_NOMBRE = re.compile(r"ORIGINAL|DUPLICADO|TRIPLICADO|FACTURA|TIQUE|COMPROBANTE|^COD\b|C[OÓ]DIGO|C\.?U\.?I\.?T|IVA|DOMICILIO|INICIO|"
+                       r"ASOC|PADRES|APAI|INAC|TOTAL|FECHA|P[AÁ]GINA|PUNTO DE VENTA|RESPONSABLE|MONOTRIBUTO|CONSUMIDOR|"
+                       r"LOCALIDAD|DIRECCI[OÓ]N|CLIENTE|VENDEDOR|COND\.|REL\.|SE[NÑ]OR|REMITO|:", re.I)
+
+
+def nombre_valido(s: str | None) -> bool:
+    """Descarta rótulos tomados como razón social ('COD 06', 'FACTURA B 0007-…', números)."""
+    s = (s or "").strip()
+    return len(s) >= 4 and sum(c.isalpha() for c in s) >= 4 and not NO_NOMBRE.search(s) and not re.search(r"\d{4,}", s)
+
+
+def buscar_razon_social(plano: str) -> str | None:
+    m = re.search(r"(?<!/ )Raz[oó]n Social:\s*(.+?)(?:\s+Fecha de Emisi|\s+CUIT|\n|$)", plano)
+    if m and nombre_valido(m.group(1)) and not re.search(r"ASOC|PADRES", m.group(1), re.I):
+        return m.group(1).strip()[:160]
+    lineas = [l.strip(" |·-") for l in plano.splitlines()[:15]]
+    for l in lineas:  # 1) nombre de fantasía "… de Nochetti Silvia Beatriz": el titular
+        m = re.search(r"\bde\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,4})(?=\s+[A-ZÁÉÍÓÚÑ]{3,}|\s*$)", l)
+        if m and nombre_valido(m.group(1)):
+            return m.group(1).upper()[:160]
+    for l in lineas:  # 2) la que termina como nombre de empresa (S.A., S.R.L., …)
+        if EMPRESA.search(l) and nombre_valido(l):
+            return l[:160]
+    for l in lineas:  # 2) primera línea en mayúsculas que no sea un rótulo
+        if len(l) > 5 and l.upper() == l and nombre_valido(l):
+            return l[:160]
+    return None
+
+
 def _texto_pdf(contenido: bytes) -> tuple[str, list[str]]:
     """Texto de la primera página (las facturas AFIP repiten ORIGINAL/DUPLICADO/TRIPLICADO) y enlaces."""
     import pdfplumber
@@ -107,7 +142,14 @@ def _texto_pdf(contenido: bytes) -> tuple[str, list[str]]:
         if not pdf.pages:
             return "", []
         p = pdf.pages[0]
-        return p.extract_text() or "", [h.get("uri") or "" for h in (p.hyperlinks or [])]
+        texto = p.extract_text() or ""
+        tokens = texto.split()
+        if tokens and sum(len(t) <= 2 for t in tokens) / len(tokens) > 0.45:
+            # PDF de letra de ancho fijo con espacios sueltos ("N o ch et t i"): se rearma con la posición de
+            # cada letra, sin los espacios, y se separan las palabras por la distancia real entre letras
+            sin_espacios = p.filter(lambda o: o.get("object_type") != "char" or (o.get("text") or "").strip())
+            texto = sin_espacios.extract_text(x_tolerance=1.5) or texto
+        return texto, [h.get("uri") or "" for h in (p.hyperlinks or [])]
 
 
 def leer_factura(contenido: bytes, qr_texto: str | None = None, cuit_apai: str = "") -> dict:
@@ -115,7 +157,7 @@ def leer_factura(contenido: bytes, qr_texto: str | None = None, cuit_apai: str =
     qr = leer_qr_afip(qr_texto) or next((leer_qr_afip(u) for u in enlaces if leer_qr_afip(u)), None)
     apai = digitos(cuit_apai)
     d: dict = {"fuente": [], "texto": bool(texto.strip())}
-    plano = re.sub(r"[ \t]+", " ", texto)
+    plano = juntar_espaciado(re.sub(r"[ \t]+", " ", texto))
 
     # --- Texto
     if texto.strip():
@@ -126,25 +168,25 @@ def leer_factura(contenido: bytes, qr_texto: str | None = None, cuit_apai: str =
         if emisores:
             d["cuit"] = emisores[0]
         d["receptor_es_apai"] = bool(apai) and apai in cuits
-        m = re.search(r"(?<!/ )Raz[oó]n Social:\s*(.+?)(?:\s+Fecha de Emisi|\s+CUIT|\n|$)", plano)
-        if m:
-            d["razon_social"] = m.group(1).strip()[:160]
-        else:  # otros sistemas: primera línea en mayúsculas que no sea un rótulo
-            for linea in plano.splitlines()[:8]:
-                l = linea.strip()
-                if len(l) > 5 and l.upper() == l and not re.search(r"ORIGINAL|DUPLICADO|FACTURA|COD\.|^[ABCM]$", l):
-                    d["razon_social"] = l[:160]
-                    break
+        rs = buscar_razon_social(plano)
+        if rs:
+            d["razon_social"] = rs
         m = re.search(r"Punto de Venta:?\s*(\d{1,5})\s*Comp\.?\s*Nro:?\s*(\d{1,8})", plano, re.I) \
             or re.search(r"\b(\d{4,5})\s*-\s*(\d{8})\b", plano)
         if m:
             d["punto_venta"], d["numero"] = str(int(m.group(1))).zfill(4), str(int(m.group(2))).zfill(8)
-        m = re.search(r"Fecha de Emisi[oó]n:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", plano, re.I) or re.search(r"Fecha:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", plano, re.I)
+        m = re.search(r"Fecha de Emisi[oó]n:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", plano, re.I) or re.search(r"Fecha:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", plano, re.I)
         if m:
             d["fecha"] = _fecha(m.group(1))
-        m = re.search(r"Importe Total:?\s*\$?\s*([\d.,]+)", plano, re.I) or re.search(r"\bTOTAL:?\s*\$?\s*([\d.,]+)", plano, re.I)
+        # el total, en el mismo renglón del rótulo (el encabezado de la tabla "… TOTAL" no cuenta)
+        m = re.search(r"Importe Total:?[ \t]*\$?[ \t]*(\d[\d.,]*)", plano, re.I)
         if m:
             d["importe"] = _importe(m.group(1))
+        else:
+            from app.ocr_factura import buscar_importe
+            imp, _ = buscar_importe(plano)
+            if imp:
+                d["importe"] = imp
         m = re.search(r"Importe Neto Gravado:?\s*\$?\s*([\d.,]+)", plano, re.I)
         if m:
             d["neto"] = _importe(m.group(1))
@@ -164,7 +206,7 @@ def leer_factura(contenido: bytes, qr_texto: str | None = None, cuit_apai: str =
         elif cod in TIPOS_AFIP:
             d["tipo"], d["es_nc"] = TIPOS_AFIP[cod], cod in NC_AFIP
         else:
-            m = re.search(r"^\s*([ABCM])\s*$", plano, re.M)
+            m = re.search(r"^\s*([ABCM])\s*$", plano, re.M) or re.search(r"\bFACTURA\s+([ABCM])\b", plano)
             if m and re.search(r"FACTURA", plano, re.I):
                 d["tipo"] = "Factura A" if m.group(1) == "M" else f"Factura {m.group(1)}"
         m = re.search(r"Condici[oó]n frente al IVA:\s*(.+?)(?:\s+Fecha|\s+Domicilio|\n|$)", plano)

@@ -195,8 +195,12 @@ def buscar_importe(texto: str) -> tuple[Decimal | None, str]:
     todos = _montos_texto(t)
     por_iva = _total_por_iva(t, todos)
     if not montos:
-        m = re.search(r"\bTotal\s*\|?\s*\n([^\n]*)", t, re.I)  # rótulos en una línea, valores en la siguiente
-        valores = _montos_texto(m.group(1)) if m else []
+        # rótulos en una línea y valores en la siguiente ("SUBTOTAL IMPUESTO TOTAL $" / "143600.00 143600.00"):
+        # el último renglón así que tenga solo montos (el encabezado de la tabla de productos no cuenta)
+        valores = []
+        for m in re.finditer(r"\bTOTAL\b[^\n]*\n([^\n]*)", t, re.I):
+            if _montos_texto(m.group(1)) and not re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", m.group(1)):  # sin palabras: no es un renglón de productos
+                valores = _montos_texto(m.group(1)) or valores
         if valores:
             return valores[-1], "ocr"
         if por_iva:
