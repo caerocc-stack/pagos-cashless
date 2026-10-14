@@ -584,6 +584,9 @@ def desvincular_pago(gasto_id: int, db: Session = Depends(get_db)):
         b.gasto_id = None
         b.conciliado = False
         b.conciliado_manual = False
+    if g.banco_mov_id:  # pagada vía un encargado: la transferencia vuelve a tener saldo a rendir
+        from app import rendiciones
+        rendiciones.desvincular(db, g)
     g.conciliado = False
     g.caja_mov_id = None
     g.forma_pago = None
@@ -605,6 +608,9 @@ def borrar_gasto(db: Session, g: Gasto) -> bool:
             db.delete(c)
             caja_borrada = True
     # Liberar lo que apunta a este gasto (si no, la base rechaza el borrado)
+    if g.banco_mov_id:
+        from app import rendiciones
+        rendiciones.desvincular(db, g)
     for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).all():
         b.gasto_id, b.conciliado, b.conciliado_manual = None, False, False
     for e in db.query(ExtractoBancario).filter(ExtractoBancario.comisiones_gasto_id == g.id).all():

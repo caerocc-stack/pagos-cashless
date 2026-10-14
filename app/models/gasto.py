@@ -53,6 +53,9 @@ class Gasto(Base):
     forma_pago: Mapped[str | None] = mapped_column(String(30))
     fecha_pago: Mapped[date | None] = mapped_column(Date)
     caja_mov_id: Mapped[int | None] = mapped_column(ForeignKey("caja_movimientos.id"))
+    # Pagada con una transferencia a un encargado de compras (no directo al proveedor)
+    banco_mov_id: Mapped[int | None] = mapped_column(ForeignKey("banco_movimientos.id"))
+    pagado_por: Mapped[str | None] = mapped_column(String(120))
 
     # Respaldo (foto/PDF en Supabase Storage)
     adjunto_url: Mapped[str | None] = mapped_column(String(400))

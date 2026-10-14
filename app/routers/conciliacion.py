@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, extract
 
 from app.database import get_db
-from app.models.banco import MovimientoBanco, ExtractoBancario, CONCEPTOS_CONCILIABLES
+from app.models.banco import MovimientoBanco, ExtractoBancario, EncargadoCompra, CONCEPTOS_CONCILIABLES
+from app import rendiciones
 from app.models.gasto import Gasto
 from app.models.proveedor import Proveedor
 from app.schemas.banco import BancoMovResponse
@@ -103,7 +104,7 @@ def _parsear_extracto_xls(contenido: bytes):
 def _facturas_libres(db: Session) -> list[Gasto]:
     """Facturas (importe positivo) que todavía no tienen pago vinculado."""
     usados = {g for (g,) in db.query(MovimientoBanco.gasto_id).filter(MovimientoBanco.gasto_id.isnot(None))}
-    return [g for g in db.query(Gasto).filter(Gasto.importe > 0, Gasto.caja_mov_id.is_(None)).all()
+    return [g for g in db.query(Gasto).filter(Gasto.importe > 0, Gasto.caja_mov_id.is_(None), Gasto.banco_mov_id.is_(None)).all()
             if g.id not in usados]
 
 
@@ -277,6 +278,9 @@ def _borrar_movimientos(db: Session, movs: list, extractos: list) -> dict:
                 borrar_gasto(db, g)
                 borrados += 1
     for mov in movs:
+        for gr in rendiciones.facturas_de(db, mov):  # rendidas por un encargado con esta transferencia
+            rendiciones.desvincular(db, gr)
+            liberadas += 1
         g = db.get(Gasto, mov.gasto_id) if mov.gasto_id else None
         mov.gasto_id = None
         db.flush()
@@ -340,7 +344,7 @@ def resumen(db: Session = Depends(get_db)):
             "monto_total": float(monto_total), "monto_pendiente": float(monto_pend)}
 
 
-@router.get("/", response_model=list[BancoMovResponse])
+@router.get("/")
 def listar(estado: str | None = None, q: str | None = None,
            mes: int | None = None, anio: int | None = None,
            db: Session = Depends(get_db)):
@@ -357,7 +361,171 @@ def listar(estado: str | None = None, q: str | None = None,
         query = query.filter(extract("year", MovimientoBanco.fecha) == anio)
     if mes:
         query = query.filter(extract("month", MovimientoBanco.fecha) == mes)
-    return query.order_by(MovimientoBanco.fecha.desc(), MovimientoBanco.id.desc()).all()
+    movs = query.order_by(MovimientoBanco.fecha.desc(), MovimientoBanco.id.desc()).all()
+    encargados = {e.cuit: e for e in db.query(EncargadoCompra).filter(EncargadoCompra.activo.is_(True)).all() if e.cuit}
+    salida = []
+    for m in movs:
+        d = BancoMovResponse.model_validate(m).model_dump()
+        es_rendicion = not m.gasto_id and (m.encargado_id or _solo_digitos(m.cuit) in encargados)
+        d["rendicion"] = rendiciones.resumen(db, m) if es_rendicion else None
+        salida.append(d)
+    return salida
+
+
+# ---------------------------------------------------------------- compras por un encargado
+
+class EncargadoIn(BaseModel):
+    nombre: str
+    cuit: str | None = None
+    activo: bool = True
+
+
+def _enc_dto(e: EncargadoCompra) -> dict:
+    return {"id": e.id, "nombre": e.nombre, "cuit": e.cuit, "activo": e.activo}
+
+
+@router.get("/encargados")
+def encargados(db: Session = Depends(get_db)):
+    return [_enc_dto(e) for e in db.query(EncargadoCompra).order_by(EncargadoCompra.activo.desc(), EncargadoCompra.nombre).all()]
+
+
+def _validar_encargado(db: Session, data: EncargadoIn, excluir: int | None = None) -> tuple[str, str | None]:
+    nombre = re.sub(r"\s+", " ", data.nombre or "").strip()[:120]
+    if len(nombre) < 3:
+        raise HTTPException(400, "Escribí el nombre del encargado.")
+    cuit = _solo_digitos(data.cuit) or None
+    if cuit and len(cuit) != 11:
+        raise HTTPException(400, "El CUIT/CUIL tiene que tener 11 dígitos.")
+    if cuit and db.query(EncargadoCompra).filter(EncargadoCompra.cuit == cuit, EncargadoCompra.id != (excluir or 0)).first():
+        raise HTTPException(409, "Ya hay un encargado con ese CUIT/CUIL.")
+    return nombre, cuit
+
+
+@router.post("/encargados")
+def crear_encargado(data: EncargadoIn, db: Session = Depends(get_db)):
+    nombre, cuit = _validar_encargado(db, data)
+    e = EncargadoCompra(nombre=nombre, cuit=cuit, activo=data.activo)
+    db.add(e)
+    db.commit()
+    return _enc_dto(e)
+
+
+@router.put("/encargados/{enc_id}")
+def editar_encargado(enc_id: int, data: EncargadoIn, db: Session = Depends(get_db)):
+    e = db.get(EncargadoCompra, enc_id)
+    if not e:
+        raise HTTPException(404, "Encargado no encontrado")
+    e.nombre, e.cuit = _validar_encargado(db, data, enc_id)
+    e.activo = data.activo
+    db.commit()
+    return _enc_dto(e)
+
+
+@router.delete("/encargados/{enc_id}")
+def borrar_encargado(enc_id: int, db: Session = Depends(get_db)):
+    e = db.get(EncargadoCompra, enc_id)
+    if not e:
+        raise HTTPException(404, "Encargado no encontrado")
+    if db.query(MovimientoBanco).filter(MovimientoBanco.encargado_id == enc_id).first():
+        e.activo = False  # tiene rendiciones: queda inactivo para no perder la historia
+        db.commit()
+        return {"ok": True, "mensaje": "Tiene rendiciones cargadas: quedó inactivo"}
+    db.delete(e)
+    db.commit()
+    return {"ok": True, "mensaje": "Encargado eliminado"}
+
+
+def _gasto_mini(g: Gasto) -> dict:
+    return {"id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "cuit": g.cuit, "importe": float(g.importe),
+            "concepto": g.concepto, "tipo": g.tipo_comprobante, "numero": g.numero, "categoria": g.categoria}
+
+
+@router.get("/encargados/pendientes")
+def rendiciones_pendientes(db: Session = Depends(get_db)):
+    """Transferencias a encargados que todavía no se rindieron del todo (para vincular una factura desde Gastos)."""
+    salida = []
+    for m in (db.query(MovimientoBanco).filter(MovimientoBanco.conciliado.is_(False), MovimientoBanco.gasto_id.is_(None),
+                                                MovimientoBanco.importe < 0)
+              .order_by(MovimientoBanco.fecha.desc()).all()):
+        if not rendiciones.encargado_de(db, m):
+            continue
+        salida.append({"id": m.id, "fecha": str(m.fecha), "descripcion": m.razon_social or m.descripcion, **rendiciones.resumen(db, m)})
+    return salida
+
+
+@router.get("/{mov_id}/rendicion")
+def ver_rendicion(mov_id: int, db: Session = Depends(get_db)):
+    mov = db.get(MovimientoBanco, mov_id)
+    if not mov:
+        raise HTTPException(404, "Movimiento no encontrado")
+    libres = sorted(_facturas_libres(db), key=lambda g: abs((g.fecha - mov.fecha).days))
+    return {"movimiento": {"id": mov.id, "fecha": str(mov.fecha), "cuit": mov.cuit, "razon_social": mov.razon_social,
+                           "descripcion": mov.descripcion, "importe": float(abs(Decimal(str(mov.importe))))},
+            **rendiciones.resumen(db, mov),
+            "vinculadas": [_gasto_mini(g) for g in rendiciones.facturas_de(db, mov)],
+            "disponibles": [_gasto_mini(g) for g in libres[:300]]}
+
+
+class Rendir(BaseModel):
+    encargado_id: int
+    gasto_ids: list[int] = []
+
+
+@router.post("/{mov_id}/rendicion")
+def rendir(mov_id: int, data: Rendir, request: Request, db: Session = Depends(get_db)):
+    """Vincula facturas (de cualquier proveedor) con una transferencia a un encargado de compras."""
+    mov = db.get(MovimientoBanco, mov_id)
+    enc = db.get(EncargadoCompra, data.encargado_id)
+    if not mov or not enc:
+        raise HTTPException(404, "Movimiento o encargado no encontrado")
+    if mov.gasto_id:
+        raise HTTPException(409, "Este movimiento está conciliado con una factura del proveedor: deshacelo primero.")
+    if Decimal(str(mov.importe)) >= 0:
+        raise HTTPException(400, "Solo se rinden transferencias que salieron del banco.")
+    libres = {g.id for g in _facturas_libres(db)}
+    for gid in data.gasto_ids:
+        g = db.get(Gasto, gid)
+        if not g or gid not in libres:
+            raise HTTPException(409, f"La factura #{gid} ya tiene el pago registrado o no existe.")
+        rendiciones.vincular(db, mov, g, enc)
+    mov.encargado_id = enc.id
+    db.flush()
+    rendiciones.actualizar_estado(db, mov)
+    if data.gasto_ids:
+        auditar(db, "rendicion_encargado", None, f"Transferencia #{mov.id} a {enc.nombre}: {len(data.gasto_ids)} factura(s)", request)
+    db.commit()
+    return {"ok": True, **rendiciones.resumen(db, mov)}
+
+
+@router.delete("/{mov_id}/rendicion/{gasto_id}")
+def quitar_de_rendicion(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
+    g = db.get(Gasto, gasto_id)
+    if not g or g.banco_mov_id != mov_id:
+        raise HTTPException(404, "Esa factura no está en esta rendición")
+    rendiciones.desvincular(db, g)
+    db.commit()
+    return {"ok": True, **rendiciones.resumen(db, db.get(MovimientoBanco, mov_id))}
+
+
+class CerrarRendicion(BaseModel):
+    cerrar: bool = True
+    nota: str | None = None
+
+
+@router.post("/{mov_id}/rendicion/cerrar")
+def cerrar_rendicion(mov_id: int, data: CerrarRendicion, db: Session = Depends(get_db)):
+    """Da por rendida la transferencia aunque no cierre el importe (vuelto devuelto, diferencia, etc.)."""
+    mov = db.get(MovimientoBanco, mov_id)
+    if not mov:
+        raise HTTPException(404, "Movimiento no encontrado")
+    nota = (data.nota or "").strip()[:300]
+    if data.cerrar and not nota:
+        raise HTTPException(400, "Contá por qué se da por rendida (ej.: devolvió el vuelto en efectivo).")
+    mov.rendicion_cerrada = data.cerrar
+    mov.rendicion_nota = nota if data.cerrar else None
+    rendiciones.actualizar_estado(db, mov)
+    db.commit()
+    return {"ok": True, **rendiciones.resumen(db, mov)}
 
 
 @router.get("/{mov_id}/candidatos")
@@ -464,6 +632,9 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
         g = db.get(Gasto, mov.gasto_id)
         if g:
             g.conciliado = False
+    for gr in rendiciones.facturas_de(db, mov):
+        rendiciones.desvincular(db, gr)
+    db.flush()
     db.delete(mov)
     db.commit()
     return {"ok": True, "mensaje": "Movimiento eliminado"}

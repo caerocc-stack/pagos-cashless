@@ -60,4 +60,22 @@ class MovimientoBanco(Base):
     hash: Mapped[str] = mapped_column(String(40), unique=True)    # evita duplicados al re-importar
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 
-    gasto: Mapped["Gasto"] = relationship()
+    # Transferencia a un encargado de compras (reintegro o adelanto): paga facturas de otros proveedores
+    # (las facturas apuntan a este movimiento con Gasto.banco_mov_id)
+    encargado_id: Mapped[int | None] = mapped_column(ForeignKey("encargados_compra.id"))
+    rendicion_cerrada: Mapped[bool] = mapped_column(Boolean, default=False)  # se dio por rendido con diferencia
+    rendicion_nota: Mapped[str | None] = mapped_column(String(300))
+
+    gasto: Mapped["Gasto"] = relationship(foreign_keys=[gasto_id])
+
+
+class EncargadoCompra(Base):
+    """Persona que compra para APAI (administración, profesores): se le transfiere desde el banco
+    para reintegrarle lo que pagó o como adelanto, y rinde con las facturas a nombre de APAI."""
+    __tablename__ = "encargados_compra"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    cuit: Mapped[str | None] = mapped_column(String(13))           # CUIT/CUIL, como figura en el extracto
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

@@ -67,6 +67,8 @@ class GastoResponse(BaseModel):
     forma_pago: str | None = None
     fecha_pago: date | None = None
     caja_mov_id: int | None = None
+    banco_mov_id: int | None = None
+    pagado_por: str | None = None
     adjunto_url: str | None = None
     nc_de_id: int | None = None
     conciliado: bool

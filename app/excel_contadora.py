@@ -75,7 +75,7 @@ def medio(forma_pago) -> str | None:
 def fila(g) -> dict:
     return {2: fecha_corta(g.fecha), 3: g.tipo_comprobante, 4: numero_comprobante(g.punto_venta, g.numero),
             5: g.razon_social, 6: cuit_con_guiones(g.cuit), 7: float(g.importe),
-            8: g.concepto or g.destino, 9: g.rubro, 10: fecha_corta(g.fecha_pago), 11: medio(g.forma_pago)}
+            8: ((g.concepto or g.destino or "") + (f" (pagado vía {g.pagado_por})" if getattr(g, "pagado_por", None) else "")) or None, 9: g.rubro, 10: fecha_corta(g.fecha_pago), 11: medio(g.forma_pago)}
 
 
 def _hoja_destino(ws, gastos) -> int:

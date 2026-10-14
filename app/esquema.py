@@ -94,6 +94,12 @@ MIGRACIONES = [
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS factura_recibida_id INTEGER REFERENCES facturas_recibidas(id)",
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS creado_por VARCHAR(60)",
     "CREATE INDEX IF NOT EXISTS ix_gasto_comprobante ON gastos (cuit, punto_venta, numero)",
+    # Compras por un encargado: la transferencia del banco va a la persona, no al proveedor
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS banco_mov_id INTEGER REFERENCES banco_movimientos(id)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado_por VARCHAR(120)",
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS encargado_id INTEGER REFERENCES encargados_compra(id)",
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS rendicion_cerrada BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS rendicion_nota VARCHAR(300)",
 ]
 
 

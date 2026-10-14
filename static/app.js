@@ -1943,7 +1943,7 @@ function renderGastos(lista) {
         } else if (g.forma_pago) {
             const fp = g.fecha_pago ? g.fecha_pago.split('-').reverse().join('/') : '';
             const icono = g.forma_pago === 'Efectivo' ? '💵' : '🏦';
-            pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}${fp ? ' · ' + fp : ''}</span>
+            pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}${fp ? ' · ' + fp : ''}${g.pagado_por ? ` · vía ${escapeHtml(g.pagado_por)}` : ''}</span>
                 <button class="btn btn-sm" title="Deshacer" onclick="desvincularPagoGasto(${g.id})">✕</button>`;
         } else {
             pago = `<button class="btn btn-sm btn-primary" onclick="abrirVincularPago(${g.id})">Vincular pago</button>${vence}`;
@@ -1980,7 +1980,12 @@ async function cambiarCategoriaGasto(id, valor) {
 async function abrirVincularPago(id) {
     const g = gastosCache.find(x => x.id === id);
     try {
-        const c = await api(`/api/gastos/${id}/candidatos-pago`);
+        const [c, rend] = await Promise.all([api(`/api/gastos/${id}/candidatos-pago`), api('/api/conciliacion/encargados/pendientes').catch(() => [])]);
+        const fRend = rend.map(r => `<tr><td>${fmtFecha(r.fecha)}</td><td><b>${escapeHtml(r.encargado ? r.encargado.nombre : '')}</b>
+                <br><small class="muted">transferido ${fmtMoneda(r.transferido)} · falta rendir ${fmtMoneda(r.saldo)}</small></td>
+                <td>${g && Math.abs(Number(g.importe) - r.saldo) <= 1 ? '<span class="conc-tag-ok">Importe ✓</span>' : ''}</td>
+                <td><button class="btn btn-sm btn-primary" onclick="pagoPorEncargado(${id}, ${r.id}, ${r.encargado ? r.encargado.id : 'null'})">Vincular</button></td></tr>`).join('')
+            || '<tr><td colspan="4" style="color:var(--text-muted)">No hay transferencias a encargados pendientes de rendir. Cargá los encargados en Conciliación bancaria.</td></tr>';
         const tag = (m, mo) => [m ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
             mo ? '<span class="conc-tag-ok">Importe ✓</span>' : ''].join(' ');
         const fBanco = (c.banco || []).map(b => {
@@ -2003,6 +2008,9 @@ async function abrirVincularPago(id) {
             <h3 style="margin-bottom:.4rem">🏦 Transferencia (extracto del banco)</h3>
             <table><thead><tr><th>Fecha</th><th>Destinatario</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
             <tbody>${fBanco}</tbody></table>
+            <h3 style="margin:1rem 0 .4rem">👤 Transferencia a un encargado que hizo la compra</h3>
+            <table><thead><tr><th>Fecha</th><th>Encargado</th><th>Coincide</th><th></th></tr></thead>
+            <tbody>${fRend}</tbody></table>
             <h3 style="margin:1rem 0 .4rem">💵 Efectivo (movimiento de caja)</h3>
             <table><thead><tr><th>Fecha</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
             <tbody>${fCaja}</tbody></table>
@@ -2887,7 +2895,10 @@ function renderConciliacion(lista) {
         const fecha = fmtFecha(m.fecha);
         const tipo = TIPOS_BANCO[m.concepto] || m.concepto || '—';
         let estado, acciones;
-        if (m.conciliado && m.gasto) {
+        if (m.rendicion) {  // transferencia a un encargado de compras: se rinde con facturas de otros proveedores
+            estado = htmlEstadoRendicion(m);
+            acciones = `<button class="btn btn-sm ${m.conciliado ? '' : 'btn-primary'}" onclick="abrirRendicion(${m.id})">${m.conciliado ? 'Ver rendición' : 'Rendir facturas'}</button>`;
+        } else if (m.conciliado && m.gasto) {
             const g = m.gasto;
             const fg = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
             const badge = m.conciliado_manual ? 'manual' : 'auto';
@@ -2897,7 +2908,8 @@ function renderConciliacion(lista) {
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
             acciones = `<button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
-                <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>`;
+                <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>
+                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -6145,3 +6157,156 @@ async function revisarVersion() {
 revisarVersion();
 setInterval(revisarVersion, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarVersion(); });
+
+// =========================================================
+// --- COMPRAS POR UN ENCARGADO (rendición de transferencias) ---
+// =========================================================
+// El banco no le paga al proveedor sino a la persona que compró (reintegro o adelanto): la transferencia
+// se vincula con una o varias facturas de cualquier proveedor, a nombre de APAI.
+let REND = { mov: null, data: null, encargados: [], sel: new Set() };
+
+async function abrirEncargados() {
+    let lista = [];
+    try { lista = await api('/api/conciliacion/encargados'); } catch (e) { return toast(e.message, 'error'); }
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Encargados de compras</h2>
+        <p class="muted" style="margin-top:-0.4rem">Personas que compran para APAI (administración, profesores) y a las que se les transfiere desde el
+        banco, para reintegrarles lo que pagaron o como adelanto. Con el CUIT/CUIL, sus transferencias se reconocen solas en la conciliación.</p>
+        <table class="rend-enc"><thead><tr><th>Nombre</th><th>CUIT / CUIL</th><th>Activo</th><th></th></tr></thead><tbody>
+        ${lista.map(e => `<tr><td><input type="text" id="enc-n-${e.id}" value="${escapeHtml(e.nombre)}" aria-label="Nombre"></td>
+            <td><input type="text" id="enc-c-${e.id}" value="${escapeHtml(e.cuit || '')}" inputmode="numeric" placeholder="Sin CUIT" aria-label="CUIT"></td>
+            <td><input type="checkbox" id="enc-a-${e.id}" ${e.activo ? 'checked' : ''} aria-label="Activo"></td>
+            <td class="rend-acc"><button class="btn btn-sm" onclick="guardarEncargado(${e.id})">Guardar</button>
+                <button class="btn btn-sm btn-ghost" onclick="borrarEncargado(${e.id})" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button></td></tr>`).join('')
+        || '<tr><td colspan="4" class="muted">Todavía no hay encargados cargados.</td></tr>'}
+        <tr class="rend-nuevo"><td><input type="text" id="enc-n-0" placeholder="Nombre y apellido" aria-label="Nombre del encargado nuevo"></td>
+            <td><input type="text" id="enc-c-0" placeholder="CUIT/CUIL" inputmode="numeric" aria-label="CUIT del encargado nuevo"></td>
+            <td></td><td><button class="btn btn-sm btn-primary" onclick="guardarEncargado(0)"><svg class="ic"><use href="#i-plus"/></svg>Agregar</button></td></tr>
+        </tbody></table>`;
+    const ov = document.getElementById('modal-overlay');
+    ov.querySelector('.modal').classList.add('modal-ancho');
+    ov.style.display = 'flex';
+}
+
+async function guardarEncargado(id) {
+    const body = { nombre: document.getElementById('enc-n-' + id).value, cuit: document.getElementById('enc-c-' + id).value || null,
+        activo: id ? document.getElementById('enc-a-' + id).checked : true };
+    try {
+        await api('/api/conciliacion/encargados' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        toast(id ? 'Encargado actualizado' : 'Encargado agregado');
+        abrirEncargados();
+        cargarConciliacion();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function borrarEncargado(id) {
+    if (!confirm('¿Eliminar este encargado?')) return;
+    try { toast((await api('/api/conciliacion/encargados/' + id, { method: 'DELETE' })).mensaje); abrirEncargados(); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+function htmlEstadoRendicion(m) {
+    const r = m.rendicion;
+    const quien = r.encargado ? escapeHtml(r.encargado.nombre) : 'encargado';
+    if (m.conciliado) {
+        return `<span class="conc-ok">✓ rendida</span> vía <b>${quien}</b>
+            <span style="color:var(--text-muted)">· ${r.facturas} factura${r.facturas === 1 ? '' : 's'}${r.cerrada ? ' · cerrada con nota' : ''}</span>`;
+    }
+    return `<span class="conc-pend rend-pend">● a rendir</span> <b>${quien}</b>
+        <span style="color:var(--text-muted)">· rendido ${fmtMoneda(r.rendido)} · falta ${fmtMoneda(r.saldo)}</span>`;
+}
+
+async function abrirRendicion(movId) {
+    try {
+        const [data, encargados] = await Promise.all([api(`/api/conciliacion/${movId}/rendicion`), api('/api/conciliacion/encargados')]);
+        REND = { mov: movId, data, encargados: encargados.filter(e => e.activo || (data.encargado && e.id === data.encargado.id)), sel: new Set() };
+        pintarRendicion();
+        const ov = document.getElementById('modal-overlay');
+        ov.querySelector('.modal').classList.add('modal-ancho');
+        ov.style.display = 'flex';
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function pintarRendicion() {
+    const d = REND.data, m = d.movimiento;
+    const q = normTxt((document.getElementById('rend-buscar') || {}).value || '');
+    const disp = d.disponibles.filter(g => !q || normTxt([g.razon_social, g.concepto, g.numero, g.cuit].join(' ')).includes(q));
+    const sumaSel = d.disponibles.filter(g => REND.sel.has(g.id)).reduce((s, g) => s + g.importe, 0);
+    const saldoTras = d.saldo - sumaSel;
+    const encSel = (document.getElementById('rend-enc') || {}).value || (d.encargado ? d.encargado.id : '');
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Rendición de una transferencia a un encargado</h2>
+        <p class="muted" style="margin-top:-0.4rem">${fmtFecha(m.fecha)} · ${escapeHtml(m.razon_social || m.descripcion || '')}${m.cuit ? ' · CUIT ' + escapeHtml(m.cuit) : ''}</p>
+        <div class="rend-cab">
+            <div><label for="rend-enc">Encargado que compró</label>
+                <select id="rend-enc"><option value="">— elegir —</option>${REND.encargados.map(e => `<option value="${e.id}" ${String(e.id) === String(encSel) ? 'selected' : ''}>${escapeHtml(e.nombre)}</option>`).join('')}</select>
+                <button type="button" class="btn btn-link btn-sm" onclick="cerrarModal();abrirEncargados()">Cargar o editar encargados</button></div>
+            <div class="rend-nums">
+                <div><span>Transferido</span><b>${fmtMoneda(d.transferido)}</b></div>
+                <div><span>Rendido</span><b>${fmtMoneda(d.rendido)}</b></div>
+                <div class="${Math.abs(d.saldo) > 1 ? 'rend-falta' : 'rend-ok'}"><span>${d.saldo >= 0 ? 'Falta rendir' : 'Se le debe al encargado'}</span><b>${fmtMoneda(Math.abs(d.saldo))}</b></div>
+            </div>
+        </div>
+        ${d.cerrada ? `<p class="ps-aviso">Dada por rendida: ${escapeHtml(d.nota || '')} <button class="btn btn-sm" onclick="cerrarRendicion(false)">Reabrir</button></p>` : ''}
+        <h4 style="margin:0.8rem 0 0.3rem">Facturas rendidas con esta transferencia</h4>
+        <table class="rend-tabla"><tbody>${d.vinculadas.map(g => `<tr><td>${fmtFecha(g.fecha)}</td><td><b>${escapeHtml(g.razon_social || '—')}</b>
+            <br><small class="muted">${escapeHtml([g.tipo, g.numero, g.concepto].filter(Boolean).join(' · '))}</small></td>
+            <td class="num">${fmtMoneda(g.importe)}</td><td><button class="btn btn-sm btn-ghost" onclick="quitarDeRendicion(${g.id})">Quitar</button></td></tr>`).join('')
+            || '<tr><td colspan="4" class="muted">Todavía ninguna. Elegí abajo las facturas que se pagaron con esta plata.</td></tr>'}</tbody></table>
+        <div class="rend-disp-cab"><h4 style="margin:0">Facturas sin pagar</h4>
+            <input type="search" id="rend-buscar" placeholder="Buscar proveedor, concepto o número…" oninput="pintarRendicion()" value="${escapeHtml((document.getElementById('rend-buscar') || {}).value || '')}"></div>
+        <div class="rend-disp"><table class="rend-tabla"><tbody>${disp.map(g => `<tr class="${REND.sel.has(g.id) ? 'rend-sel' : ''}">
+            <td><input type="checkbox" ${REND.sel.has(g.id) ? 'checked' : ''} onchange="rendSel(${g.id}, this.checked)" aria-label="Elegir"></td>
+            <td>${fmtFecha(g.fecha)}</td><td><b>${escapeHtml(g.razon_social || '—')}</b><br><small class="muted">${escapeHtml([g.tipo, g.numero, g.concepto].filter(Boolean).join(' · '))}</small></td>
+            <td class="num">${fmtMoneda(g.importe)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No hay facturas sin pagar' + (q ? ' con esa búsqueda' : '') + '. Cargala primero en Gastos.</td></tr>'}</tbody></table></div>
+        <div class="form-actions rend-pie">
+            <span class="muted">${REND.sel.size ? `${REND.sel.size} elegida${REND.sel.size === 1 ? '' : 's'} · ${fmtMoneda(sumaSel)} · después ${saldoTras >= 0 ? 'falta' : 'sobra'} ${fmtMoneda(Math.abs(saldoTras))}` : ''}</span>
+            <span style="flex:1"></span>
+            ${!d.cerrada && d.vinculadas.length && Math.abs(d.saldo) > 1 ? '<button class="btn btn-outline" onclick="cerrarRendicion(true)">Dar por rendida…</button>' : ''}
+            <button class="btn btn-primary" onclick="confirmarRendicion()" ${REND.sel.size ? '' : 'disabled'}>Vincular ${REND.sel.size || ''} factura${REND.sel.size === 1 ? '' : 's'}</button>
+        </div>`;
+    const b = document.getElementById('rend-buscar');
+    if (q && b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
+}
+
+function rendSel(id, on) { on ? REND.sel.add(id) : REND.sel.delete(id); pintarRendicion(); }
+
+async function confirmarRendicion() {
+    const enc = document.getElementById('rend-enc').value;
+    if (!enc) return toast('Elegí el encargado que hizo la compra', 'error');
+    try {
+        await api(`/api/conciliacion/${REND.mov}/rendicion`, { method: 'POST', body: JSON.stringify({ encargado_id: +enc, gasto_ids: [...REND.sel] }) });
+        toast('Facturas vinculadas a la transferencia');
+        await abrirRendicion(REND.mov);
+        cargarConciliacion();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function quitarDeRendicion(gastoId) {
+    if (!confirm('¿Quitar esta factura de la rendición? Vuelve a quedar sin pagar.')) return;
+    try { await api(`/api/conciliacion/${REND.mov}/rendicion/${gastoId}`, { method: 'DELETE' }); await abrirRendicion(REND.mov); cargarConciliacion(); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+async function cerrarRendicion(cerrar) {
+    let nota = null;
+    if (cerrar) {
+        nota = prompt('¿Por qué se da por rendida? (ej.: devolvió el vuelto en efectivo, se le debe la diferencia)');
+        if (!nota) return;
+    }
+    try {
+        await api(`/api/conciliacion/${REND.mov}/rendicion/cerrar`, { method: 'POST', body: JSON.stringify({ cerrar, nota }) });
+        await abrirRendicion(REND.mov);
+        cargarConciliacion();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// Desde Gastos: la factura se pagó con una transferencia a un encargado
+async function pagoPorEncargado(gastoId, movId, encId) {
+    try {
+        await api(`/api/conciliacion/${movId}/rendicion`, { method: 'POST', body: JSON.stringify({ encargado_id: encId, gasto_ids: [gastoId] }) });
+        toast('Factura vinculada a la transferencia al encargado');
+        cerrarModal();
+        cargarGastos();
+    } catch (e) { toast(e.message, 'error'); }
+}

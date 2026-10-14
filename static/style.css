@@ -1039,3 +1039,26 @@ select.esc-vacio { border-color: var(--warning); }
 .aviso-version { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); z-index: 1500; display: flex; align-items: center; gap: 0.9rem;
     padding: 0.7rem 0.8rem 0.7rem 1.1rem; background: var(--navy); color: #fff; border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.25);
     max-width: calc(100vw - 2rem); animation: aparecer 0.25s ease-out; }
+
+/* Rendición de transferencias a encargados de compras */
+.rend-pend { color: var(--warning); }
+.rend-cab { display: flex; gap: 1rem 1.5rem; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; margin: 0.6rem 0; }
+.rend-cab label { display: block; margin: 0 0 0.3rem; }
+.rend-cab select { min-width: 220px; margin: 0; }
+.rend-nums { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.rend-nums div { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.45rem 0.75rem; min-width: 120px; }
+.rend-nums span { display: block; font-size: 0.74rem; color: var(--text-muted); }
+.rend-nums b { font-variant-numeric: tabular-nums; }
+.rend-nums .rend-falta { border-color: var(--warning); background: var(--warning-soft); }
+.rend-nums .rend-ok { border-color: color-mix(in srgb, var(--success) 40%, transparent); background: var(--success-soft); }
+.rend-tabla { margin: 0; }
+.rend-tabla td { vertical-align: middle; }
+.rend-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rend-tabla tr.rend-sel td { background: var(--primary-soft); }
+.rend-disp-cab { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1rem 0 0.4rem; flex-wrap: wrap; }
+.rend-disp-cab input { max-width: 300px; margin: 0; }
+.rend-disp { max-height: 38vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.rend-pie { align-items: center; flex-wrap: wrap; }
+.rend-enc input[type=text] { margin: 0; }
+.rend-enc .rend-acc { white-space: nowrap; }
+.btn-link { background: none; border: 0; color: var(--primary); padding: 0.2rem 0; text-decoration: underline; cursor: pointer; }
