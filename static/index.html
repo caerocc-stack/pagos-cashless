@@ -585,25 +585,37 @@
         <!-- CUPONES DE SIRO (PDF descargado de SIRO -> portal de familias) -->
         <section id="sec-cupones-siro" class="section">
             <div class="card solo-admin" id="ps-card">
-                <h3>Generar la planilla para SIRO</h3>
-                <p class="muted" style="margin-bottom:0.8rem">Elegí los cursos y el vencimiento; se descarga el Excel con el modelo de carga de cupones de SIRO.
-                Número de cliente: el <b>legajo</b> en Ciclo Básico, Aviónica y Mecánica, y el <b>DNI</b> en aeronavegantes y exámenes.
-                No reciben cupón los becados ni quienes ya pagaron el año completo de ese curso.</p>
-                <div class="ps-arriba">
+                <div class="ps-cabecera">
                     <div>
-                        <label for="ps-vto">1º vencimiento</label>
-                        <input type="date" id="ps-vto">
+                        <h3 style="margin:0">Generar la planilla para SIRO</h3>
+                        <p class="muted" style="margin:0.25rem 0 0">Marcá los cursos: se van sumando a la planilla de la derecha. Número de cliente: <b>legajo</b> en Ciclo Básico, Aviónica y Mecánica; <b>DNI</b> en aeronavegantes y exámenes.</p>
                     </div>
-                    <label class="ps-check"><input type="checkbox" id="ps-pagados" checked onchange="psActualizar()"> No incluir a quienes ya pagaron el año completo</label>
+                    <div class="ps-buscar">
+                        <svg class="ic"><use href="#i-search"/></svg>
+                        <input type="search" id="ps-filtro" placeholder="Buscar curso o alumno…" oninput="psFiltrar()" aria-label="Buscar curso o alumno">
+                    </div>
                 </div>
-                <div id="ps-cursos" class="ps-cursos"><p class="muted">Cargando cursos…</p></div>
-                <div class="ps-pie">
-                    <span id="ps-resumen" class="muted"></span>
-                    <span style="flex:1"></span>
-                    <button type="button" class="btn btn-outline" onclick="psVerAlumnos()"><svg class="ic"><use href="#i-eye"/></svg>Ver alumnos</button>
-                    <button type="button" class="btn btn-primary btn-3d" id="ps-descargar" onclick="psDescargar()"><svg class="ic"><use href="#i-download"/></svg>Descargar Excel</button>
+                <div class="ps-layout">
+                    <div id="ps-cursos" class="ps-lista"><p class="muted" style="padding:1rem">Cargando cursos…</p></div>
+                    <aside class="ps-panel" aria-live="polite">
+                        <div class="ps-panel-tit">Planilla</div>
+                        <div class="ps-campos">
+                            <div>
+                                <label for="ps-vto">1º vencimiento</label>
+                                <input type="date" id="ps-vto" onchange="psRender()">
+                            </div>
+                            <label class="ps-check"><input type="checkbox" id="ps-pagados" checked onchange="psRender()"> Sin los que ya pagaron el año</label>
+                        </div>
+                        <ul id="ps-elegidos" class="ps-elegidos"></ul>
+                        <div id="ps-totales" class="ps-totales"></div>
+                        <div id="ps-avisos"></div>
+                        <div class="ps-acciones">
+                            <button type="button" class="btn btn-outline" id="ps-btn-vista" onclick="psToggleVista()"><svg class="ic"><use href="#i-eye"/></svg>Ver planilla</button>
+                            <button type="button" class="btn btn-primary btn-3d" id="ps-descargar" onclick="psDescargar()"><svg class="ic"><use href="#i-download"/></svg>Descargar Excel</button>
+                        </div>
+                    </aside>
                 </div>
-                <div id="ps-vista" hidden></div>
+                <div id="ps-vista" class="ps-vista" hidden></div>
             </div>
             <div class="card">
                 <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.4rem">

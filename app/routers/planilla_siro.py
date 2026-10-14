@@ -66,21 +66,59 @@ def _alumnos_con_planes(db: Session, anio: int):
         yield a, planes_de(a, cursos, extras.get(a.id, []))
 
 
+def _ordenar_cursos(cursos):
+    orden = {x.lower(): i for i, x in enumerate(ORDEN_AREAS)}
+    return sorted(cursos, key=lambda c: (orden.get((c.area or "").lower(), 99), c.nombre))
+
+
+def entradas(db: Session, anio: int, curso_ids: set[int] | None = None) -> list[dict]:
+    """Un renglón por alumno y curso, con su número de cliente y si recibe cupón o por qué no
+    (becado, año pagado, sin número)."""
+    cursos = {c.id: c for c in cursos_vigentes(db, anio)}
+    pagos = pagos_del_anio(db, anio)
+    salida = []
+    for a, planes in _alumnos_con_planes(db, anio):
+        elegidos = [pl for pl in planes if pl.get("curso_id") in cursos and (curso_ids is None or pl["curso_id"] in curso_ids)]
+        if not elegidos:
+            continue
+        exento = _exento(a)
+        completos = set()
+        if not exento:
+            info = estado_cuenta(a, planes, pagos.get(a.id, []), anio, hoy=ahora_ar().date())
+            completos = {c["clave"] for c in info.get("cursos", []) if c.get("completo")}
+        for pl in elegidos:
+            curso = cursos[pl["curso_id"]]
+            dni = usa_dni(curso.area)
+            numero = re.sub(r"\D", "", a.dni or "") if dni else (a.legajo or "").strip()
+            if exento:
+                estado, motivo = "becado", (a.condicion or "Exento").capitalize()
+            elif not numero.isdigit():
+                estado = "sin_numero"
+                motivo = "No tiene DNI cargado" if dni else f"No tiene legajo numérico (figura «{a.legajo}»)"
+            elif pl["clave"] in completos:
+                estado, motivo = "pagado", "Ya pagó el año completo"
+            else:
+                estado, motivo = "ok", None
+            salida.append({
+                "curso_id": curso.id, "alumno_id": a.id, "alumno": f"{a.apellido}, {a.nombre}",
+                "etiqueta": pl.get("etiqueta") or (a.curso if pl.get("principal") else curso.nombre),
+                "cliente": numero if numero.isdigit() else None, "tipo": "DNI" if dni else "Legajo",
+                "personal": float(a.cuota_personalizada) if pl.get("principal") and a.cuota_personalizada else None,
+                "estado": estado, "motivo": motivo})
+    return salida
+
+
 @router.get("/cursos")
 def cursos_para_planilla(anio: int | None = None, db: Session = Depends(get_db), _=Depends(requiere_admin)):
-    """Cursos del año con su importe, qué número de cliente usan y cuántos alumnos reciben cupón."""
+    """Cursos del año (importe, qué número de cliente usan) con todos sus alumnos y si reciben cupón.
+    La pantalla arma la vista previa con esto, sin volver a consultar."""
     anio = _anio(anio)
-    conteo: dict[int, int] = {}
-    for a, planes in _alumnos_con_planes(db, anio):
-        if _exento(a):
-            continue
-        for pl in planes:
-            if pl.get("curso_id"):
-                conteo[pl["curso_id"]] = conteo.get(pl["curso_id"], 0) + 1
-    orden = {x.lower(): i for i, x in enumerate(ORDEN_AREAS)}
-    cursos = sorted(cursos_vigentes(db, anio), key=lambda c: (orden.get((c.area or "").lower(), 99), c.nombre))
+    por_curso: dict[int, list] = {}
+    for e in entradas(db, anio):
+        por_curso.setdefault(e.pop("curso_id"), []).append(e)
     return [{"id": c.id, "nombre": c.nombre, "area": c.area, "importe": float(c.cuota or 0),
-             "cliente": "DNI" if usa_dni(c.area) else "Legajo", "alumnos": conteo.get(c.id, 0)} for c in cursos]
+             "cliente": "DNI" if usa_dni(c.area) else "Legajo", "alumnos": por_curso.get(c.id, [])}
+            for c in _ordenar_cursos(cursos_vigentes(db, anio))]
 
 
 def armar_filas(db: Session, data: Pedido) -> dict:
@@ -90,46 +128,30 @@ def armar_filas(db: Session, data: Pedido) -> dict:
     for x in data.cursos:
         if x.curso_id not in cursos:
             raise HTTPException(400, f"El curso {x.curso_id} no existe o no está activo en {anio}")
-        pedidos[x.curso_id] = Decimal(x.importe) if x.importe else Decimal(cursos[x.curso_id].cuota or 0)
-    pagos = pagos_del_anio(db, anio) if data.excluir_pagados else {}
+        pedidos[x.curso_id] = Decimal(str(x.importe)) if x.importe else Decimal(cursos[x.curso_id].cuota or 0)
 
     filas: dict[str, dict] = {}
     omitidos = {"becados": 0, "pagados": 0}
     sin_numero = []
-    for a, planes in _alumnos_con_planes(db, anio):
-        elegidos = [pl for pl in planes if pl.get("curso_id") in pedidos]
-        if not elegidos:
-            continue
-        if _exento(a):
+    for e in entradas(db, anio, set(pedidos)):
+        if e["estado"] == "becado":
             omitidos["becados"] += 1
             continue
-        completos = set()
-        if data.excluir_pagados:
-            info = estado_cuenta(a, planes, pagos.get(a.id, []), anio, hoy=ahora_ar().date())
-            completos = {c["clave"] for c in info.get("cursos", []) if c.get("completo")}
-        for pl in elegidos:
-            curso = cursos[pl["curso_id"]]
-            etiqueta = pl.get("etiqueta") or (a.curso if pl.get("principal") else curso.nombre)
-            if pl["clave"] in completos:
-                omitidos["pagados"] += 1
-                continue
-            importe = pedidos[curso.id]
-            if pl.get("principal") and a.cuota_personalizada:
-                importe = Decimal(a.cuota_personalizada)
-            dni = usa_dni(curso.area)
-            numero = re.sub(r"\D", "", a.dni or "") if dni else (a.legajo or "").strip()
-            if not numero.isdigit():
-                sin_numero.append({"alumno": f"{a.apellido}, {a.nombre}", "curso": etiqueta,
-                                   "motivo": "No tiene DNI cargado" if dni else f"No tiene legajo numérico (figura «{a.legajo}»)"})
-                continue
-            f = filas.get(numero)
-            if f:  # mismo número de cliente en dos cursos elegidos: un solo cupón con la suma
-                f["importe"] += importe
-                f["cursos"].append(etiqueta)
-            else:
-                filas[numero] = {"cliente": numero, "tipo": "DNI" if dni else "Legajo", "alumno_id": a.id,
-                                 "alumno": f"{a.apellido}, {a.nombre}", "cursos": [etiqueta],
-                                 "importe": importe, "personalizado": importe != pedidos[curso.id]}
+        if e["estado"] == "sin_numero":
+            sin_numero.append({"alumno": e["alumno"], "curso": e["etiqueta"], "motivo": e["motivo"]})
+            continue
+        if e["estado"] == "pagado" and data.excluir_pagados:
+            omitidos["pagados"] += 1
+            continue
+        importe = Decimal(str(e["personal"])) if e["personal"] else pedidos[e["curso_id"]]
+        f = filas.get(e["cliente"])
+        if f:  # mismo número de cliente en dos cursos elegidos: un solo cupón con la suma
+            f["importe"] += importe
+            f["cursos"].append(e["etiqueta"])
+        else:
+            filas[e["cliente"]] = {"cliente": e["cliente"], "tipo": e["tipo"], "alumno_id": e["alumno_id"],
+                                   "alumno": e["alumno"], "cursos": [e["etiqueta"]], "importe": importe,
+                                   "personalizado": bool(e["personal"])}
     lista = sorted(filas.values(), key=lambda f: (f["cursos"][0], f["alumno"]))
     return {"filas": lista, "omitidos": omitidos, "sin_numero": sin_numero, "anio": anio,
             "total": sum((f["importe"] for f in lista), Decimal(0))}

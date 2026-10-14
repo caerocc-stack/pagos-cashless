@@ -5074,8 +5074,14 @@ function verAlumnosConEstado(filtro) {
 // =========================================================
 // --- PLANILLA PARA SIRO (Excel de carga de cupones) ---
 // =========================================================
+// Se traen una sola vez los cursos con todos sus alumnos (y si reciben cupón o por qué no);
+// la lista, los totales y la vista previa se calculan acá al instante. El Excel lo arma el servidor.
 
 let psCursos = [];
+const psSel = new Set();          // cursos elegidos, en el orden en que se marcaron
+const psAbiertos = new Set();     // cursos desplegados en la lista
+const PS_AREAS = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Examenes': 'Exámenes' };
+const PS_ESTADOS = { becado: ['Becado', 'badge-beca'], pagado: ['Año pagado', 'badge-pagado'], sin_numero: ['Sin número', 'badge-sin'] };
 
 function psUltimoDiaMes() {
     const h = new Date();
@@ -5089,83 +5095,211 @@ async function psCargar() {
     if (!vto.value) vto.value = psUltimoDiaMes();
     try {
         psCursos = await api('/api/cupones-siro/planilla/cursos');
-    } catch (e) { document.getElementById('ps-cursos').innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`; return; }
+    } catch (e) { document.getElementById('ps-cursos').innerHTML = `<p class="muted" style="padding:1rem">${escapeHtml(e.message)}</p>`; return; }
+    psCursos.forEach(c => { c.importeElegido = c.importe; });
+    [...psSel].forEach(id => { if (!psCursos.some(c => c.id === id)) psSel.delete(id); });
+    psDibujarLista();
+    psRender();
+}
+
+const psCurso = id => psCursos.find(c => c.id === id);
+
+function psReciben(c) {
+    const sinPagados = document.getElementById('ps-pagados').checked;
+    return c.alumnos.filter(a => a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados));
+}
+
+function psConteos(c) {
+    const n = { becado: 0, pagado: 0, sin_numero: 0 };
+    c.alumnos.forEach(a => { if (n[a.estado] !== undefined) n[a.estado]++; });
+    return n;
+}
+
+function psDibujarLista() {
     const areas = [];
     psCursos.forEach(c => { let g = areas.find(a => a.area === c.area); if (!g) areas.push(g = { area: c.area, cursos: [] }); g.cursos.push(c); });
-    const nombreArea = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Examenes': 'Exámenes' };
-    document.getElementById('ps-cursos').innerHTML = areas.map((g, i) => `
-        <fieldset class="ps-area">
-            <legend><label class="ps-check"><input type="checkbox" data-area="${i}" onchange="psMarcarArea(this)"> ${escapeHtml(nombreArea[g.area] || g.area || 'Sin área')}</label>
-                <span class="ps-tipo">Nº cliente: ${g.cursos[0].cliente}</span></legend>
-            ${g.cursos.map(c => `<div class="ps-curso">
-                <label class="ps-check"><input type="checkbox" class="ps-sel" data-area="${i}" value="${c.id}" onchange="psActualizar()">
-                    <span>${escapeHtml(c.nombre)}<small class="muted">${c.alumnos} alumno${c.alumnos === 1 ? '' : 's'}</small></span></label>
-                <span class="ps-importe">$ <input type="number" min="1" step="0.01" value="${c.importe}" data-importe="${c.id}" aria-label="Importe de ${escapeHtml(c.nombre)}" onchange="psActualizar()"></span>
-            </div>`).join('')}
-        </fieldset>`).join('');
-    psActualizar();
+    document.getElementById('ps-cursos').innerHTML = areas.map(g => `
+        <section class="ps-grupo" data-area="${escapeHtml(g.area || '')}">
+            <header class="ps-grupo-cab">
+                <label class="ps-check"><input type="checkbox" class="ps-sel-area" onchange="psMarcarArea(this)"> ${escapeHtml(PS_AREAS[g.area] || g.area || 'Sin área')}</label>
+                <span class="ps-chip">Nº cliente: ${g.cursos[0].cliente}</span>
+            </header>
+            <ul class="ps-cursos-lista">${g.cursos.map(psFilaCurso).join('')}</ul>
+        </section>`).join('');
+    psFiltrar();
+}
+
+function psFilaCurso(c) {
+    return `<li class="ps-curso" data-id="${c.id}">
+        <div class="ps-curso-fila">
+            <label class="ps-check ps-curso-nombre"><input type="checkbox" class="ps-sel" value="${c.id}" onchange="psMarcar(${c.id}, this.checked)">
+                <span><span class="ps-nombre">${escapeHtml(c.nombre)}</span><small class="ps-sub"></small></span></label>
+            <span class="ps-importe">$ <input type="number" min="1" step="0.01" value="${c.importe}" aria-label="Importe de ${escapeHtml(c.nombre)}"
+                oninput="psImporte(${c.id}, this.value)"></span>
+            <button type="button" class="ps-abrir" onclick="psAbrir(${c.id})" aria-expanded="false" title="Ver alumnos del curso" aria-label="Ver alumnos de ${escapeHtml(c.nombre)}">
+                <svg class="ic"><use href="#i-chevron"/></svg></button>
+        </div>
+        <div class="ps-alumnos" hidden></div>
+    </li>`;
+}
+
+function psMarcar(id, on) {
+    on ? psSel.add(id) : psSel.delete(id);
+    psRender();
 }
 
 function psMarcarArea(el) {
-    document.querySelectorAll(`.ps-sel[data-area="${el.dataset.area}"]`).forEach(x => x.checked = el.checked);
-    psActualizar();
+    el.closest('.ps-grupo').querySelectorAll('.ps-sel').forEach(x => { x.checked = el.checked; el.checked ? psSel.add(+x.value) : psSel.delete(+x.value); });
+    psRender();
 }
 
-function psPedido() {
-    const cursos = [...document.querySelectorAll('.ps-sel:checked')].map(x => {
-        const imp = parseFloat(document.querySelector(`[data-importe="${x.value}"]`).value);
-        return { curso_id: +x.value, importe: imp > 0 ? imp : null };
+function psImporte(id, v) {
+    const c = psCurso(id);
+    const n = parseFloat(v);
+    c.importeElegido = n > 0 ? n : c.importe;
+    psRender();
+}
+
+function psAbrir(id) {
+    psAbiertos.has(id) ? psAbiertos.delete(id) : psAbiertos.add(id);
+    psRender();
+}
+
+function psFiltrar() {
+    const q = (document.getElementById('ps-filtro').value || '').trim().toLowerCase();
+    document.querySelectorAll('.ps-curso').forEach(li => {
+        const c = psCurso(+li.dataset.id);
+        const porNombre = !q || c.nombre.toLowerCase().includes(q) || (c.area || '').toLowerCase().includes(q);
+        const porAlumno = q && c.alumnos.some(a => a.alumno.toLowerCase().includes(q) || (a.cliente || '').includes(q));
+        li.hidden = !(porNombre || porAlumno);
+        li.dataset.q = porAlumno && !porNombre ? q : '';
     });
-    return { vencimiento: document.getElementById('ps-vto').value, cursos, excluir_pagados: document.getElementById('ps-pagados').checked };
+    document.querySelectorAll('.ps-grupo').forEach(g => { g.hidden = ![...g.querySelectorAll('.ps-curso')].some(li => !li.hidden); });
+    psRender();
 }
 
-function psActualizar() {
-    document.querySelectorAll('.ps-area legend input').forEach(a => {
-        const hijos = [...document.querySelectorAll(`.ps-sel[data-area="${a.dataset.area}"]`)];
+// Filas de la planilla: un cupón por número de cliente (si cursa dos cursos elegidos, se suman)
+function psFilas() {
+    const filas = new Map();
+    [...psSel].forEach(id => {
+        const c = psCurso(id);
+        psReciben(c).forEach(a => {
+            const imp = a.personal || c.importeElegido;
+            const f = filas.get(a.cliente);
+            if (f) { f.importe += imp; f.cursos.push(a.etiqueta); }
+            else filas.set(a.cliente, { cliente: a.cliente, tipo: a.tipo, alumno: a.alumno, cursos: [a.etiqueta], importe: imp, personal: !!a.personal });
+        });
+    });
+    return [...filas.values()];
+}
+
+function psRender() {
+    if (!psCursos.length) return;
+    // Lista de cursos: marcas, subtítulos y alumnos desplegados
+    document.querySelectorAll('.ps-curso').forEach(li => {
+        const c = psCurso(+li.dataset.id);
+        const on = psSel.has(c.id);
+        li.classList.toggle('activo', on);
+        li.querySelector('.ps-sel').checked = on;
+        const rec = psReciben(c).length, n = psConteos(c);
+        const extra = [n.becado && `${n.becado} becado${n.becado === 1 ? '' : 's'}`,
+            n.pagado && `${n.pagado} con el año pagado`, n.sin_numero && `${n.sin_numero} sin número`].filter(Boolean);
+        li.querySelector('.ps-sub').textContent = `${rec} cupón${rec === 1 ? '' : 'es'}` + (extra.length ? ' · ' + extra.join(' · ') : '');
+        const abierto = psAbiertos.has(c.id) || !!li.dataset.q;
+        const caja = li.querySelector('.ps-alumnos');
+        li.querySelector('.ps-abrir').setAttribute('aria-expanded', abierto);
+        li.classList.toggle('abierto', abierto);
+        caja.hidden = !abierto;
+        if (abierto) caja.innerHTML = psTablaAlumnos(c, li.dataset.q);
+    });
+    document.querySelectorAll('.ps-grupo').forEach(g => {
+        const hijos = [...g.querySelectorAll('.ps-sel')];
+        const a = g.querySelector('.ps-sel-area');
         a.checked = hijos.every(h => h.checked);
         a.indeterminate = !a.checked && hijos.some(h => h.checked);
     });
-    const n = document.querySelectorAll('.ps-sel:checked').length;
-    document.getElementById('ps-resumen').textContent = n ? `${n} curso${n === 1 ? '' : 's'} elegido${n === 1 ? '' : 's'}` : 'Elegí al menos un curso';
-    document.getElementById('ps-vista').hidden = true;
+
+    // Panel de la planilla
+    const filas = psFilas();
+    const total = filas.reduce((s, f) => s + f.importe, 0);
+    const ul = document.getElementById('ps-elegidos');
+    const ids = [...psSel];
+    if (!ids.length) {
+        ul.innerHTML = '<li class="ps-vacio">Todavía no elegiste cursos.<br><span class="muted">Marcalos en la lista y se van sumando acá.</span></li>';
+    } else {
+        // los que ya estaban se actualizan; los nuevos entran con animación
+        const previos = new Set([...ul.querySelectorAll('li[data-id]')].map(li => +li.dataset.id));
+        ul.innerHTML = ids.map(id => {
+            const c = psCurso(id), rec = psReciben(c);
+            const sub = rec.reduce((s, a) => s + (a.personal || c.importeElegido), 0);
+            return `<li data-id="${id}" class="${previos.has(id) ? '' : 'nuevo'}">
+                <div><b>${escapeHtml(c.nombre)}</b><small>${rec.length} cupón${rec.length === 1 ? '' : 'es'} · ${fmtMoneda(c.importeElegido, 0)} c/u</small></div>
+                <span class="ps-sub-total">${fmtMoneda(sub, 0)}</span>
+                <button type="button" class="ps-quitar" onclick="psMarcar(${id}, false)" title="Quitar" aria-label="Quitar ${escapeHtml(c.nombre)}"><svg class="ic"><use href="#i-x"/></svg></button>
+            </li>`;
+        }).join('');
+    }
+    document.getElementById('ps-totales').innerHTML = ids.length ? `
+        <div class="ps-total"><span>Total de la planilla</span><b>${fmtMoneda(total)}</b></div>
+        <div><span>Cupones</span><b>${filas.length}</b></div>
+        <div><span>Vencen</span><b>${document.getElementById('ps-vto').value ? fmtFecha(document.getElementById('ps-vto').value) : '—'}</b></div>` : '';
+    const juntos = filas.filter(f => f.cursos.length > 1).length;
+    const sinNum = ids.flatMap(id => psCurso(id).alumnos.filter(a => a.estado === 'sin_numero'));
+    document.getElementById('ps-avisos').innerHTML =
+        (juntos ? `<p class="ps-nota">${juntos} alumno${juntos === 1 ? ' cursa' : 's cursan'} dos de estos cursos: un solo cupón con la suma.</p>` : '') +
+        (sinNum.length ? `<p class="ps-nota ps-nota-alerta">${sinNum.length} alumno${sinNum.length === 1 ? '' : 's'} sin número de cliente no van en la planilla (desplegá el curso para verlos).</p>` : '');
+    document.getElementById('ps-descargar').disabled = !filas.length;
+    document.getElementById('ps-btn-vista').disabled = !filas.length;
+    if (!document.getElementById('ps-vista').hidden) psDibujarVista(filas, total);
 }
 
-function psValidar(p) {
-    if (!p.vencimiento) { toast('Poné la fecha del 1º vencimiento', 'error'); return false; }
-    if (!p.cursos.length) { toast('Elegí al menos un curso', 'error'); return false; }
-    return true;
+function psTablaAlumnos(c, q) {
+    const sinPagados = document.getElementById('ps-pagados').checked;
+    let lista = c.alumnos;
+    if (q) lista = lista.filter(a => a.alumno.toLowerCase().includes(q) || (a.cliente || '').includes(q));
+    if (!lista.length) return '<p class="muted" style="margin:0.4rem 0">No hay alumnos en este curso.</p>';
+    return `<table class="ps-mini"><tbody>${lista.map(a => {
+        const queda = a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados);
+        const [txt, cls] = PS_ESTADOS[a.estado] || [];
+        return `<tr class="${queda ? '' : 'fuera'}">
+            <td class="num">${a.cliente || '—'}</td>
+            <td>${escapeHtml(a.alumno)}${a.etiqueta !== c.nombre ? ` <span class="muted">${escapeHtml(a.etiqueta)}</span>` : ''}</td>
+            <td class="num">${queda ? fmtMoneda(a.personal || c.importeElegido, 0) : ''}</td>
+            <td>${txt ? `<span class="badge ${cls}" title="${escapeHtml(a.motivo || '')}">${txt}</span>` : ''}${a.personal && queda ? '<span class="badge" title="Monto personalizado del alumno">Monto propio</span>' : ''}</td>
+        </tr>`; }).join('')}</tbody></table>`;
 }
 
-async function psVerAlumnos() {
-    const p = psPedido();
-    if (!psValidar(p)) return;
-    const caja = document.getElementById('ps-vista');
-    try {
-        const r = await api('/api/cupones-siro/planilla/vista', { method: 'POST', body: JSON.stringify(p) });
-        const om = [];
-        if (r.omitidos.becados) om.push(`${r.omitidos.becados} becado${r.omitidos.becados === 1 ? '' : 's'}`);
-        if (r.omitidos.pagados) om.push(`${r.omitidos.pagados} con el año pagado`);
-        const juntos = r.filas.filter(f => f.cursos.includes(' + ')).length;
-        caja.innerHTML = `
-            <p style="margin:1rem 0 0.5rem"><b>${r.filas.length} cupones</b> por un total de <b>${fmtMoneda(r.total)}</b>, vencen el ${fmtFecha(p.vencimiento)}.
-            ${om.length ? `<span class="muted">Quedan afuera: ${om.join(' y ')}.</span>` : ''}
-            ${juntos ? `<span class="muted">${juntos} alumno${juntos === 1 ? ' cursa' : 's cursan'} dos de los cursos elegidos: van en un solo cupón con la suma.</span>` : ''}</p>
-            ${r.sin_numero.length ? `<div class="ps-aviso"><b>Sin número de cliente (no van en la planilla):</b><ul>${r.sin_numero.map(s =>
-                `<li>${escapeHtml(s.alumno)} (${escapeHtml(s.curso)}): ${escapeHtml(s.motivo)}</li>`).join('')}</ul></div>` : ''}
-            <div class="ps-tabla"><table>
-                <thead><tr><th>Nº cliente</th><th>Alumno</th><th>Curso</th><th style="text-align:right">Importe</th></tr></thead>
-                <tbody>${r.filas.map(f => `<tr><td><b>${f.cliente}</b> <span class="muted">${f.tipo}</span></td>
-                    <td>${escapeHtml(f.alumno)}</td><td>${escapeHtml(f.cursos)}</td>
-                    <td style="text-align:right">${fmtMoneda(f.importe)}${f.personalizado ? ' <span class="badge" title="Monto personalizado del alumno">personal</span>' : ''}</td></tr>`).join('')
-                    || '<tr><td colspan="4" class="muted" style="text-align:center;padding:1rem">No hay alumnos para esos cursos.</td></tr>'}</tbody>
-            </table></div>`;
-        caja.hidden = false;
-    } catch (e) { toast(e.message, 'error'); }
+function psToggleVista() {
+    const v = document.getElementById('ps-vista');
+    v.hidden = !v.hidden;
+    document.getElementById('ps-btn-vista').innerHTML = `<svg class="ic"><use href="#i-eye"/></svg>${v.hidden ? 'Ver planilla' : 'Ocultar planilla'}`;
+    if (!v.hidden) { psRender(); v.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function psDibujarVista(filas, total) {
+    const vto = document.getElementById('ps-vto').value;
+    const orden = [...filas].sort((a, b) => a.cursos[0].localeCompare(b.cursos[0]) || a.alumno.localeCompare(b.alumno));
+    document.getElementById('ps-vista').innerHTML = `
+        <div class="ps-vista-cab"><b>Así queda el Excel</b><span class="muted">${filas.length} filas · ${fmtMoneda(total)}</span></div>
+        <div class="ps-tabla"><table>
+            <thead><tr><th>Nro Cliente</th><th>1º Vto</th><th style="text-align:right">1º Monto</th><th>Alumno</th><th>Curso</th></tr></thead>
+            <tbody>${orden.map(f => `<tr><td class="num"><b>${f.cliente}</b> <span class="muted">${f.tipo}</span></td><td>${vto ? fmtFecha(vto) : ''}</td>
+                <td class="num" style="text-align:right">${fmtMoneda(f.importe)}</td><td>${escapeHtml(f.alumno)}</td><td>${escapeHtml(f.cursos.join(' + '))}</td></tr>`).join('')}</tbody>
+        </table></div>`;
+}
+
+function psPedido() {
+    return {
+        vencimiento: document.getElementById('ps-vto').value,
+        cursos: [...psSel].map(id => ({ curso_id: id, importe: psCurso(id).importeElegido })),
+        excluir_pagados: document.getElementById('ps-pagados').checked,
+    };
 }
 
 async function psDescargar() {
     const p = psPedido();
-    if (!psValidar(p)) return;
+    if (!p.vencimiento) { toast('Poné la fecha del 1º vencimiento', 'error'); document.getElementById('ps-vto').focus(); return; }
+    if (!p.cursos.length) { toast('Elegí al menos un curso', 'error'); return; }
     const btn = document.getElementById('ps-descargar');
     btn.disabled = true;
     try {
