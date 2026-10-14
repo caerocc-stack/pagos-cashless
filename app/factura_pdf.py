@@ -23,7 +23,7 @@ TIPOS_AFIP = {
     81: "Ticket", 82: "Ticket", 83: "Ticket",
 }
 NC_AFIP = {3, 8, 13, 53}
-QR_HOSTS = ("afip.gob.ar/fe/qr", "arca.gob.ar/fe/qr")
+QR_HOSTS = ("afip.gob.ar/fe/qr", "arca.gob.ar/fe/qr", "afip.gob.ar/genericos/comprobantes/cae", "arca.gob.ar/genericos/comprobantes/cae")
 
 
 def digitos(s) -> str:
@@ -75,16 +75,18 @@ def leer_qr_afip(texto: str | None) -> dict | None:
     if not texto or len(texto) > 3000:
         return None
     t = texto.strip()
+    if not any(h in t for h in QR_HOSTS):
+        return None
+    crudo = re.search(r"[?&]p=(\{.*\})", t)  # algunos sistemas ponen el JSON sin codificar
     m = re.search(r"[?&]p=([A-Za-z0-9+/=_%-]+)", t)
-    if m:
-        if not any(h in t for h in QR_HOSTS):
-            return None
-        p = m.group(1).replace("%3D", "=").replace("%2B", "+").replace("%2F", "/")
-    else:
+    if not crudo and not m:
         return None
     try:
-        p = p.replace("-", "+").replace("_", "/")
-        j = json.loads(base64.b64decode(p + "=" * (-len(p) % 4)).decode("utf-8", "ignore"))
+        if crudo:
+            j = json.loads(crudo.group(1))
+        else:
+            p = m.group(1).replace("%3D", "=").replace("%2B", "+").replace("%2F", "/").replace("-", "+").replace("_", "/")
+            j = json.loads(base64.b64decode(p + "=" * (-len(p) % 4)).decode("utf-8", "ignore"))
         cuit = digitos(j.get("cuit"))
         tipo = int(j.get("tipoCmp"))
         return {
