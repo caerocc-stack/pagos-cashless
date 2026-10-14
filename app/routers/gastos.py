@@ -377,9 +377,20 @@ def obtener(gasto_id: int, db: Session = Depends(get_db)):
     return g
 
 
+def _validar_pago(forma_pago, fecha_pago, fecha_factura=None):
+    """Pago cargado a mano: la fecha es cuándo salió la plata (va en la columna PAGOS del Excel)."""
+    if fecha_pago and not forma_pago:
+        raise HTTPException(400, "Elegí el medio de pago (efectivo, transferencia…) para esa fecha de pago.")
+    if forma_pago and forma_pago not in FORMAS_PAGO:
+        raise HTTPException(400, "Medio de pago inválido")
+    if fecha_pago and fecha_pago > ahora_ar().date() + timedelta(days=1):
+        raise HTTPException(400, "La fecha de pago no puede ser futura.")
+
+
 @router.post("/", response_model=GastoResponse, status_code=201)
 def crear(data: GastoCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     d = data.model_dump()
+    _validar_pago(d.get("forma_pago"), d.get("fecha_pago"))
     cuit = _norm_cuit(d.get("cuit"))
     if cuit and not cuit_valido(cuit):
         raise HTTPException(400, "El CUIT no es válido (revisá los 11 dígitos).")
@@ -431,6 +442,12 @@ def actualizar(gasto_id: int, data: GastoUpdate, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
     cambios = _completar_proveedor(data.model_dump(exclude_unset=True), db)
+    if "forma_pago" in cambios or "fecha_pago" in cambios:
+        vinculado = g.caja_mov_id or g.conciliado
+        if vinculado and "forma_pago" in cambios and cambios["forma_pago"] != g.forma_pago:
+            raise HTTPException(400, "El pago está vinculado a un movimiento de caja o del banco: para cambiar el medio, "
+                                     "deshacé primero el pago. La fecha sí se puede corregir.")
+        _validar_pago(cambios.get("forma_pago", g.forma_pago), cambios.get("fecha_pago", g.fecha_pago))
     if "cuit" in cambios and cambios["cuit"]:
         cambios["cuit"] = _norm_cuit(cambios["cuit"])
         if not cuit_valido(cambios["cuit"]):

@@ -968,7 +968,7 @@ button.st-estado:focus-visible { outline: 3px solid var(--primary-soft); outline
 .extractos-lista-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
 
 /* Excel para la contadora */
-.xc-filtros { display: grid; grid-template-columns: 1fr 0.7fr 1.3fr; gap: 0.6rem; margin-bottom: 1rem; }
+.xc-filtros { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; }
 .xc-filtros label { display: block; margin: 0 0 0.3rem; }
 .xc-filtros select { margin: 0; }
 .xc-tabla { margin: 0 0 0.8rem; }
@@ -977,4 +977,13 @@ button.st-estado:focus-visible { outline: 3px solid var(--primary-soft); outline
 .xc-det { margin-top: 0.4rem; font-size: 0.86rem; }
 .xc-det summary { cursor: pointer; font-weight: 600; }
 .xc-det ul { margin: 0.3rem 0 0 1.1rem; }
-@media (max-width: 560px) { .xc-filtros { grid-template-columns: 1fr 1fr; } .xc-filtros > div:last-child { grid-column: 1 / -1; } }
+
+/* Pago cargado a mano en la factura */
+.gasto-pago-box { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); padding: 0.6rem 0.9rem 0.75rem; }
+.gasto-pago-tit { font-weight: 700; color: var(--heading); font-size: 0.92rem; }
+.gasto-pago-tit .muted { font-weight: 400; font-size: 0.8rem; }
+.gasto-pago-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.8rem; }
+.gasto-pago-campos label { margin-top: 0.5rem; }
+.gasto-pago-box small { display: block; margin-top: 0.4rem; }
+.gasto-pago-box .pd-mal { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+@media (max-width: 560px) { .gasto-pago-campos { grid-template-columns: 1fr; } }

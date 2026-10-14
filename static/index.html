@@ -899,6 +899,19 @@
                         <div><label>CUIT</label><input type="text" id="gasto-cuit" placeholder="se completa con el QR"></div>
                         <div><label>Importe (IVA incluido)</label><input type="number" step="0.01" id="gasto-importe" required placeholder="0.00"></div>
                         <div><label>Vence el <span style="color:var(--text-muted);font-weight:400">(para pagarla)</span></label><input type="date" id="gasto-vencimiento"></div>
+                        <div><label for="gasto-categoria">Hoja del Excel <span style="color:var(--text-muted);font-weight:400">(destino)</span></label>
+                            <select id="gasto-categoria"><option value="">— Sin asignar —</option><option value="Oficina">Gtos. de Oficina</option>
+                                <option value="Infraestructura">Infraestructura</option><option value="Escuela">Gtos. de la Escuela</option><option value="Honorarios">Honorarios</option></select></div>
+                        <div class="gasto-pago-box" style="grid-column:1/-1">
+                            <div class="gasto-pago-tit">Pago <span id="gasto-pago-vinc" class="muted"></span></div>
+                            <div class="gasto-pago-campos">
+                                <div><label for="gasto-forma-pago">Medio de pago</label>
+                                    <select id="gasto-forma-pago" onchange="gastoPagoCambio()"><option value="">— Sin pagar todavía —</option></select></div>
+                                <div><label for="gasto-fecha-pago">Fecha de pago <span style="color:var(--text-muted);font-weight:400">(cuándo salió la plata)</span></label>
+                                    <input type="date" id="gasto-fecha-pago" onchange="gastoPagoCambio()"></div>
+                            </div>
+                            <small class="muted">Va en la columna PAGOS del Excel para la contadora. Si se pagó en otro mes que la factura, poné acá la fecha real del pago.</small>
+                        </div>
                         <div><label>Rubro <span style="color:var(--text-muted);font-weight:400">(del proveedor)</span></label><input type="text" id="gasto-rubro" placeholder="ej: Librería, Ferretería..."></div>
                         <div style="grid-column:1/-1"><label>Concepto <span style="color:var(--text-muted);font-weight:400">(qué se compró — se carga a mano)</span></label><input type="text" id="gasto-concepto" placeholder="ej: Resmas A4, tóner..."></div>
                         <div style="grid-column:1/-1"><label>Destino en la escuela</label><input type="text" id="gasto-destino" placeholder="ej: Taller de Avionica, Secretaría..."></div>

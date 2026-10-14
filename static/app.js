@@ -2008,7 +2008,7 @@ async function abrirVincularPago(id) {
             <tbody>${fCaja}</tbody></table>
             <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:space-between">
                 <button class="btn btn-success" onclick="pagoEfectivoNuevo(${id})">+ Registrar pago en efectivo (crea el egreso de caja)</button>
-                <button class="btn" onclick="cerrarModal()">Cerrar</button>
+                <button class="btn btn-outline" onclick="cerrarModal();editarGasto(${id});gastoIrAlPago()">Cargar el pago a mano (medio y fecha)</button>
             </div>`;
         document.getElementById('modal-content').innerHTML = html;
         document.getElementById('modal-overlay').style.display = 'flex';
@@ -2309,6 +2309,7 @@ function mostrarFormGasto() {
         'gasto-notas', 'gasto-vencimiento', 'gasto-cae', 'gasto-recibida-id'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('gasto-revision').hidden = true;
     document.getElementById('gasto-btn-revisar').hidden = true;
+    gastoPagoLlenar(null);
     document.getElementById('gasto-fecha').value = hoyISO();
     document.getElementById('gasto-tipo').value = '';
     document.getElementById('gasto-proveedor').value = '';
@@ -2348,6 +2349,7 @@ function editarGasto(id) {
     document.getElementById('gasto-vencimiento').value = g.vencimiento || '';
     document.getElementById('gasto-cae').value = g.cae || '';
     document.getElementById('gasto-recibida-id').value = '';
+    gastoPagoLlenar(g);
     const rev = document.getElementById('gasto-revision');
     rev.hidden = g.revisado !== false;
     rev.innerHTML = g.revisado === false ? `Esta factura llegó del <b>portal de proveedores</b> y se cargó sola. Revisá los datos
@@ -2362,6 +2364,34 @@ function editarGasto(id) {
     document.getElementById('gasto-nc-wrap').style.display = esNC ? 'block' : 'none';
     if (esNC) { gastoLlenarNCde(); document.getElementById('gasto-nc-de').value = g.nc_de_id; }
     document.getElementById('form-gasto').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Pago cargado a mano en la factura (medio y fecha en que salió la plata)
+const FORMAS_PAGO_GASTO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta', 'Cheque', 'Otro'];
+function gastoPagoLlenar(g) {
+    const sel = document.getElementById('gasto-forma-pago');
+    sel.innerHTML = '<option value="">— Sin pagar todavía —</option>' + FORMAS_PAGO_GASTO.map(f => `<option>${f}</option>`).join('');
+    sel.value = (g && g.forma_pago) || '';
+    sel.dataset.original = sel.value;
+    document.getElementById('gasto-fecha-pago').value = (g && g.fecha_pago) || '';
+    document.getElementById('gasto-categoria').value = (g && g.categoria) || '';
+    const vinc = g && (g.caja_mov_id || g.conciliado);
+    sel.disabled = !!vinc;
+    document.getElementById('gasto-pago-vinc').textContent = !g || !vinc ? ''
+        : g.caja_mov_id ? '· vinculado al libro de caja (para cambiar el medio, deshacé el pago; la fecha se puede corregir)'
+        : '· vinculado al extracto del banco (para cambiar el medio, deshacé el pago; la fecha se puede corregir)';
+    gastoPagoCambio();
+}
+function gastoPagoCambio() {
+    const f = document.getElementById('gasto-fecha-pago'), m = document.getElementById('gasto-forma-pago');
+    f.max = hoyISO();
+    f.classList.toggle('pd-mal', !!m.value && !f.value && m.value !== (m.dataset.original || ''));
+}
+function gastoIrAlPago() {
+    setTimeout(() => {
+        const box = document.querySelector('.gasto-pago-box');
+        if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('gasto-forma-pago').focus({ preventScroll: true }); }
+    }, 150);
 }
 
 async function guardarGasto(e) {
@@ -2391,7 +2421,13 @@ async function guardarGasto(e) {
         notas: document.getElementById('gasto-notas').value || null,
         vencimiento: document.getElementById('gasto-vencimiento').value || null,
         cae: document.getElementById('gasto-cae').value || null,
+        categoria: document.getElementById('gasto-categoria').value || null,
+        forma_pago: document.getElementById('gasto-forma-pago').value || null,
+        fecha_pago: document.getElementById('gasto-fecha-pago').value || null,
     };
+    const medioNuevo = body.forma_pago !== (document.getElementById('gasto-forma-pago').dataset.original || null);
+    if (body.forma_pago && !body.fecha_pago && medioNuevo) { toast('Poné la fecha en que se pagó (cuándo salió la plata)', 'error'); document.getElementById('gasto-fecha-pago').focus(); return; }
+    if (body.fecha_pago && !body.forma_pago) { toast('Elegí el medio de pago', 'error'); document.getElementById('gasto-forma-pago').focus(); return; }
     const recibida = document.getElementById('gasto-recibida-id').value;
     if (recibida && !editId) body.factura_recibida_id = Number(recibida);
     if (e.submitter && e.submitter.dataset.revisar) body.revisado = true;
@@ -5738,13 +5774,11 @@ function abrirExcelContadora() {
     for (let a = hoy.getFullYear(); a >= 2025; a--) anios.push(a);
     document.getElementById('modal-content').innerHTML = `
         <h2 style="margin-top:0">Excel para la contadora</h2>
-        <p class="muted" style="margin-top:-0.4rem">Las facturas del mes clasificadas por destino, con el formato de siempre: hoja TOTALES y una hoja por
-        destino (Gtos. de Oficina, Infraestructura, Gtos. de la Escuela, Honorarios) con su total.</p>
+        <p class="muted" style="margin-top:-0.4rem">Las facturas del mes (por la fecha de la factura) clasificadas por destino, con el formato de siempre:
+        hoja TOTALES y una hoja por destino con su total. En PAGOS va la fecha en que se pagó cada una.</p>
         <div class="xc-filtros">
             <div><label for="xc-mes">Mes</label><select id="xc-mes" onchange="xcVista()">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === mes ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
             <div><label for="xc-anio">Año</label><select id="xc-anio" onchange="xcVista()">${anios.map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
-            <div><label for="xc-por">Tomar las facturas por</label><select id="xc-por" onchange="xcVista()">
-                <option value="factura">Fecha de la factura</option><option value="pago">Fecha de pago</option></select></div>
         </div>
         <div id="xc-vista"><p class="muted">Calculando…</p></div>
         <div class="form-actions"><button class="btn btn-primary" id="xc-bajar" onclick="xcDescargar()" disabled><svg class="ic"><use href="#i-download"/></svg>Descargar Excel</button></div>`;
@@ -5755,7 +5789,7 @@ function abrirExcelContadora() {
 }
 
 function xcParams() {
-    return `anio=${document.getElementById('xc-anio').value}&mes=${document.getElementById('xc-mes').value}&por=${document.getElementById('xc-por').value}`;
+    return `anio=${document.getElementById('xc-anio').value}&mes=${document.getElementById('xc-mes').value}`;
 }
 
 async function xcVista() {
