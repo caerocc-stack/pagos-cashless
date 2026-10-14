@@ -966,3 +966,15 @@ button.st-estado:focus-visible { outline: 3px solid var(--primary-soft); outline
 
 .extractos-lista { margin-top: 0.9rem; }
 .extractos-lista-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+
+/* Excel para la contadora */
+.xc-filtros { display: grid; grid-template-columns: 1fr 0.7fr 1.3fr; gap: 0.6rem; margin-bottom: 1rem; }
+.xc-filtros label { display: block; margin: 0 0 0.3rem; }
+.xc-filtros select { margin: 0; }
+.xc-tabla { margin: 0 0 0.8rem; }
+.xc-tabla tfoot td { font-weight: 700; background: var(--success-soft); }
+.xc-nota { font-size: 0.85rem; color: var(--text-muted); margin: 0.35rem 0; }
+.xc-det { margin-top: 0.4rem; font-size: 0.86rem; }
+.xc-det summary { cursor: pointer; font-weight: 600; }
+.xc-det ul { margin: 0.3rem 0 0 1.1rem; }
+@media (max-width: 560px) { .xc-filtros { grid-template-columns: 1fr 1fr; } .xc-filtros > div:last-child { grid-column: 1 / -1; } }

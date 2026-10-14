@@ -5723,3 +5723,73 @@ async function pdfPresupuesto(pedidos) {
     }
     doc.save(`solicitud_presupuesto_${pedidos.map(p => p.numero).join('_').slice(0, 40)}.pdf`);
 }
+
+// =========================================================
+// --- EXCEL MENSUAL PARA LA CONTADORA (formato de la planilla modelo) ---
+// =========================================================
+const XC_DESTINOS = { Oficina: 'Gtos. de Oficina', Infraestructura: 'Infraestructura', Escuela: 'Gtos. de la Escuela', Honorarios: 'Honorarios' };
+
+function abrirExcelContadora() {
+    // por defecto, el mes del filtro de la pantalla (o el mes anterior, que es el que se rinde)
+    const fm = document.getElementById('gasto-f-mes').value, fa = document.getElementById('gasto-f-anio').value;
+    const hoy = new Date(), ant = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const mes = +(fm || ant.getMonth() + 1), anio = +(fa || ant.getFullYear());
+    const anios = [];
+    for (let a = hoy.getFullYear(); a >= 2025; a--) anios.push(a);
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Excel para la contadora</h2>
+        <p class="muted" style="margin-top:-0.4rem">Las facturas del mes clasificadas por destino, con el formato de siempre: hoja TOTALES y una hoja por
+        destino (Gtos. de Oficina, Infraestructura, Gtos. de la Escuela, Honorarios) con su total.</p>
+        <div class="xc-filtros">
+            <div><label for="xc-mes">Mes</label><select id="xc-mes" onchange="xcVista()">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === mes ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+            <div><label for="xc-anio">Año</label><select id="xc-anio" onchange="xcVista()">${anios.map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+            <div><label for="xc-por">Tomar las facturas por</label><select id="xc-por" onchange="xcVista()">
+                <option value="factura">Fecha de la factura</option><option value="pago">Fecha de pago</option></select></div>
+        </div>
+        <div id="xc-vista"><p class="muted">Calculando…</p></div>
+        <div class="form-actions"><button class="btn btn-primary" id="xc-bajar" onclick="xcDescargar()" disabled><svg class="ic"><use href="#i-download"/></svg>Descargar Excel</button></div>`;
+    const ov = document.getElementById('modal-overlay');
+    ov.querySelector('.modal').classList.remove('modal-ancho');
+    ov.style.display = 'flex';
+    xcVista();
+}
+
+function xcParams() {
+    return `anio=${document.getElementById('xc-anio').value}&mes=${document.getElementById('xc-mes').value}&por=${document.getElementById('xc-por').value}`;
+}
+
+async function xcVista() {
+    const caja = document.getElementById('xc-vista');
+    try {
+        const r = await api('/api/gastos/excel-contadora/vista?' + xcParams());
+        const lista = (t, xs) => `<details class="xc-det"><summary>${t}</summary><ul>${xs.slice(0, 40).map(g =>
+            `<li>${fmtFecha(g.fecha)} · ${escapeHtml(g.razon_social || 'Sin proveedor')} · ${fmtMoneda(g.importe)}</li>`).join('')}</ul></details>`;
+        caja.innerHTML = r.cantidad ? `
+            <table class="xc-tabla"><thead><tr><th>Hoja</th><th style="text-align:right">Facturas</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>${r.por_destino.map(d => `<tr><td>${XC_DESTINOS[d.categoria] || d.categoria}</td><td class="num" style="text-align:right">${d.cantidad}</td>
+                <td class="num" style="text-align:right">${fmtMoneda(d.total)}</td></tr>`).join('')}</tbody>
+            <tfoot><tr><td>TOTAL</td><td class="num" style="text-align:right">${r.por_destino.reduce((s, d) => s + d.cantidad, 0)}</td><td class="num" style="text-align:right">${fmtMoneda(r.total)}</td></tr></tfoot></table>
+            ${r.sin_destino.length ? `<div class="ps-aviso"><b>${r.sin_destino.length} factura${r.sin_destino.length === 1 ? '' : 's'} sin destino</b>: no suman en ninguna hoja;
+                van en la hoja «A REVISAR». Asignales un destino antes de mandar el Excel.${lista('Ver cuáles', r.sin_destino)}</div>` : ''}
+            ${r.sin_revisar.length ? `<p class="xc-nota">${r.sin_revisar.length} llegaron por el portal de proveedores y todavía no se revisaron: suman en su hoja y también se listan en «A REVISAR».</p>` : ''}
+            ${r.sin_pagar ? `<p class="xc-nota">${r.sin_pagar} todavía no tienen el pago registrado: salen con la fecha y el medio de pago vacíos.</p>` : ''}`
+            : '<p class="muted">No hay facturas en ese mes.</p>';
+        document.getElementById('xc-bajar').disabled = !r.cantidad;
+    } catch (e) { caja.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`; }
+}
+
+async function xcDescargar() {
+    const btn = document.getElementById('xc-bajar');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/gastos/excel-contadora?' + xcParams(), { credentials: 'same-origin' });
+        if (!res.ok) { let d = {}; try { d = await res.json(); } catch {} throw new Error(d.detail || 'No se pudo generar el Excel'); }
+        const nombre = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'Gastos.xlsx';
+        const url = URL.createObjectURL(await res.blob());
+        const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        toast(`Descargado: ${nombre}`);
+    } catch (e) { toast(e.message, 'error'); }
+    finally { btn.disabled = false; }
+}

@@ -324,6 +324,51 @@ def sugerencias(cuit: str | None = None, proveedor_id: int | None = None, db: Se
     return {"rubro": g.rubro, "categoria": g.categoria, "destino": g.destino, "concepto": g.concepto}
 
 
+def _gastos_del_mes(db: Session, anio: int, mes: int, por: str) -> list[Gasto]:
+    """Facturas del mes: por la fecha de la factura (lo habitual) o por la fecha en que se pagó."""
+    if not 1 <= mes <= 12:
+        raise HTTPException(400, "Mes inválido")
+    desde = date(anio, mes, 1)
+    hasta = date(anio + (mes == 12), mes % 12 + 1, 1)
+    campo = Gasto.fecha_pago if por == "pago" else Gasto.fecha
+    return db.query(Gasto).filter(campo >= desde, campo < hasta).order_by(Gasto.fecha, Gasto.id).all()
+
+
+@router.get("/excel-contadora/vista")
+def excel_contadora_vista(anio: int, mes: int, por: str = "factura", db: Session = Depends(get_db)):
+    """Lo que va a tener el Excel para la contadora: totales por destino y lo que conviene revisar antes."""
+    gastos = _gastos_del_mes(db, anio, mes, por)
+    destinos = {c: {"cantidad": 0, "total": 0.0} for c in CATEGORIAS}
+    sin_destino = []
+    for g in gastos:
+        if g.categoria in destinos:
+            destinos[g.categoria]["cantidad"] += 1
+            destinos[g.categoria]["total"] += float(g.importe)
+        else:
+            sin_destino.append(g)
+    corto = lambda g: {"id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "importe": float(g.importe),
+                       "categoria": g.categoria}
+    return {
+        "cantidad": len(gastos), "total": round(sum(d["total"] for d in destinos.values()), 2),
+        "por_destino": [{"categoria": c, **v} for c, v in destinos.items()],
+        "sin_destino": [corto(g) for g in sin_destino],
+        "sin_revisar": [corto(g) for g in gastos if not g.revisado],
+        "sin_pagar": sum(1 for g in gastos if not g.forma_pago),
+    }
+
+
+@router.get("/excel-contadora")
+def excel_contadora(anio: int, mes: int, por: str = "factura", db: Session = Depends(get_db)):
+    """Excel del mes con el formato de la planilla modelo (TOTALES + una hoja por destino)."""
+    from fastapi.responses import Response
+    from app.excel_contadora import MESES, generar
+    gastos = _gastos_del_mes(db, anio, mes, por)
+    nombre = f"Gastos {MESES[mes - 1].upper()}-{anio}.xlsx"
+    return Response(generar(gastos, anio, mes),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+
+
 @router.get("/{gasto_id}", response_model=GastoResponse)
 def obtener(gasto_id: int, db: Session = Depends(get_db)):
     g = db.get(Gasto, gasto_id)
