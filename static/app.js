@@ -2625,8 +2625,15 @@ async function guardarCaja(e) {
 async function eliminarCaja(id) {
     if (!confirm('¿Eliminar este movimiento de caja?')) return;
     try {
-        const res = await api(`/api/caja/${id}`, { method: 'DELETE' });
-        toast(res.mensaje);
+        let res = await fetch(`${API}/api/caja/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+        let data = await res.json().catch(() => ({}));
+        if (res.status === 409) {  // vinculado a un pago de cuota o a una factura: confirmar
+            if (!confirm(`${data.detail}\n\n¿Eliminar igual?`)) return;
+            res = await fetch(`${API}/api/caja/${id}?confirmar=true`, { method: 'DELETE', credentials: 'same-origin' });
+            data = await res.json().catch(() => ({}));
+        }
+        if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar');
+        toast(data.mensaje);
         cargarCaja();
     } catch (err) {
         toast(err.message, 'error');

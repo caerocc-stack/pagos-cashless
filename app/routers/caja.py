@@ -149,10 +149,33 @@ def actualizar(mov_id: int, data: CajaUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{mov_id}")
-def eliminar(mov_id: int, db: Session = Depends(get_db)):
+def eliminar(mov_id: int, confirmar: bool = False, db: Session = Depends(get_db)):
+    """Borra un movimiento de caja. Si es el pago en efectivo de una cuota, se borra también ese pago
+    (con `confirmar`); si pagó una factura, la factura vuelve a quedar sin pagar."""
+    from app.models.alumno import Alumno
+    from app.models.gasto import Gasto
+    from app.models.pago_cuota import PagoCuota
     m = db.get(MovimientoCaja, mov_id)
     if not m:
         raise HTTPException(404, "Movimiento no encontrado")
+    pagos = db.query(PagoCuota).filter(PagoCuota.caja_mov_id == m.id).all()
+    gastos = db.query(Gasto).filter(Gasto.caja_mov_id == m.id).all()
+    if (pagos or gastos) and not confirmar:
+        partes = []
+        for p in pagos:
+            a = db.get(Alumno, p.alumno_id) if p.alumno_id else None
+            partes.append(f"es el pago en efectivo de la cuota de {a.apellido}, {a.nombre}" if a else "es un pago de cuota en efectivo")
+        for g in gastos:
+            partes.append(f"pagó la factura de {g.razon_social or 'un proveedor'}")
+        raise HTTPException(409, "Este movimiento " + " y ".join(partes) + ". Si lo borrás, "
+                            + ("se borra también ese pago del estado de cuenta" if pagos else "")
+                            + (" y " if pagos and gastos else "") + ("la factura vuelve a quedar sin pagar" if gastos else "") + ".")
+    for p in pagos:
+        db.delete(p)
+    for g in gastos:
+        g.caja_mov_id, g.forma_pago, g.fecha_pago = None, None, None
+    db.flush()
     db.delete(m)
     db.commit()
-    return {"ok": True, "mensaje": "Movimiento de caja eliminado"}
+    extra = (f" y {len(pagos)} pago{'s' if len(pagos) > 1 else ''} de cuota" if pagos else "") +             (f"; {len(gastos)} factura{'s' if len(gastos) > 1 else ''} quedó sin pagar" if gastos else "")
+    return {"ok": True, "mensaje": "Movimiento de caja eliminado" + extra, "pagos_borrados": len(pagos), "facturas_liberadas": len(gastos)}
