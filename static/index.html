@@ -1392,14 +1392,23 @@
 
         <!-- IMPORTAR -->
         <section id="sec-importar" class="section">
-            <div class="card" style="max-width:600px">
-                <h3>Importar alumnos desde Excel</h3>
-                <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong> y opcionalmente <strong>email</strong> y <strong>area</strong>. Los alumnos sin legajo (exámenes, aeronavegantes) pueden ir con el legajo vacío: el cupón se genera con el DNI.</p>
-                <p style="color:var(--text-muted);font-size:0.85rem">Si un alumno ya existe, se actualiza su email desde la columna Mail (no se duplica).</p>
-                <form onsubmit="importarExcel(event)">
-                    <input type="file" id="archivo-excel" accept=".xlsx,.xls" required>
-                    <button type="submit" class="btn btn-primary">Importar</button>
-                </form>
+            <div class="card imp-card">
+                <h3>Importar alumnos</h3>
+                <p class="muted" style="margin:0 0 1rem">Subí el listado tal como te llega (Excel o CSV): el del padrón o el de otra área de la escuela.
+                El sistema reconoce las columnas, separa apellido y nombre y lo pasa al formato del padrón. Antes de importar ves cómo queda cada alumno.</p>
+                <label class="imp-zona" id="imp-zona">
+                    <input type="file" id="archivo-excel" accept=".xlsx,.xls,.csv" onchange="impLeer()">
+                    <svg class="ic"><use href="#i-upload"/></svg>
+                    <span><b id="imp-zona-txt">Elegí el archivo</b><small class="muted">o arrastralo acá · .xlsx, .xls o .csv</small></span>
+                </label>
+                <div id="imp-curso-box" class="imp-curso" hidden>
+                    <label for="imp-curso">Curso de estos alumnos <span class="muted">(el listado no lo trae)</span></label>
+                    <div class="imp-curso-fila">
+                        <input type="text" id="imp-curso" list="imp-cursos-lista" placeholder="Ej.: RAAC 147" autocomplete="off" onchange="impLeer()">
+                        <datalist id="imp-cursos-lista"></datalist>
+                    </div>
+                </div>
+                <div id="imp-vista" hidden></div>
                 <div id="resultado-import" style="display:none"></div>
             </div>
         </section>

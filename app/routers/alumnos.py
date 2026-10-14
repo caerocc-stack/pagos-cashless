@@ -1,9 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
-import openpyxl
-import io
-import re
 
 from app.database import get_db
 from app.models.alumno import Alumno
@@ -15,6 +12,7 @@ from app.models.curso import Curso, AlumnoCurso
 from app.models.pago_cuota import PagoCuota
 from app.models.portal import CuponEnviado, Consulta
 from app.routers.cursos import curso_de_alumno
+from app.padron_import import leer_padron, sin_acentos
 from app.tz import ahora_ar
 from pydantic import BaseModel
 
@@ -224,123 +222,150 @@ def eliminar_alumno(alumno_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "mensaje": f"Alumno {alumno.apellido}, {alumno.nombre} eliminado"}
 
 
-@router.post("/importar")
-def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
-    """
-    Importa alumnos desde un archivo Excel.
-    Columnas esperadas: legajo, dni, nombre, apellido, curso (opcionales: email, area).
-    Sin legajo (exámenes, aeronavegantes) se usa "D" + DNI.
-    """
+def _nombres_del_padron(db: Session) -> set[str]:
+    """Nombres de pila que ya figuran en el padrón (ayudan a separar apellido y nombre)."""
+    salida = set()
+    for (n,) in db.query(Alumno.nombre).all():
+        for p in (n or "").split():
+            p = sin_acentos(p).lower()
+            if len(p) > 2:
+                salida.add(p)
+    return salida
+
+
+def _leer_archivo(db: Session, archivo: UploadFile, curso: str | None) -> dict:
     contenido = archivo.file.read()
-    wb = openpyxl.load_workbook(io.BytesIO(contenido))
-    ws = wb.active
+    if len(contenido) > 8_000_000:
+        raise HTTPException(400, "El archivo es demasiado grande (máximo 8 MB)")
+    try:
+        return leer_padron(contenido, archivo.filename or "", curso, _nombres_del_padron(db))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
-    encabezados = [str(cell.value).strip().lower() for cell in ws[1]]
-    campos_requeridos = {"dni", "nombre", "apellido", "curso"}
-    faltantes = campos_requeridos - set(encabezados)
-    if faltantes:
-        raise HTTPException(400, f"Faltan columnas en el Excel: {', '.join(faltantes)}")
 
-    col_map = {nombre: idx for idx, nombre in enumerate(encabezados)}
-    # Columnas opcionales
-    col_mail = col_map.get("mail", col_map.get("email"))
-    col_area = col_map.get("area", col_map.get("área"))
-
-    def _valor(fila, idx):
-        if idx is None:
-            return ""
-        v = fila[idx]
-        return "" if v is None else str(v).strip()
-
-    # Cargar alumnos existentes (por legajo y por dni) para detectar duplicados y actualizar email
+def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
+    """Decide qué pasa con cada fila (alumno nuevo, correo actualizado, curso sumado, sin cambios o error)
+    y, con `aplicar`, lo guarda."""
+    filas = datos["filas"]
     existentes_por_legajo = {a.legajo: a for a in db.query(Alumno).all()}
     por_dni = {a.dni: a for a in existentes_por_legajo.values()}
-    dnis_existentes = set(por_dni)
     anio = ahora_ar().year
     cursos_cfg = _cursos_activos(db, anio)
-    cursos_sumados = 0
+    area_de_curso = {}
 
-    def sumar_si_es_otro_curso(alumno, curso_txt, area_txt):
-        """El mismo alumno aparece en otro curso (aeronavegantes, exámenes): se le suma ese curso."""
-        nonlocal cursos_sumados
-        if not alumno.id or (curso_txt or "").strip().upper() == (alumno.curso or "").strip().upper():
-            return False
+    def area_para(curso_txt: str, area_txt: str) -> str | None:
+        if area_txt:
+            return area_txt
+        if curso_txt not in area_de_curso:
+            c = curso_de_alumno(Alumno(curso=curso_txt, area=derivar_area(curso_txt)), cursos_cfg)
+            area_de_curso[curso_txt] = derivar_area(curso_txt) or (c.area if c else None)
+        return area_de_curso[curso_txt]
+
+    def otro_curso(alumno, curso_txt, area_txt):
+        """El mismo alumno aparece en otro curso (aeronavegantes, exámenes): devuelve ese curso."""
+        if (curso_txt or "").strip().upper() == (alumno.curso or "").strip().upper():
+            return None
         otro = curso_de_alumno(Alumno(curso=curso_txt, area=area_txt), cursos_cfg)
         actual = curso_de_alumno(alumno, cursos_cfg)
         if not otro or (actual and otro.id == actual.id):
-            return False
-        if agregar_curso(db, alumno, otro, anio, max(3, ahora_ar().month)):
-            cursos_sumados += 1
-            return True
-        return False
+            return None
+        if alumno.id and db.query(AlumnoCurso).filter(AlumnoCurso.alumno_id == alumno.id, AlumnoCurso.anio == anio,
+                                                      AlumnoCurso.curso_id == otro.id).first():
+            return None
+        return otro
 
-    creados = 0
-    actualizados = 0
-    errores = []
-    nuevos_alumnos = []
+    resumen = {"creados": 0, "actualizados": 0, "cursos_sumados": 0, "sin_cambios": 0}
+    errores = list(datos["errores"])
+    vista, nuevos = [], []
+    for f in filas:
+        r = {k: f.get(k) for k in ("fila", "legajo", "dni", "apellido", "nombre", "curso", "email")}
+        if f.get("error"):
+            r["accion"], r["detalle"] = "error", f["error"]
+            vista.append(r)
+            continue
+        sin_curso = not f["curso"]  # el listado no lo trae y todavía no se eligió: la vista igual muestra qué pasaría
+        if sin_curso and (aplicar or datos["trae_curso"]):
+            r["accion"], r["detalle"] = "error", "Falta el curso"
+            errores.append(f"Fila {f['fila']}: falta el curso")
+            vista.append(r)
+            continue
+        dni = f["dni"]
+        legajo = f["legajo"] or "D" + dni  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
+        area = area_para(f["curso"], f["area"]) if not sin_curso else (f["area"] or None)
+        r["legajo"], r["area"] = legajo, area
+        ex = existentes_por_legajo.get(legajo) or por_dni.get(dni)
+        if ex is not None and ex.dni != dni and ex.legajo == legajo:
+            r["accion"], r["detalle"] = "error", f"El legajo {legajo} ya es de {ex.apellido}, {ex.nombre} (DNI {ex.dni})"
+            errores.append(f"Fila {f['fila']}: {r['detalle']}")
+            vista.append(r)
+            continue
+        if ex is not None:
+            cambios = []
+            otro = otro_curso(ex, f["curso"], area) if not sin_curso else None
+            if otro:
+                cambios.append(f"se le suma el curso {otro.nombre}")
+            if f["email"] and f["email"] != ex.email:
+                cambios.append("se carga el correo" if not ex.email else "se actualiza el correo")
+            if f.get("telefono") and not ex.telefono:
+                cambios.append("se carga el teléfono")
+            r["existente"] = f"{ex.apellido}, {ex.nombre}" + (f" ({ex.curso})" if ex.curso else "")
+            if not cambios:
+                r["accion"], r["detalle"] = "igual", "Ya está en el padrón"
+                resumen["sin_cambios"] += 1
+            else:
+                r["accion"], r["detalle"] = "actualiza", "Ya está: " + ", ".join(cambios)
+                resumen["actualizados"] += 1
+                if otro:
+                    resumen["cursos_sumados"] += 1
+                if aplicar:
+                    if otro and ex.id:
+                        agregar_curso(db, ex, otro, anio, max(3, ahora_ar().month))
+                    if f["email"]:
+                        ex.email = f["email"]
+                    if f.get("telefono") and not ex.telefono:
+                        ex.telefono = f["telefono"]
+                    if area and not ex.area:
+                        ex.area = area
+            vista.append(r)
+            continue
+        r["accion"], r["detalle"] = "nuevo", "Alumno nuevo" + (" (falta elegir el curso)" if sin_curso else "")
+        resumen["creados"] += 1
+        nuevo = Alumno(legajo=legajo, dni=dni, nombre=f["nombre"], apellido=f["apellido"], curso=f["curso"][:20],
+                       email=f["email"], area=area, telefono=f.get("telefono"), division=None)
+        nuevos.append(nuevo)
+        existentes_por_legajo[legajo] = nuevo
+        por_dni[dni] = nuevo
+        vista.append(r)
 
-    for fila_num, fila in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        try:
-            legajo = _valor(fila, col_map.get("legajo"))
-            dni = _valor(fila, col_map["dni"])
-            nombre = _valor(fila, col_map["nombre"])
-            apellido = _valor(fila, col_map["apellido"])
-            curso = _valor(fila, col_map["curso"])
-            email = _valor(fila, col_mail) or None
-            area = _valor(fila, col_area) or derivar_area(curso)
-            dni = re.sub(r"\D", "", dni.removesuffix(".0"))
-            if not legajo and dni:  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
-                legajo = "D" + dni
+    if aplicar:
+        if nuevos:
+            db.add_all(nuevos)
+            db.flush()
+            db.add_all([Saldo(alumno_id=a.id) for a in nuevos])
+        db.commit()
+    return {**resumen, "errores": errores, "filas": vista, "total_procesadas": len(filas),
+            "columnas": datos["columnas"], "trae_curso": datos["trae_curso"]}
 
-            if not all([legajo, dni, nombre, apellido, curso]):
-                errores.append(f"Fila {fila_num}: datos incompletos")
-                continue
 
-            # Si el alumno ya existe: actualizar email y area si el archivo los trae
-            if legajo in existentes_por_legajo:
-                ex = existentes_por_legajo[legajo]
-                cambio = sumar_si_es_otro_curso(ex, curso, area)
-                if email:
-                    ex.email = email
-                    cambio = True
-                if area and not ex.area:
-                    ex.area = area
-                    cambio = True
-                if cambio:
-                    actualizados += 1
-                continue
-            if dni in dnis_existentes:
-                ex = por_dni.get(dni)
-                if ex is not None and sumar_si_es_otro_curso(ex, curso, area):
-                    continue
-                errores.append(f"Fila {fila_num}: DNI {dni} ya existe con otro legajo")
-                continue
+@router.post("/importar/vista")
+def importar_vista(archivo: UploadFile = File(...), curso: str | None = Form(None), db: Session = Depends(get_db)):
+    """Lee el listado (formato del padrón u otro) y muestra qué haría la importación, sin guardar nada."""
+    datos = _leer_archivo(db, archivo, curso)
+    r = _procesar_padron(db, datos, aplicar=False)
+    db.rollback()
+    cursos = sorted({c for (c,) in db.query(Alumno.curso).filter(Alumno.activo == True).distinct() if c})  # noqa: E712
+    return {**r, "cursos_existentes": cursos}
 
-            nuevo = Alumno(
-                legajo=legajo, dni=dni, nombre=nombre,
-                apellido=apellido, curso=curso, email=email, area=area,
-            )
-            nuevos_alumnos.append(nuevo)
-            existentes_por_legajo[legajo] = nuevo
-            por_dni[dni] = nuevo
-            dnis_existentes.add(dni)
-            creados += 1
-        except Exception as e:
-            errores.append(f"Fila {fila_num}: {str(e)}")
 
-    # Insertar nuevos de una vez
-    if nuevos_alumnos:
-        db.add_all(nuevos_alumnos)
-        db.flush()
-        saldos = [Saldo(alumno_id=a.id) for a in nuevos_alumnos]
-        db.add_all(saldos)
-
-    db.commit()
-
-    return {
-        "creados": creados,
-        "actualizados": actualizados,
-        "cursos_sumados": cursos_sumados,
-        "errores": errores,
-        "total_procesadas": fila_num - 1 if 'fila_num' in dir() else 0,
-    }
+@router.post("/importar")
+def importar_excel(archivo: UploadFile = File(...), curso: str | None = Form(None), db: Session = Depends(get_db)):
+    """
+    Importa alumnos desde un listado. Columnas del padrón: legajo, dni, nombre, apellido, curso
+    (opcionales: email, area, teléfono). También acepta listados con otros encabezados y el nombre
+    completo en una sola columna (ver app/padron_import.py); si no traen el curso, se usa `curso`.
+    Sin legajo (exámenes, aeronavegantes) se usa "D" + DNI.
+    """
+    datos = _leer_archivo(db, archivo, curso)
+    r = _procesar_padron(db, datos, aplicar=True)
+    r.pop("filas")
+    return r

@@ -1005,37 +1005,122 @@ async function confirmarDesactivar(tarjetaId, uid) {
     }
 }
 
-// --- IMPORTAR EXCEL ---
-async function importarExcel(e) {
-    e.preventDefault();
+// --- IMPORTAR ALUMNOS (padrón u otros listados) ---
+// El servidor reconoce las columnas y normaliza los datos; primero se muestra la vista previa y
+// recién con "Importar" se guarda.
+const IMP_COLUMNAS = { legajo: 'Legajo', dni: 'DNI', apellido: 'Apellido', nombre: 'Nombre', completo: 'Apellido y nombre',
+    completo_nombre_primero: 'Nombre y apellido', curso: 'Curso', area: 'Área', email: 'Correo', telefono: 'Teléfono' };
+const IMP_ACCIONES = { nuevo: ['Nuevo', 'badge-activa'], actualiza: ['Actualiza', 'badge-beca'], igual: ['Sin cambios', ''], error: ['No se importa', 'badge-sin'] };
+let impUltima = null;
+
+function impFormData() {
     const file = document.getElementById('archivo-excel').files[0];
-    if (!file) return;
+    if (!file) return null;
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const curso = document.getElementById('imp-curso').value.trim();
+    if (curso) fd.append('curso', curso);
+    return fd;
+}
 
-    const formData = new FormData();
-    formData.append('archivo', file);
+async function impPost(url, fd) {
+    const res = await fetch(API + url, { method: 'POST', body: fd, credentials: 'same-origin' });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok) throw new Error(data.detail || 'No se pudo leer el archivo');
+    return data;
+}
 
+async function impLeer() {
+    const fd = impFormData();
+    const vista = document.getElementById('imp-vista');
+    document.getElementById('resultado-import').style.display = 'none';
+    if (!fd) { vista.hidden = true; return; }
+    document.getElementById('imp-zona-txt').textContent = fd.get('archivo').name;
+    vista.hidden = false;
+    vista.innerHTML = '<p class="muted" style="margin-top:1rem">Leyendo el listado…</p>';
     try {
-        const res = await fetch(API + '/api/alumnos/importar', {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail);
+        impUltima = await impPost('/api/alumnos/importar/vista', fd);
+    } catch (e) {
+        vista.innerHTML = `<div class="ps-aviso" style="margin-top:1rem">${escapeHtml(e.message)}</div>`;
+        return;
+    }
+    const r = impUltima;
+    document.getElementById('imp-curso-box').hidden = r.trae_curso;
+    document.getElementById('imp-cursos-lista').innerHTML = r.cursos_existentes.map(c => `<option value="${escapeHtml(c)}">`).join('');
+    const faltaCurso = !r.trae_curso && !document.getElementById('imp-curso').value.trim();
+    const importables = r.creados + r.actualizados;
+    const cols = Object.entries(r.columnas).filter(([k]) => IMP_COLUMNAS[k])
+        .map(([k, v]) => `<span class="imp-col"><b>${IMP_COLUMNAS[k]}</b> ← ${escapeHtml(v)}</span>`).join('');
+    vista.innerHTML = `
+        <div class="imp-cols"><span class="muted">Columnas reconocidas:</span> ${cols}</div>
+        ${faltaCurso ? '<div class="ps-aviso">Escribí o elegí el curso de estos alumnos para poder importarlos.</div>' : ''}
+        <div class="imp-resumen">
+            <div><b>${r.creados}</b><span>nuevos</span></div>
+            <div><b>${r.actualizados}</b><span>se actualizan</span></div>
+            <div><b>${r.sin_cambios}</b><span>sin cambios</span></div>
+            <div class="${r.errores.length ? 'alerta' : ''}"><b>${r.filas.filter(f => f.accion === 'error').length}</b><span>no se importan</span></div>
+        </div>
+        <div class="ps-tabla"><table>
+            <thead><tr><th>Fila</th><th>DNI</th><th>Apellido</th><th>Nombre</th><th>Curso</th><th>Correo</th><th>Qué pasa</th></tr></thead>
+            <tbody>${r.filas.map(f => {
+                const [txt, cls] = IMP_ACCIONES[f.accion] || ['', ''];
+                return `<tr class="${f.accion === 'error' ? 'imp-err' : ''}">
+                    <td class="num muted">${f.fila}</td><td class="num">${escapeHtml(f.dni || '—')}</td>
+                    <td><b>${escapeHtml(f.apellido || '')}</b></td><td>${escapeHtml(f.nombre || '')}</td>
+                    <td>${escapeHtml(f.curso || '—')}</td><td class="imp-mail">${escapeHtml(f.email || '')}</td>
+                    <td><span class="badge ${cls}">${txt}</span> <small class="muted">${escapeHtml(f.detalle || '')}${f.existente ? ` · ${escapeHtml(f.existente)}` : ''}</small></td></tr>`;
+            }).join('')}</tbody>
+        </table></div>
+        <div class="imp-acciones">
+            <span class="muted">${importables ? 'Revisá la lista y confirmá.' : 'No hay cambios para importar.'}</span>
+            <button type="button" class="btn btn-primary btn-3d" id="imp-confirmar" onclick="importarExcel()" ${importables && !faltaCurso ? '' : 'disabled'}>
+                <svg class="ic"><use href="#i-upload"/></svg>Importar ${importables} alumno${importables === 1 ? '' : 's'}</button>
+        </div>`;
+    if (faltaCurso) document.getElementById('imp-curso').focus();
+}
 
+async function importarExcel() {
+    const fd = impFormData();
+    if (!fd) return;
+    const btn = document.getElementById('imp-confirmar');
+    if (btn) btn.disabled = true;
+    try {
+        const data = await impPost('/api/alumnos/importar', fd);
         const div = document.getElementById('resultado-import');
         div.style.display = 'block';
+        div.className = 'resultado';
         div.innerHTML = `
-            <p><strong>Alumnos creados:</strong> ${data.creados}</p>
-            <p><strong>Emails actualizados:</strong> ${data.actualizados || 0}</p>
-            ${data.errores.length > 0 ? `<p><strong>Avisos (${data.errores.length}):</strong></p><ul>${data.errores.slice(0, 30).map(e => `<li>${e}</li>`).join('')}</ul>` : ''}
-        `;
-        toast(`Importación: ${data.creados} creados, ${data.actualizados || 0} emails actualizados`);
+            <p style="margin:0"><strong>${data.creados}</strong> alumno${data.creados === 1 ? '' : 's'} nuevo${data.creados === 1 ? '' : 's'} ·
+            <strong>${data.actualizados}</strong> actualizado${data.actualizados === 1 ? '' : 's'}${data.cursos_sumados ? ` (${data.cursos_sumados} con un curso más)` : ''} ·
+            ${data.sin_cambios} sin cambios</p>
+            ${data.errores.length ? `<p style="margin:0.5rem 0 0"><strong>No se importaron (${data.errores.length}):</strong></p><ul>${data.errores.slice(0, 30).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : ''}`;
+        document.getElementById('imp-vista').hidden = true;
+        document.getElementById('archivo-excel').value = '';
+        document.getElementById('imp-zona-txt').textContent = 'Elegí otro archivo';
+        document.getElementById('imp-curso-box').hidden = true;
+        document.getElementById('imp-curso').value = '';
+        toast(`Importación: ${data.creados} nuevos, ${data.actualizados} actualizados`);
         cargarAlumnos();
     } catch (err) {
         toast(err.message, 'error');
+        if (btn) btn.disabled = false;
     }
 }
+
+(function impArrastrar() {
+    const zona = document.getElementById('imp-zona');
+    if (!zona) return;
+    ['dragenter', 'dragover'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('sobre'); }));
+    ['dragleave', 'drop'].forEach(ev => zona.addEventListener(ev, () => zona.classList.remove('sobre')));
+    zona.addEventListener('drop', e => {
+        e.preventDefault();
+        if (!e.dataTransfer.files.length) return;
+        const input = document.getElementById('archivo-excel');
+        input.files = e.dataTransfer.files;
+        impLeer();
+    });
+})();
 
 // --- COBRAR ---
 let cobroAlumnoActual = null;

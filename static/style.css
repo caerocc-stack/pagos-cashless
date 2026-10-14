@@ -740,6 +740,29 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .cupon-como summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .cupon-como ul { margin: 0.4rem 0 0 1.1rem; padding: 0; line-height: 1.5; }
 @media (max-width: 640px) { .cupon { grid-template-columns: 1fr; } .cupon-qr { order: 2; } .cupon-qr img { max-width: 200px; } }
+/* Importar alumnos */
+.imp-card { max-width: 1100px; }
+.imp-zona { display: flex; align-items: center; gap: 0.9rem; padding: 1.1rem 1.2rem; border: 2px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; transition: border-color 0.15s, background-color 0.15s; margin: 0; }
+.imp-zona:hover, .imp-zona.sobre { border-color: var(--primary); background: var(--primary-soft); }
+.imp-zona:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.imp-zona input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.imp-zona > .ic { width: 28px; height: 28px; color: var(--primary); flex: none; }
+.imp-zona span { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.imp-zona b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-curso { margin-top: 1rem; max-width: 380px; }
+.imp-curso input { margin: 0; }
+.imp-cols { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 1rem 0 0.8rem; font-size: 0.85rem; }
+.imp-col { background: var(--surface-3); border-radius: 999px; padding: 0.15rem 0.6rem; }
+.imp-resumen { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.8rem; }
+.imp-resumen div { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.55rem 0.75rem; }
+.imp-resumen b { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; color: var(--heading); }
+.imp-resumen span { font-size: 0.8rem; color: var(--text-muted); }
+.imp-resumen .alerta b { color: var(--warning); }
+@media (max-width: 560px) { .imp-resumen { grid-template-columns: 1fr 1fr; } }
+.imp-err td { background: color-mix(in srgb, var(--warning-soft) 60%, transparent); }
+.imp-mail { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-acciones { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 0.9rem; }
+
 /* Planilla para SIRO */
 .ps-cabecera { display: flex; gap: 0.8rem 1.5rem; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
 .ps-cabecera > div:first-child { flex: 1 1 380px; }
