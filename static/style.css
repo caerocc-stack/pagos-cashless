@@ -1035,3 +1035,7 @@ select.esc-vacio { border-color: var(--warning); }
 .pago-efectivo-box { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .pago-efectivo-box label { margin: 0; font-weight: 600; }
 .pago-efectivo-box input { width: auto; margin: 0; }
+
+.aviso-version { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); z-index: 1500; display: flex; align-items: center; gap: 0.9rem;
+    padding: 0.7rem 0.8rem 0.7rem 1.1rem; background: var(--navy); color: #fff; border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    max-width: calc(100vw - 2rem); animation: aparecer 0.25s ease-out; }

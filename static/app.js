@@ -6120,3 +6120,28 @@ async function escRegistrar() {
     proveedoresCache = [];
     cargarGastos();
 }
+
+// =========================================================
+// --- AVISO DE VERSIÓN NUEVA ---
+// =========================================================
+// Si se publica una actualización con la pantalla abierta, el código viejo sigue en memoria
+// (botones que ya no coinciden con el servidor). Se compara la versión cada tanto y al volver a la pestaña.
+let _versionInicial = null;
+async function revisarVersion() {
+    try {
+        const v = (await (await fetch('/api/version', { cache: 'no-store' })).json()).version;
+        if (!_versionInicial) { _versionInicial = v; return; }
+        if (v !== _versionInicial && !document.getElementById('aviso-version')) {
+            const d = document.createElement('div');
+            d.id = 'aviso-version';
+            d.className = 'aviso-version';
+            d.setAttribute('role', 'status');
+            d.innerHTML = `<span><b>Hay una versión nueva del sistema.</b> Recargá para usarla.</span>
+                <button type="button" class="btn btn-primary btn-sm" onclick="location.reload()">Recargar</button>`;
+            document.body.appendChild(d);
+        }
+    } catch { /* sin conexión: se vuelve a probar después */ }
+}
+revisarVersion();
+setInterval(revisarVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarVersion(); });

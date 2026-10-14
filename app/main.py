@@ -142,6 +142,15 @@ def health():
     return {"ok": True}
 
 
+# Versión publicada (commit de Vercel): la pantalla la consulta para avisar que hay una actualización
+VERSION = (os.getenv("VERCEL_GIT_COMMIT_SHA") or os.getenv("VERCEL_DEPLOYMENT_ID") or "local")[:12]
+
+
+@app.get("/api/version")
+def version():
+    return {"version": VERSION}
+
+
 @app.get("/login")
 def login_page():
     return FileResponse(str(STATIC_DIR / "login.html"))
