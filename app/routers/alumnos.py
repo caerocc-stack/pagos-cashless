@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
 import openpyxl
 import io
+import re
 
 from app.database import get_db
 from app.models.alumno import Alumno
@@ -227,14 +228,15 @@ def eliminar_alumno(alumno_id: int, db: Session = Depends(get_db)):
 def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
     """
     Importa alumnos desde un archivo Excel.
-    Columnas esperadas: legajo, dni, nombre, apellido, curso
+    Columnas esperadas: legajo, dni, nombre, apellido, curso (opcionales: email, area).
+    Sin legajo (exámenes, aeronavegantes) se usa "D" + DNI.
     """
     contenido = archivo.file.read()
     wb = openpyxl.load_workbook(io.BytesIO(contenido))
     ws = wb.active
 
     encabezados = [str(cell.value).strip().lower() for cell in ws[1]]
-    campos_requeridos = {"legajo", "dni", "nombre", "apellido", "curso"}
+    campos_requeridos = {"dni", "nombre", "apellido", "curso"}
     faltantes = campos_requeridos - set(encabezados)
     if faltantes:
         raise HTTPException(400, f"Faltan columnas en el Excel: {', '.join(faltantes)}")
@@ -279,13 +281,16 @@ def importar_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db
 
     for fila_num, fila in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         try:
-            legajo = _valor(fila, col_map["legajo"])
+            legajo = _valor(fila, col_map.get("legajo"))
             dni = _valor(fila, col_map["dni"])
             nombre = _valor(fila, col_map["nombre"])
             apellido = _valor(fila, col_map["apellido"])
             curso = _valor(fila, col_map["curso"])
             email = _valor(fila, col_mail) or None
             area = _valor(fila, col_area) or derivar_area(curso)
+            dni = re.sub(r"\D", "", dni.removesuffix(".0"))
+            if not legajo and dni:  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
+                legajo = "D" + dni
 
             if not all([legajo, dni, nombre, apellido, curso]):
                 errores.append(f"Fila {fila_num}: datos incompletos")

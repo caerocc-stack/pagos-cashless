@@ -1394,7 +1394,7 @@
         <section id="sec-importar" class="section">
             <div class="card" style="max-width:600px">
                 <h3>Importar alumnos desde Excel</h3>
-                <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong> y opcionalmente <strong>Mail</strong>.</p>
+                <p>El archivo debe tener las columnas: <strong>legajo, dni, nombre, apellido, curso</strong> y opcionalmente <strong>email</strong> y <strong>area</strong>. Los alumnos sin legajo (exámenes, aeronavegantes) pueden ir con el legajo vacío: el cupón se genera con el DNI.</p>
                 <p style="color:var(--text-muted);font-size:0.85rem">Si un alumno ya existe, se actualiza su email desde la columna Mail (no se duplica).</p>
                 <form onsubmit="importarExcel(event)">
                     <input type="file" id="archivo-excel" accept=".xlsx,.xls" required>
