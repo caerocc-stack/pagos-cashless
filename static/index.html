@@ -584,6 +584,27 @@
 
         <!-- CUPONES DE SIRO (PDF descargado de SIRO -> portal de familias) -->
         <section id="sec-cupones-siro" class="section">
+            <div class="card solo-admin" id="ps-card">
+                <h3>Generar la planilla para SIRO</h3>
+                <p class="muted" style="margin-bottom:0.8rem">Elegí los cursos y el vencimiento; se descarga el Excel con el modelo de carga de cupones de SIRO.
+                Número de cliente: el <b>legajo</b> en Ciclo Básico, Aviónica y Mecánica, y el <b>DNI</b> en aeronavegantes y exámenes.
+                No reciben cupón los becados ni quienes ya pagaron el año completo de ese curso.</p>
+                <div class="ps-arriba">
+                    <div>
+                        <label for="ps-vto">1º vencimiento</label>
+                        <input type="date" id="ps-vto">
+                    </div>
+                    <label class="ps-check"><input type="checkbox" id="ps-pagados" checked onchange="psActualizar()"> No incluir a quienes ya pagaron el año completo</label>
+                </div>
+                <div id="ps-cursos" class="ps-cursos"><p class="muted">Cargando cursos…</p></div>
+                <div class="ps-pie">
+                    <span id="ps-resumen" class="muted"></span>
+                    <span style="flex:1"></span>
+                    <button type="button" class="btn btn-outline" onclick="psVerAlumnos()"><svg class="ic"><use href="#i-eye"/></svg>Ver alumnos</button>
+                    <button type="button" class="btn btn-primary btn-3d" id="ps-descargar" onclick="psDescargar()"><svg class="ic"><use href="#i-download"/></svg>Descargar Excel</button>
+                </div>
+                <div id="ps-vista" hidden></div>
+            </div>
             <div class="card">
                 <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.4rem">
                     <h3 style="margin:0">Enviar el cupón de la cuota por correo</h3>

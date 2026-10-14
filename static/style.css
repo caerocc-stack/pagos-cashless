@@ -740,6 +740,29 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .cupon-como summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .cupon-como ul { margin: 0.4rem 0 0 1.1rem; padding: 0; line-height: 1.5; }
 @media (max-width: 640px) { .cupon { grid-template-columns: 1fr; } .cupon-qr { order: 2; } .cupon-qr img { max-width: 200px; } }
+/* Planilla para SIRO */
+.ps-arriba { display: flex; gap: 1rem 1.5rem; align-items: end; flex-wrap: wrap; margin-bottom: 1rem; }
+.ps-arriba input[type=date] { width: auto; }
+.ps-check { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 500; margin: 0; }
+.ps-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.ps-cursos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.8rem; }
+.ps-area { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.4rem 0.8rem 0.6rem; margin: 0; min-width: 0; background: var(--surface-2); }
+.ps-area legend { display: flex; align-items: center; gap: 0.6rem; padding: 0 0.3rem; font-weight: 600; color: var(--heading); }
+.ps-tipo { font-size: 0.75rem; font-weight: 500; color: var(--text-muted); background: var(--surface-3); border-radius: 999px; padding: 0.1rem 0.5rem; }
+.ps-curso { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; padding: 0.35rem 0; border-top: 1px solid var(--border); }
+.ps-curso:first-of-type { border-top: 0; }
+.ps-curso .ps-check { font-weight: 400; min-width: 0; }
+.ps-importe { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-muted); white-space: nowrap; }
+.ps-curso .ps-check small { display: block; font-size: 0.78rem; }
+.ps-arriba > .ps-check { padding-bottom: 0.55rem; }
+.ps-importe input { width: 6.5rem; text-align: right; padding: 0.3rem 0.5rem; font-variant-numeric: tabular-nums; }
+.ps-pie { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+.ps-aviso { background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; margin-bottom: 0.6rem; }
+.ps-aviso ul { margin: 0.3rem 0 0 1.1rem; }
+.ps-tabla { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.ps-tabla table { margin: 0; }
+.ps-tabla td { font-variant-numeric: tabular-nums; }
+
 .cs-progreso { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin: 0.6rem 0 0.3rem; }
 .cs-progreso div { height: 100%; width: 0; background: var(--primary); transition: width 0.2s; }
 

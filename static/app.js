@@ -4830,6 +4830,7 @@ async function publicarCuponesSiro() {
 }
 
 async function cargarLotesCupones() {
+    psCargar();
     try {
         const lotes = await api('/api/cupones-siro/lotes');
         const esAdmin = usuarioActual.rol === 'admin';
@@ -5068,4 +5069,116 @@ function verAlumnosConEstado(filtro) {
     document.getElementById('buscar-estado').value = '';
     cuotaTab('estado');
     document.getElementById('tabla-estado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// =========================================================
+// --- PLANILLA PARA SIRO (Excel de carga de cupones) ---
+// =========================================================
+
+let psCursos = [];
+
+function psUltimoDiaMes() {
+    const h = new Date();
+    const f = new Date(h.getFullYear(), h.getMonth() + 1, 0);
+    return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+}
+
+async function psCargar() {
+    if (usuarioActual.rol !== 'admin') return;
+    const vto = document.getElementById('ps-vto');
+    if (!vto.value) vto.value = psUltimoDiaMes();
+    try {
+        psCursos = await api('/api/cupones-siro/planilla/cursos');
+    } catch (e) { document.getElementById('ps-cursos').innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`; return; }
+    const areas = [];
+    psCursos.forEach(c => { let g = areas.find(a => a.area === c.area); if (!g) areas.push(g = { area: c.area, cursos: [] }); g.cursos.push(c); });
+    const nombreArea = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Examenes': 'Exámenes' };
+    document.getElementById('ps-cursos').innerHTML = areas.map((g, i) => `
+        <fieldset class="ps-area">
+            <legend><label class="ps-check"><input type="checkbox" data-area="${i}" onchange="psMarcarArea(this)"> ${escapeHtml(nombreArea[g.area] || g.area || 'Sin área')}</label>
+                <span class="ps-tipo">Nº cliente: ${g.cursos[0].cliente}</span></legend>
+            ${g.cursos.map(c => `<div class="ps-curso">
+                <label class="ps-check"><input type="checkbox" class="ps-sel" data-area="${i}" value="${c.id}" onchange="psActualizar()">
+                    <span>${escapeHtml(c.nombre)}<small class="muted">${c.alumnos} alumno${c.alumnos === 1 ? '' : 's'}</small></span></label>
+                <span class="ps-importe">$ <input type="number" min="1" step="0.01" value="${c.importe}" data-importe="${c.id}" aria-label="Importe de ${escapeHtml(c.nombre)}" onchange="psActualizar()"></span>
+            </div>`).join('')}
+        </fieldset>`).join('');
+    psActualizar();
+}
+
+function psMarcarArea(el) {
+    document.querySelectorAll(`.ps-sel[data-area="${el.dataset.area}"]`).forEach(x => x.checked = el.checked);
+    psActualizar();
+}
+
+function psPedido() {
+    const cursos = [...document.querySelectorAll('.ps-sel:checked')].map(x => {
+        const imp = parseFloat(document.querySelector(`[data-importe="${x.value}"]`).value);
+        return { curso_id: +x.value, importe: imp > 0 ? imp : null };
+    });
+    return { vencimiento: document.getElementById('ps-vto').value, cursos, excluir_pagados: document.getElementById('ps-pagados').checked };
+}
+
+function psActualizar() {
+    document.querySelectorAll('.ps-area legend input').forEach(a => {
+        const hijos = [...document.querySelectorAll(`.ps-sel[data-area="${a.dataset.area}"]`)];
+        a.checked = hijos.every(h => h.checked);
+        a.indeterminate = !a.checked && hijos.some(h => h.checked);
+    });
+    const n = document.querySelectorAll('.ps-sel:checked').length;
+    document.getElementById('ps-resumen').textContent = n ? `${n} curso${n === 1 ? '' : 's'} elegido${n === 1 ? '' : 's'}` : 'Elegí al menos un curso';
+    document.getElementById('ps-vista').hidden = true;
+}
+
+function psValidar(p) {
+    if (!p.vencimiento) { toast('Poné la fecha del 1º vencimiento', 'error'); return false; }
+    if (!p.cursos.length) { toast('Elegí al menos un curso', 'error'); return false; }
+    return true;
+}
+
+async function psVerAlumnos() {
+    const p = psPedido();
+    if (!psValidar(p)) return;
+    const caja = document.getElementById('ps-vista');
+    try {
+        const r = await api('/api/cupones-siro/planilla/vista', { method: 'POST', body: JSON.stringify(p) });
+        const om = [];
+        if (r.omitidos.becados) om.push(`${r.omitidos.becados} becado${r.omitidos.becados === 1 ? '' : 's'}`);
+        if (r.omitidos.pagados) om.push(`${r.omitidos.pagados} con el año pagado`);
+        const juntos = r.filas.filter(f => f.cursos.includes(' + ')).length;
+        caja.innerHTML = `
+            <p style="margin:1rem 0 0.5rem"><b>${r.filas.length} cupones</b> por un total de <b>${fmtMoneda(r.total)}</b>, vencen el ${fmtFecha(p.vencimiento)}.
+            ${om.length ? `<span class="muted">Quedan afuera: ${om.join(' y ')}.</span>` : ''}
+            ${juntos ? `<span class="muted">${juntos} alumno${juntos === 1 ? ' cursa' : 's cursan'} dos de los cursos elegidos: van en un solo cupón con la suma.</span>` : ''}</p>
+            ${r.sin_numero.length ? `<div class="ps-aviso"><b>Sin número de cliente (no van en la planilla):</b><ul>${r.sin_numero.map(s =>
+                `<li>${escapeHtml(s.alumno)} (${escapeHtml(s.curso)}): ${escapeHtml(s.motivo)}</li>`).join('')}</ul></div>` : ''}
+            <div class="ps-tabla"><table>
+                <thead><tr><th>Nº cliente</th><th>Alumno</th><th>Curso</th><th style="text-align:right">Importe</th></tr></thead>
+                <tbody>${r.filas.map(f => `<tr><td><b>${f.cliente}</b> <span class="muted">${f.tipo}</span></td>
+                    <td>${escapeHtml(f.alumno)}</td><td>${escapeHtml(f.cursos)}</td>
+                    <td style="text-align:right">${fmtMoneda(f.importe)}${f.personalizado ? ' <span class="badge" title="Monto personalizado del alumno">personal</span>' : ''}</td></tr>`).join('')
+                    || '<tr><td colspan="4" class="muted" style="text-align:center;padding:1rem">No hay alumnos para esos cursos.</td></tr>'}</tbody>
+            </table></div>`;
+        caja.hidden = false;
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function psDescargar() {
+    const p = psPedido();
+    if (!psValidar(p)) return;
+    const btn = document.getElementById('ps-descargar');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/cupones-siro/planilla/excel', {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p),
+        });
+        if (!res.ok) { let d = {}; try { d = await res.json(); } catch {} throw new Error(d.detail || 'No se pudo generar la planilla'); }
+        const nombre = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'cupones_siro.xlsx';
+        const url = URL.createObjectURL(await res.blob());
+        const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        toast('Planilla descargada. Subila en SIRO para generar los cupones.');
+    } catch (e) { toast(e.message, 'error'); }
+    finally { btn.disabled = false; }
 }
