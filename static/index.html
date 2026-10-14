@@ -862,11 +862,44 @@
                 <select id="gasto-f-mes" onchange="cargarGastos()"></select>
                 <select id="gasto-f-anio" onchange="cargarGastos()"></select>
                 <button class="btn btn-outline" onclick="abrirImportarFacturas()"><svg class="ic"><use href="#i-upload"/></svg>Importar planilla</button>
+                <button class="btn btn-outline" onclick="escAbrir()"><svg class="ic"><use href="#i-file"/></svg>Cargar PDF escaneado</button>
                 <button class="btn btn-outline" onclick="abrirExcelContadora()"><svg class="ic"><use href="#i-download"/></svg>Excel para la contadora</button>
                 <button class="btn btn-primary btn-3d" onclick="mostrarFormGasto()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo Gasto</button>
             </div>
 
             <div class="gasto-resumen" id="gasto-resumen"></div>
+
+            <!-- CARGA DE FACTURAS ESCANEADAS (OCR en el navegador) -->
+            <div id="esc-panel" class="card esc-panel" hidden>
+                <div class="esc-cab">
+                    <div>
+                        <h3 style="margin:0">Cargar facturas desde un PDF escaneado</h3>
+                        <p class="muted" style="margin:0.25rem 0 0">Subí el PDF con las facturas del mes: se lee cada página en esta computadora (QR de AFIP y reconocimiento
+                        de texto), sin costo. Después revisás la lista y registrás todas juntas.</p>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="escCerrar()" aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
+                </div>
+                <div class="esc-paso" id="esc-paso1">
+                    <label class="imp-zona esc-zona" id="esc-zona">
+                        <input type="file" id="esc-archivos" accept="application/pdf,.pdf" multiple onchange="escElegidos()">
+                        <svg class="ic"><use href="#i-upload"/></svg>
+                        <span><b id="esc-zona-txt">Elegí el PDF escaneado</b><small class="muted">o arrastralo acá · podés elegir varios</small></span>
+                    </label>
+                    <div class="esc-mes">
+                        <div><label for="esc-mes">Facturas del mes</label><select id="esc-mes"></select></div>
+                        <div><label for="esc-anio">Año</label><select id="esc-anio"></select></div>
+                        <button type="button" class="btn btn-primary btn-3d" id="esc-leer" onclick="escLeer()" disabled><svg class="ic"><use href="#i-search"/></svg>Leer facturas</button>
+                    </div>
+                </div>
+                <div id="esc-progreso" class="esc-progreso" hidden>
+                    <div class="cs-progreso"><div id="esc-barra"></div></div>
+                    <p class="muted" id="esc-estado" aria-live="polite"></p>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="escCancelar()">Cancelar</button>
+                </div>
+                <div id="esc-resultado" hidden></div>
+                <datalist id="esc-tipos"><option value="Factura A"><option value="Factura B"><option value="Factura C"><option value="Tique Factura A">
+                    <option value="Tique Factura B"><option value="Tique"><option value="Nota de Crédito"><option value="Recibo"><option value="Comprobante"></datalist>
+            </div>
 
             <div id="form-gasto" class="card form-card" style="display:none">
                 <h3 id="form-gasto-titulo">Nuevo Gasto</h3>

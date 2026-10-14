@@ -3188,10 +3188,18 @@ function exportarEstadisticasPDF() {
 }
 
 // ---------------------------------------------------------------- PDF para compartir: recaudación por área
+// Logo para los PDF, achicado a 256 px (el original pesa 750 KB y hacía PDF de 8 a 30 MB)
+let _logoPDF = null;
 async function _imagenLogo() {
+    if (_logoPDF) return _logoPDF;
     try {
-        const b = await (await fetch('/static/logo.png')).blob();
-        return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+        const img = new Image();
+        await new Promise((ok, mal) => { img.onload = ok; img.onerror = mal; img.src = '/static/logo.png'; });
+        const lado = 256, c = document.createElement('canvas');
+        c.width = c.height = lado;
+        c.getContext('2d').drawImage(img, 0, 0, lado, lado);
+        _logoPDF = c.toDataURL('image/png');
+        return _logoPDF;
     } catch { return null; }
 }
 
@@ -4355,7 +4363,7 @@ async function confirmarLimpiezaFinanzas() {
 // =========================================================
 // --- GASTOS: ANÁLISIS Y POR PROVEEDOR ---
 // =========================================================
-const PALETA = ['#1f5fa8', '#a01e22', '#15803d', '#b45309', '#6d4ec7', '#0e7490', '#94a3b8'];
+const PALETA_GASTOS = ['#1f5fa8', '#a01e22', '#15803d', '#b45309', '#6d4ec7', '#0e7490', '#94a3b8'];
 let gaDatos = null, gaRangoActual = 'mes';
 let chartGaRubro = null, chartGaMes = null, chartGaProv = null;
 
@@ -4440,12 +4448,12 @@ function dibujarAnalisisGastos() {
     if (chartGaRubro) chartGaRubro.destroy();
     chartGaRubro = new Chart(document.getElementById('chart-ga-rubro'), {
         type: 'doughnut',
-        data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: PALETA.slice(0, valores.length), borderWidth: 2, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() }] },
+        data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: PALETA_GASTOS.slice(0, valores.length), borderWidth: 2, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() }] },
         options: {
             cutout: '62%', maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'right', labels: { generateLabels: ch => ch.data.labels.map((l, i) => ({
-                    text: `${l}  ${fmtNumero(valores[i] / total * 100, 1)}%`, fillStyle: PALETA[i], strokeStyle: PALETA[i], pointStyle: 'circle', index: i,
+                    text: `${l}  ${fmtNumero(valores[i] / total * 100, 1)}%`, fillStyle: PALETA_GASTOS[i], strokeStyle: PALETA_GASTOS[i], pointStyle: 'circle', index: i,
                     fontColor: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() })) } },
                 tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtMoneda(c.raw)} (${fmtNumero(c.raw / total * 100, 1)}%)` } },
             },
@@ -5826,4 +5834,293 @@ async function xcDescargar() {
         toast(`Descargado: ${nombre}`);
     } catch (e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; }
+}
+
+// =========================================================
+// --- FACTURAS DESDE UN PDF ESCANEADO (QR + OCR en el navegador) ---
+// =========================================================
+// Cada página se dibuja con pdf.js; se busca el QR de AFIP (jsQR) y se reconoce el texto con
+// Tesseract.js (en esta computadora, sin costo). Al servidor va solo el texto: lo interpreta,
+// une facturas de varias hojas, marca duplicados y sugiere la hoja del Excel. Después se revisa y
+// se registra cada factura con el alta normal de gastos (con la página como comprobante).
+const ESC = { archivos: [], filas: [], imagenes: {}, cancelado: false };
+const ESC_TIPOS = ['Factura A', 'Factura B', 'Factura C', 'Tique Factura A', 'Tique Factura B', 'Tique', 'Nota de Crédito', 'Recibo', 'Comprobante'];
+const ESC_HOJAS = { Oficina: 'Gtos. de Oficina', Infraestructura: 'Infraestructura', Escuela: 'Gtos. de la Escuela', Honorarios: 'Honorarios' };
+
+function escAbrir() {
+    const p = document.getElementById('esc-panel');
+    p.hidden = false;
+    const hoy = new Date(), ant = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const sm = document.getElementById('esc-mes'), sa = document.getElementById('esc-anio');
+    if (!sm.options.length) {
+        sm.innerHTML = MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+        for (let a = hoy.getFullYear(); a >= hoy.getFullYear() - 1; a--) sa.innerHTML += `<option>${a}</option>`;
+        sm.value = ant.getMonth() + 1; sa.value = ant.getFullYear();
+        const zona = document.getElementById('esc-zona');
+        ['dragenter', 'dragover'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('sobre'); }));
+        ['dragleave', 'drop'].forEach(ev => zona.addEventListener(ev, () => zona.classList.remove('sobre')));
+        zona.addEventListener('drop', e => {
+            e.preventDefault();
+            document.getElementById('esc-archivos').files = e.dataTransfer.files;
+            escElegidos();
+        });
+    }
+    p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escCerrar() {
+    if (ESC.filas.some(f => f.sel && !f.ok) && !confirm('Hay facturas leídas sin registrar. ¿Cerrar igual?')) return;
+    ESC.cancelado = true;
+    document.getElementById('esc-panel').hidden = true;
+}
+
+function escElegidos() {
+    const fs = [...document.getElementById('esc-archivos').files].filter(f => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name));
+    ESC.archivos = fs;
+    document.getElementById('esc-zona-txt').textContent = fs.length ? fs.map(f => f.name).join(', ') : 'Elegí el PDF escaneado';
+    document.getElementById('esc-leer').disabled = !fs.length;
+}
+
+function escCancelar() { ESC.cancelado = true; }
+
+function escEstado(txt, frac) {
+    document.getElementById('esc-estado').textContent = txt;
+    if (frac != null) document.getElementById('esc-barra').style.width = Math.round(frac * 100) + '%';
+}
+
+async function escCargarTesseract() {
+    if (window.Tesseract) return;
+    await new Promise((ok, mal) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+        s.onload = ok; s.onerror = () => mal(new Error('No se pudo cargar el lector de texto. Revisá la conexión a internet.'));
+        document.head.appendChild(s);
+    });
+}
+
+async function escLeer() {
+    if (!ESC.archivos.length) return;
+    if (typeof pdfjsLib === 'undefined') return toast('No se pudo cargar el lector de PDF. Recargá la página.', 'error');
+    const anio = +document.getElementById('esc-anio').value, mes = +document.getElementById('esc-mes').value;
+    ESC.cancelado = false; ESC.filas = []; ESC.imagenes = {};
+    document.getElementById('esc-paso1').hidden = true;
+    document.getElementById('esc-resultado').hidden = true;
+    document.getElementById('esc-progreso').hidden = false;
+    let worker = null;
+    try {
+        const docs = [];
+        for (const f of ESC.archivos) docs.push({ f, pdf: await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise });
+        const total = docs.reduce((s, d) => s + d.pdf.numPages, 0);
+        escEstado('Preparando el lector de texto (la primera vez descarga unos 15 MB)…', 0.01);
+        await escCargarTesseract();
+        worker = await Promise.race([Tesseract.createWorker('spa', 1),
+            new Promise((_, mal) => setTimeout(() => mal(new Error('El lector de texto no respondió. Revisá la conexión y probá de nuevo.')), 120000))]);
+        let hechas = 0, n = 0;
+        const t0 = Date.now();
+        const cv = document.createElement('canvas');
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        for (const d of docs) {
+            const paginas = [];
+            for (let i = 1; i <= d.pdf.numPages; i++) {
+                if (ESC.cancelado) throw new Error('cancelado');
+                n++;
+                const resta = hechas ? Math.round((Date.now() - t0) / hechas * (total - hechas) / 1000) : null;
+                escEstado(`Leyendo la página ${hechas + 1} de ${total}${resta ? ` · faltan unos ${resta > 90 ? Math.round(resta / 60) + ' min' : resta + ' s'}` : ''}…`, hechas / total);
+                const page = await d.pdf.getPage(i);
+                const vp = page.getViewport({ scale: Math.min(4, 1654 / page.getViewport({ scale: 1 }).width) });  // ~200 ppp
+                cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+                ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+                // intent 'print': dibuja aunque la pestaña quede en segundo plano (el modo pantalla se pausa)
+                await page.render({ canvasContext: ctx, viewport: vp, intent: 'print' }).promise;
+                const qr = _jsQRdesdeFuente(cv, cv.width, cv.height);
+                const { data } = await worker.recognize(cv);
+                ESC.imagenes[n] = { url: escMiniatura(cv), archivo: d.f.name, pagina: i };
+                paginas.push({ n, texto: (data.text || '').slice(0, 30000), qr });
+                hechas++;
+            }
+            escEstado(`Interpretando las facturas de ${d.f.name}…`, hechas / total);
+            const r = await api('/api/escaneo-facturas/analizar', { method: 'POST', body: JSON.stringify({ archivo: d.f.name, anio, mes, paginas }) });
+            r.facturas.forEach(f => ESC.filas.push(escFila(f, d.f.name)));
+        }
+        escPintar();
+    } catch (e) {
+        if (e.message !== 'cancelado') toast(e.message || 'No se pudo leer el PDF', 'error');
+        document.getElementById('esc-paso1').hidden = false;
+    } finally {
+        if (worker) worker.terminate().catch(() => {});
+        document.getElementById('esc-progreso').hidden = true;
+    }
+}
+
+function escMiniatura(cv) {
+    const ancho = 1100, f = Math.min(1, ancho / cv.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(cv.width * f); c.height = Math.round(cv.height * f);
+    c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.72);
+}
+
+function escFila(f, archivo) {
+    const d = f.datos, s = f.sugerencia || {};
+    const esFactura = f.tipo_pagina === 'factura';
+    return {
+        paginas: f.paginas, archivo, tipo_pagina: f.tipo_pagina, nota: f.nota, con_qr: f.con_qr,
+        duplicado: f.duplicado, repetida: f.repetida_en_pdf, fuera: f.fuera_del_mes,
+        faltan: f.faltan, dudosos: f.dudosos, fuentes: f.fuentes,
+        sel: esFactura && !f.duplicado && !f.repetida_en_pdf,
+        v: {
+            fecha: d.fecha || '', tipo: d.tipo || '', punto_venta: d.punto_venta || '', numero: d.numero || '',
+            cuit: d.cuit || '', razon_social: d.razon_social || '', importe: d.importe != null ? fmtNumero(Math.abs(d.importe)) : '',
+            concepto: '', rubro: s.rubro || '', categoria: s.categoria || '', forma_pago: '', fecha_pago: '',
+        },
+        concepto_sug: s.concepto || '', ok: false, error: null,
+    };
+}
+
+function escPintar() {
+    const fs = ESC.filas;
+    const nFact = fs.filter(f => f.tipo_pagina === 'factura').length;
+    const completas = fs.filter(f => f.tipo_pagina === 'factura' && !f.faltan.length).length;
+    const dups = fs.filter(f => f.duplicado || f.repetida).length, otras = fs.filter(f => f.tipo_pagina !== 'factura').length;
+    const caja = document.getElementById('esc-resultado');
+    caja.hidden = false;
+    caja.innerHTML = `
+        <div class="imp-resumen esc-resumen">
+            <div><b>${nFact}</b><span>facturas encontradas</span></div>
+            <div><b>${completas}</b><span>con todos los datos</span></div>
+            <div><b>${fs.filter(f => f.con_qr).length}</b><span>con QR de AFIP (exactas)</span></div>
+            <div class="${dups || otras ? 'alerta' : ''}"><b>${dups + otras}</b><span>duplicadas o que no son facturas</span></div>
+        </div>
+        <p class="muted esc-leyenda"><span class="esc-c esc-dudoso"></span> dato corregido o calculado: revisalo ·
+            <span class="esc-c esc-falta"></span> no se pudo leer · Tocá la imagen para verla grande.</p>
+        <div class="esc-lista">${fs.map((f, i) => escItem(f, i)).join('')}</div>
+        <div class="esc-pie">
+            <span class="muted" id="esc-cuenta"></span>
+            <button type="button" class="btn btn-outline" onclick="escOtroPdf()">Leer otro PDF</button>
+            <button type="button" class="btn btn-primary btn-3d" id="esc-registrar" onclick="escRegistrar()"><svg class="ic"><use href="#i-check"/></svg>Registrar</button>
+        </div>`;
+    escContar();
+    caja.querySelectorAll('[data-i]').forEach(el => el.addEventListener('input', escCambio));
+    caja.querySelectorAll('select[data-i], input[type=checkbox][data-i]').forEach(el => el.addEventListener('change', escCambio));
+}
+
+function escItem(f, i) {
+    const img = ESC.imagenes[f.paginas[0]];
+    const cls = c => f.faltan.includes({ cuit: 'CUIT', fecha: 'fecha', numero: 'número', importe: 'total' }[c]) ? 'esc-falta' : f.dudosos.includes(c) ? 'esc-dudoso' : '';
+    const campo = (c, label, extra = '') => `<div class="esc-f ${extra}"><label>${label}</label><input type="text" data-i="${i}" data-c="${c}" value="${escapeHtml(f.v[c])}" class="${cls(c)}"></div>`;
+    const badges = [
+        f.con_qr ? '<span class="badge badge-activa">QR de AFIP</span>' : '<span class="badge">Leída por OCR</span>',
+        f.duplicado ? `<span class="badge badge-pdx-no">Ya está cargada (${fmtFecha(f.duplicado.fecha)}, ${fmtMoneda(f.duplicado.importe)})</span>` : '',
+        f.repetida ? `<span class="badge badge-pdx-no">Repetida en el PDF (igual a la pág. ${f.repetida})</span>` : '',
+        f.tipo_pagina !== 'factura' ? `<span class="badge badge-sin">${f.tipo_pagina === 'vacia' ? 'Página en blanco' : 'No parece una factura'}</span>` : '',
+        f.fuera ? '<span class="badge badge-sin">Fecha de otro mes</span>' : '',
+        f.nota ? `<span class="badge">${escapeHtml(f.nota)}</span>` : '',
+    ].join(' ');
+    return `<div class="esc-item ${f.sel ? '' : 'esc-off'} ${f.ok ? 'esc-ok' : ''}" id="esc-it-${i}">
+        <button type="button" class="esc-mini" onclick="escVerImagen(${i})" aria-label="Ver la página ${f.paginas.join(', ')} en grande">
+            ${img ? `<img src="${img.url}" alt="" loading="lazy">` : ''}<small>Pág. ${f.paginas.join('-')}</small></button>
+        <div class="esc-cuerpo">
+            <div class="esc-top"><label class="ps-check"><input type="checkbox" data-i="${i}" data-c="sel" ${f.sel ? 'checked' : ''} ${f.ok ? 'disabled' : ''}> Registrar</label>
+                ${badges}<span class="esc-msg" id="esc-msg-${i}">${f.ok ? '✓ Registrada' : f.error ? escapeHtml(f.error) : ''}</span></div>
+            <div class="esc-campos">
+                <div class="esc-f"><label>Fecha</label><input type="date" data-i="${i}" data-c="fecha" value="${f.v.fecha}" class="${cls('fecha')}"></div>
+                <div class="esc-f"><label>Tipo</label><input type="text" list="esc-tipos" data-i="${i}" data-c="tipo" value="${escapeHtml(f.v.tipo)}"></div>
+                ${campo('punto_venta', 'Pto. venta', 'esc-corto')}${campo('numero', 'Número')}
+                ${campo('cuit', 'CUIT')}${campo('razon_social', 'Razón social', 'esc-ancho')}
+                ${campo('importe', 'Total $')}
+                <div class="esc-f"><label>Hoja del Excel</label><select data-i="${i}" data-c="categoria" class="${f.v.categoria ? '' : 'esc-vacio'}"><option value="">— elegir —</option>
+                    ${Object.entries(ESC_HOJAS).map(([k, t]) => `<option value="${k}" ${f.v.categoria === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+                <div class="esc-f esc-ancho"><label>Concepto</label><input type="text" data-i="${i}" data-c="concepto" value="${escapeHtml(f.v.concepto)}" placeholder="${escapeHtml(f.concepto_sug || 'Qué se compró')}"></div>
+                ${campo('rubro', 'Rubro')}
+                <div class="esc-f"><label>Medio de pago</label><select data-i="${i}" data-c="forma_pago"><option value="">Sin pagar</option>
+                    ${FORMAS_PAGO_GASTO.map(m => `<option ${f.v.forma_pago === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+                <div class="esc-f"><label>Fecha de pago</label><input type="date" data-i="${i}" data-c="fecha_pago" value="${f.v.fecha_pago}"></div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function escCambio(e) {
+    const el = e.target, f = ESC.filas[+el.dataset.i], c = el.dataset.c;
+    if (c === 'sel') { f.sel = el.checked; el.closest('.esc-item').classList.toggle('esc-off', !f.sel); escContar(); return; }
+    f.v[c] = el.value;
+    el.classList.remove('esc-dudoso', 'esc-falta', 'esc-vacio');
+}
+
+function escContar() {
+    const n = ESC.filas.filter(f => f.sel && !f.ok).length;
+    const total = ESC.filas.filter(f => f.sel && !f.ok).reduce((s, f) => s + (parseImporte(f.v.importe) || 0), 0);
+    document.getElementById('esc-cuenta').innerHTML = n ? `<b>${n}</b> factura${n === 1 ? '' : 's'} para registrar · ${fmtMoneda(total)}` : 'No hay facturas elegidas.';
+    const b = document.getElementById('esc-registrar');
+    b.disabled = !n;
+    b.innerHTML = `<svg class="ic"><use href="#i-check"/></svg>Registrar ${n} factura${n === 1 ? '' : 's'}`;
+}
+
+function escVerImagen(i) {
+    const f = ESC.filas[i];
+    document.getElementById('modal-content').innerHTML = `<h3 style="margin-top:0">${escapeHtml(f.archivo)} · página ${f.paginas.join(' y ')}</h3>
+        <div class="esc-grande">${f.paginas.map(n => ESC.imagenes[n] ? `<img src="${ESC.imagenes[n].url}" alt="Página ${n}">` : '').join('')}</div>`;
+    const ov = document.getElementById('modal-overlay');
+    ov.querySelector('.modal').classList.add('modal-ancho');
+    ov.style.display = 'flex';
+}
+
+function escOtroPdf() {
+    if (ESC.filas.some(f => f.sel && !f.ok) && !confirm('Hay facturas leídas sin registrar. ¿Leer otro PDF igual?')) return;
+    ESC.filas = []; ESC.imagenes = {};
+    document.getElementById('esc-resultado').hidden = true;
+    document.getElementById('esc-paso1').hidden = false;
+    document.getElementById('esc-archivos').value = '';
+    escElegidos();
+}
+
+async function escRegistrar() {
+    const pendientes = ESC.filas.map((f, i) => ({ f, i })).filter(x => x.f.sel && !x.f.ok);
+    const btn = document.getElementById('esc-registrar');
+    btn.disabled = true;
+    let bien = 0, mal = 0;
+    for (const { f, i } of pendientes) {
+        const msg = document.getElementById('esc-msg-' + i);
+        const importe = parseImporte(f.v.importe);
+        if (!f.v.fecha || !(importe > 0)) {
+            f.error = 'Falta la fecha o el total'; msg.textContent = f.error; msg.className = 'esc-msg error'; mal++; continue;
+        }
+        if (!f.v.razon_social.trim()) {
+            f.error = 'Falta la razón social'; msg.textContent = f.error; msg.className = 'esc-msg error'; mal++; continue;
+        }
+        if (f.v.forma_pago && !f.v.fecha_pago) {
+            f.error = 'Poné la fecha de pago'; msg.textContent = f.error; msg.className = 'esc-msg error'; mal++; continue;
+        }
+        msg.textContent = 'Registrando…'; msg.className = 'esc-msg';
+        let adjunto = null;
+        const img = ESC.imagenes[f.paginas[0]];
+        if (img) {
+            try {
+                const blob = await (await fetch(img.url)).blob();
+                adjunto = await subirComprobante(new File([blob], `factura_${(f.v.cuit || 'escaneada')}_${f.v.numero || f.paginas[0]}.jpg`, { type: 'image/jpeg' }));
+            } catch { /* sin Storage: se registra igual, sin la imagen */ }
+        }
+        const nc = /cr[eé]dito/i.test(f.v.tipo);
+        const body = {
+            fecha: f.v.fecha, tipo_comprobante: f.v.tipo || null, punto_venta: f.v.punto_venta || null, numero: f.v.numero || null,
+            cuit: f.v.cuit || null, razon_social: f.v.razon_social || null, importe: nc ? -Math.abs(importe) : importe,
+            concepto: f.v.concepto || null, rubro: f.v.rubro || null, categoria: f.v.categoria || null,
+            forma_pago: f.v.forma_pago || null, fecha_pago: f.v.fecha_pago || null, adjunto_url: adjunto,
+            notas: `Cargada desde ${f.archivo} (pág. ${f.paginas.join('-')})`.slice(0, 400),
+        };
+        try {
+            await api('/api/gastos/', { method: 'POST', body: JSON.stringify(body) });
+            f.ok = true; f.error = null; bien++;
+            msg.textContent = '✓ Registrada'; msg.className = 'esc-msg ok';
+            const it = document.getElementById('esc-it-' + i);
+            it.classList.add('esc-ok');
+            it.querySelector('input[data-c=sel]').disabled = true;
+        } catch (e) {
+            f.error = e.message; msg.textContent = e.message; msg.className = 'esc-msg error'; mal++;
+        }
+    }
+    escContar();
+    toast(`${bien} factura${bien === 1 ? '' : 's'} registrada${bien === 1 ? '' : 's'}${mal ? ` · ${mal} con problemas (revisalas)` : ''}`, mal ? 'error' : 'success');
+    proveedoresCache = [];
+    cargarGastos();
 }

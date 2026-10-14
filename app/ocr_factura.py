@@ -126,7 +126,7 @@ def buscar_numero(texto: str) -> tuple[str | None, str | None]:
     m = re.search(r"(?<!\d)(\d{4,5})\s*[-.‐–—]\s*(\d{8})(?!\d)", t)
     if m:
         return m.group(1).zfill(4), m.group(2)
-    m = re.search(r"P\.?\s*V\.?\s*N?[°º\"”:]*\s*(\d{1,5}).{0,25}?N(?:ro|°|º)\.?\s*T?\.?\s*(\d{4,8})", t, re.I | re.S)
+    m = re.search(r"P\.?\s*V\.?\s*N?(?:ro)?\.?[°º\"”:]*\s*(\d{1,5}).{0,25}?N(?:ro|°|º)\.?\s*T?\.?\s*(\d{4,8})", t, re.I | re.S)
     if m:
         return m.group(1).zfill(4), m.group(2).zfill(8)
     m = re.search(r"(?<!\d)(\d{4,5})\s*-\s*N\W{0,3}\s*T\.?\s*(\d{4,8})(?!\d)", t, re.I)  # tique: 00004 - Nº T. 00007893
@@ -204,6 +204,12 @@ def buscar_importe(texto: str) -> tuple[Decimal | None, str]:
         estimado = _total_por_iva(t, todos, estimar=True)
         return (estimado, "estimado") if estimado else (None, "")
     total = montos[-1]
+    # el "$" leído como dígito ("$40000" -> "440000"): el mismo monto sin el primer dígito se repite en la factura
+    sin_primero = f"{total:.2f}"[1:]
+    if sin_primero and sin_primero[0] != ".":
+        alt = Decimal(sin_primero)
+        if alt > 0 and todos.count(alt) >= 2 and todos.count(total) <= 1:
+            return alt, "ocr corregido"
     if por_iva and abs(por_iva - total) > max(Decimal(1), total * Decimal("0.01")) and por_iva in todos:
         return por_iva, "ocr corregido"  # el total leído no cierra con el IVA contenido; sí otro monto de la factura
     parecidos = [x for x in set(todos) if x != total and abs(x - total) < max(Decimal(1), total * Decimal("0.001"))]
@@ -216,10 +222,15 @@ def buscar_importe(texto: str) -> tuple[Decimal | None, str]:
 def razon_social(texto: str, cuit: str | None, proveedores: dict[str, str]) -> tuple[str | None, str]:
     if cuit and cuit in proveedores:
         return proveedores[cuit], "proveedor"
+    # rótulo "Razón Social:" del emisor (el del cliente es APAI: "Apellido y Nombre / Razón Social")
+    for m in re.finditer(r"(?<!/ )Raz[oó]n\s+Soc[il]al\s*[:;.]?\s*([^\n]+?)(?:\s+F[oe]cha|\s+C\.?U\.?I\.?T|\s+Domicilio|$)", texto, re.I | re.M):
+        nombre = m.group(1).strip(" .:-|")
+        if len(nombre) >= 3 and not re.search(r"ASOC|PADRES|APAI|INAC", nombre, re.I):
+            return nombre[:160], "ocr"
     for linea in texto.splitlines()[:12]:
         l = re.sub(r"[^\wÁÉÍÓÚÑáéíóúñ .,&-]", "", linea).strip()
-        if len(l) >= 5 and sum(c.isalpha() for c in l) >= 4 and l.upper() == l \
-                and not re.search(r"ORIGINAL|DUPLICADO|FACTURA|TIQUE|C\.?U\.?I\.?T|IVA|DOMICILIO|INICIO", l):
+        if len(l) >= 5 and sum(c.isalpha() for c in l) >= 4 and l.upper() == l and not re.search(r"\d{3}", l) \
+                and not re.search(r"ORIGINAL|DUPLICADO|FACTURA|TIQUE|C\.?U\.?I\.?T|IVA|DOMICILIO|INICIO|ASOC|PADRES|TOTAL", l):
             return l[:160], "ocr"
     return None, ""
 

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos, escaneo
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -37,11 +37,12 @@ app.add_middleware(
 
 CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+    "worker-src 'self' blob:; "  # OCR de facturas escaneadas (Tesseract.js)
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "img-src 'self' data: blob: https://*.supabase.co; "
     "font-src 'self' data: https://fonts.gstatic.com; "
-    "connect-src 'self' https://*.supabase.co; "  # subida directa de comprobantes a Storage
+    "connect-src 'self' data: https://*.supabase.co https://cdn.jsdelivr.net; "  # Storage; datos del OCR (jsDelivr)
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 
@@ -121,6 +122,7 @@ app.include_router(cupones_siro.router, dependencies=_auth)
 app.include_router(facturas_recibidas.router, dependencies=_auth)
 app.include_router(facturas_recibidas.publico)  # portal público de facturas (sin cuenta)
 app.include_router(pedidos.router, dependencies=_auth)
+app.include_router(escaneo.router, dependencies=_auth)
 app.include_router(pedidos.publico)  # formulario público de pedidos de materiales (sin cuenta)
 # Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
 app.include_router(portal.router)

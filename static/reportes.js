@@ -5,14 +5,13 @@
 // --- Logo en base64 (para membrete de PDFs) ---
 let logoDataURL = null;
 (async function cargarLogo() {
-    try {
-        const res = await fetch('/static/logo.png');
-        const blob = await res.blob();
-        logoDataURL = await new Promise(r => {
-            const fr = new FileReader();
-            fr.onload = () => r(fr.result);
-            fr.readAsDataURL(blob);
-        });
+    try {  // achicado a 256 px: el original (750 KB) inflaba cada PDF
+        const img = new Image();
+        await new Promise((ok, mal) => { img.onload = ok; img.onerror = mal; img.src = '/static/logo.png'; });
+        const c = document.createElement('canvas');
+        c.width = c.height = 256;
+        c.getContext('2d').drawImage(img, 0, 0, 256, 256);
+        logoDataURL = c.toDataURL('image/png');
     } catch (e) { /* sin logo, no critico */ }
 })();
 
