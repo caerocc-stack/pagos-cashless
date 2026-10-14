@@ -117,11 +117,24 @@ def nombre_valido(s: str | None) -> bool:
     return len(s) >= 4 and sum(c.isalpha() for c in s) >= 4 and not NO_NOMBRE.search(s) and not re.search(r"\d{4,}", s)
 
 
-def buscar_razon_social(plano: str) -> str | None:
-    m = re.search(r"(?<!/ )Raz[oó]n Social:\s*(.+?)(?:\s+Fecha de Emisi|\s+CUIT|\n|$)", plano)
+SUFIJO_EMPRESA = r"(?:S\.?\s?R\.?\s?L\.?|S\.?\s?A\.?\s?S\.?|S\.?\s?A\.?(?:\s?C\.?\s?I\.?(?:\s?F\.?)?)?|S\.?\s?H\.?|COOP\w*)"
+
+
+def buscar_razon_social(plano: str, cuit: str | None = None) -> str | None:
+    m = re.search(r"(?<!/ )Raz[oó]n Social:\s*(.+?)(?:\s+Fecha de Emisi|\s+CUIT|\n|$)", plano, re.I)
     if m and nombre_valido(m.group(1)) and not re.search(r"ASOC|PADRES", m.group(1), re.I):
         return m.group(1).strip()[:160]
+    if cuit and len(cuit) == 11:  # "GRUPO AGG SRL 30-71576552-3": el nombre junto al CUIT del emisor
+        cuit_re = rf"{cuit[:2]}-?{cuit[2:10]}-?{cuit[10]}"
+        for l in plano.splitlines():
+            m = re.search(rf"^\s*([^\d:]{{4,80}}?)\s*{cuit_re}\s*$", l)  # sin "CUIT:" en el medio (eso es el domicilio)
+            if m and nombre_valido(m.group(1).strip(" -|·")):
+                return m.group(1).strip(" -|·")[:160]
     lineas = [l.strip(" |·-") for l in plano.splitlines()[:15]]
+    for l in lineas:  # nombre de empresa al principio del renglón ("GRUPO AGG SRL Nº: 0035-…")
+        m = re.match(rf"([A-ZÁÉÍÓÚÑ][\w&.,' ]{{1,70}}?\b{SUFIJO_EMPRESA})(?=\s|$)", l)
+        if m and nombre_valido(m.group(1)):
+            return m.group(1).strip()[:160]
     for l in lineas:  # 1) nombre de fantasía "… de Nochetti Silvia Beatriz": el titular
         m = re.search(r"\bde\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,4})(?=\s+[A-ZÁÉÍÓÚÑ]{3,}|\s*$)", l)
         if m and nombre_valido(m.group(1)):
@@ -168,7 +181,7 @@ def leer_factura(contenido: bytes, qr_texto: str | None = None, cuit_apai: str =
         if emisores:
             d["cuit"] = emisores[0]
         d["receptor_es_apai"] = bool(apai) and apai in cuits
-        rs = buscar_razon_social(plano)
+        rs = buscar_razon_social(plano, d.get("cuit"))
         if rs:
             d["razon_social"] = rs
         m = re.search(r"Punto de Venta:?\s*(\d{1,5})\s*Comp\.?\s*Nro:?\s*(\d{1,8})", plano, re.I) \
