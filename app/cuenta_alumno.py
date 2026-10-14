@@ -28,8 +28,15 @@ def fin_de_mes(anio: int, mes: int) -> date:
 
 
 def fecha_imputacion(p) -> date:
-    """Fecha que define a qué mes corresponde un pago: la de pago; si no se informó, la de proceso."""
+    """Fecha que define qué cuota paga: la de pago (lo pagado el 30/09 paga septiembre aunque SIRO lo procese
+    en octubre); si no se informó, la de proceso. La cobranza del mes (cuándo entró la plata) va siempre por
+    la fecha de proceso: ver `fecha_cobro`."""
     return p.fecha_pago or p.fecha
+
+
+def fecha_cobro(p) -> date:
+    """Fecha en que entró el pago: la Fecha de Proceso del listado de cobranzas de SIRO."""
+    return p.fecha
 
 
 def anio_de_pago(p) -> int:

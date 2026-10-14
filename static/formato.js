@@ -281,16 +281,16 @@ function htmlResumenDeuda(e) {
         ${prox ? `<div class="cc-prox">${prox}</div>` : ''}</div>`;
 }
 
-// Cada pago con su fecha de pago, acreditación, medio y a qué cuota se imputó
+// Cada pago con su fecha de proceso (la que define el mes), la de pago como referencia, el medio y a qué cuota se imputó
 function htmlPagosImputados(pagos, cursos = null) {
     if (!pagos || !pagos.length) return '<p class="muted" style="padding:0.75rem 0">Todavía no hay pagos registrados este año.</p>';
     const elegir = cursos && cursos.length > 1 && typeof imputarPagoCurso === 'function';
     return '<ul class="cc-pagos">' + pagos.slice().reverse().map(p => {
-        const acred = p.fecha_pago && p.fecha_pago !== p.fecha ? ` · acreditado el ${fmtFecha(p.fecha)}` : '';
+        const pagado = p.fecha_pago && p.fecha_pago !== p.fecha ? ` · pagado el ${fmtFecha(p.fecha_pago)}` : '';
         const sel = elegir ? `<label class="cc-imp">Imputar a: <select onchange="imputarPagoCurso(${p.id}, this.value)">
             <option value="">automático (por mes e importe)</option>${cursos.map(c => `<option value="${c.curso_id}" ${p.curso_id === c.curso_id ? 'selected' : ''}>${_escCC(c.nombre)}</option>`).join('')}
             </select></label>` : '';
-        return `<li><div><b>${fmtFecha(p.fecha_pago || p.fecha)}</b> <span class="muted">· ${_escCC(nombreCanal(p))}${acred}</span>
+        return `<li><div><b>${fmtFecha(p.fecha)}</b> <span class="muted">· ${_escCC(nombreCanal(p))}${pagado}</span>
             ${p.imputado_a ? `<div class="cc-imp">Pagó: ${_escCC(p.imputado_a)}</div>` : ''}${sel}</div>
             <span class="cc-monto">${fmtMoneda(p.importe)}</span></li>`;
     }).join('') + '</ul>';

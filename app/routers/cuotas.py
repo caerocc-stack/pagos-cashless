@@ -17,7 +17,7 @@ from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
-from app.cuenta_alumno import estado_cuenta, anio_de_pago, plan_simple, MES_INICIO, estado_con_anterior
+from app.cuenta_alumno import estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -103,6 +103,7 @@ def _parsear_siro(contenido: bytes):
         raise HTTPException(400, "Faltan columnas (Cliente / Importe / Fecha de Proceso).")
 
     pagos = []
+    repetidas: dict[str, int] = {}
     for r in range(fila_cab + 1, sh.nrows):
         cliente = str(sh.cell_value(r, c_cli)).strip()
         if not _dig(cliente):
@@ -126,29 +127,50 @@ def _parsear_siro(contenido: bytes):
         except Exception:
             pass
         canal = str(sh.cell_value(r, c_canal)).strip() if c_canal is not None else None
-        h = hashlib.sha1(f"{cliente}|{importe}|{bruto_proc}|{bruto_pago}".encode()).hexdigest()[:40]
+        try:  # la fecha de pago de SIRO trae hora, minuto y segundo: identifica a cada pago
+            momento = xlrd.xldate.xldate_as_datetime(float(bruto_pago), dm) if bruto_pago else None
+            momento = momento.replace(microsecond=0).isoformat() if momento else ""
+        except Exception:
+            momento = str(bruto_pago or "")
+        clave = f"siro|{_dig(cliente).lstrip('0')}|{importe:.2f}|{fecha.isoformat()}|{momento}|{(canal or '').upper()}"
+        repetidas[clave] = repetidas.get(clave, 0) + 1
+        if repetidas[clave] > 1:  # dos renglones idénticos en el mismo listado: son dos pagos distintos
+            clave += f"#{repetidas[clave]}"
         pagos.append({
             "cliente_siro": _dig(cliente), "importe": importe, "fecha": fecha,
             "fecha_pago": fecha_pago, "canal": canal or None,
-            "mes": fecha.month, "anio": fecha.year, "hash": h,
+            "mes": fecha.month, "anio": fecha.year,
+            "hash": hashlib.sha1(clave.encode()).hexdigest()[:40],
+            # huella con la que se guardaban antes (para reconocer los pagos ya cargados)
+            "hash_anterior": hashlib.sha1(f"{cliente}|{importe}|{bruto_proc}|{bruto_pago}".encode()).hexdigest()[:40],
         })
     return pagos
 
 
 @router.post("/importar")
 async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Carga el listado de cobranzas de SIRO sin duplicar: los listados se pueden superponer (del 1 al 13 y
+    después del 1 al 31) y solo entran los pagos que todavía no estaban. Cada pago se reconoce por cliente,
+    importe, fecha de proceso, fecha y hora de pago y canal."""
     contenido = await archivo.read()
     pagos = _parsear_siro(contenido)
     by_leg, by_dni = _indices(db)
+    cargados = set()
+    huellas = [h for p in pagos for h in (p["hash"], p["hash_anterior"])]
+    for k in range(0, len(huellas), 500):
+        cargados |= {h for (h,) in db.query(PagoCuota.hash).filter(PagoCuota.hash.in_(huellas[k:k + 500])).all()}
 
     nuevos = duplicados = asignados = 0
+    usadas = set()  # huellas anteriores ya reconocidas: cada pago viejo cubre un solo renglón
     for p in pagos:
-        if db.query(PagoCuota).filter(PagoCuota.hash == p["hash"]).first():
+        anterior = p.pop("hash_anterior")
+        if p["hash"] in cargados or (anterior in cargados and anterior not in usadas):
+            usadas.add(anterior)
             duplicados += 1
             continue
         a, via = _matchear(p["cliente_siro"], by_leg, by_dni)
-        obj = PagoCuota(origen=archivo.filename, alumno_id=(a.id if a else None), via=via, **p)
-        db.add(obj)
+        db.add(PagoCuota(origen=archivo.filename, alumno_id=(a.id if a else None), via=via, **p))
+        cargados.add(p["hash"])
         nuevos += 1
         if a:
             asignados += 1
@@ -336,6 +358,13 @@ def pagos_del_anio(db: Session, anio: int, alumno_id: int | None = None) -> dict
     return por_alumno
 
 
+def _mes_cobro(p, anio: int) -> int:
+    """Mes en que entró el pago (fecha de proceso). Lo pagado en diciembre y procesado en enero del año
+    siguiente queda en diciembre del año al que pertenece."""
+    f = fecha_cobro(p)
+    return 12 if f.year > anio else f.month
+
+
 def _corte_texto(mes_corte: int | None) -> int:
     """Último mes con la cuota ya vencida (las cuotas vencen el último día de cada mes)."""
     return mes_corte if mes_corte else max(0, ahora_ar().month - 1)
@@ -411,7 +440,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
         planes = planes_de(a, cursos_cfg, extras.get(a.id, []))
         ps = pagos.get(a.id, [])
         if mes:  # la foto al cierre del mes elegido solo considera lo pagado hasta ese mes
-            ps = [p for p in ps if (p.fecha_pago or p.fecha).month <= mes]
+            ps = [p for p in ps if _mes_cobro(p, anio) <= mes]
         info = estado_cuenta(a, planes, ps, anio, hoy=hoy, mes_corte=mes)
         becado = info["estado"] in ("Becado", "Exento") or (a.condicion or "").lower() in ("becado", "exento")
         for i, c in enumerate(info["cursos"]):
@@ -419,8 +448,8 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
             plan_de_pago = lambda p: next((x["clave"] for x in info["cursos"] if x.get("curso_id") and x["curso_id"] == p.curso_id),
                                           info["cursos"][0]["clave"])
             hasta = mes or 12
-            cobrado = sum(float(p.importe) for p in ps if (p.fecha_pago or p.fecha).month <= hasta and plan_de_pago(p) == c["clave"])
-            cobrado_mes = sum(float(p.importe) for p in ps if mes and (p.fecha_pago or p.fecha).month == mes and plan_de_pago(p) == c["clave"])
+            cobrado = sum(float(p.importe) for p in ps if _mes_cobro(p, anio) <= hasta and plan_de_pago(p) == c["clave"])
+            cobrado_mes = sum(float(p.importe) for p in ps if mes and _mes_cobro(p, anio) == mes and plan_de_pago(p) == c["clave"])
             esperado = 0.0 if becado else c.get("esperado", 0.0)
             deuda_vencida = 0.0 if becado else c.get("deuda", 0.0)
             etq = c.get("etiqueta") or a.curso or "—"
@@ -478,14 +507,14 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
                                 "deuda_vencida": 0.0, "con_deuda_anterior": 0, "deuda_anterior": 0.0, "becados": 0,
                                 "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0, "moroso": 0, "sin_pagos": 0}
 
-    # Cobranza por mes y área (fecha del pago; el área es la del curso al que se imputó)
+    # Cobranza por mes y área (fecha de proceso; el área es la del curso al que se imputó)
     alumnos_area = dict(db.query(Alumno.id, Alumno.area).all())
     matriz: dict = {m: {} for m in range(1, 13)}
     for aid, ps in pagos.items():
         for p in ps:
-            f_p = p.fecha_pago or p.fecha
+            mes_p = _mes_cobro(p, anio)
             ar = (por_id_curso[p.curso_id].area if p.curso_id in por_id_curso else None) or alumnos_area.get(aid) or "Sin área"
-            matriz[f_p.month][ar] = matriz[f_p.month].get(ar, 0.0) + float(p.importe)
+            matriz[mes_p][ar] = matriz[mes_p].get(ar, 0.0) + float(p.importe)
     areas_m = sorted({ar for v in matriz.values() for ar in v}, key=lambda x: (ORDEN_AREAS.index(x) if x in ORDEN_AREAS else 99, x))
     mensual = [{"mes": m, "valores": {ar: matriz[m].get(ar, 0.0) for ar in areas_m}, "total": sum(matriz[m].values())} for m in range(1, 13)]
     tot_areas = {ar: sum(x["valores"][ar] for x in mensual) for ar in areas_m}
