@@ -31,7 +31,7 @@
 .f-lista li.enviando { opacity: 0.7; }
 .f-quitar { background: none; border: 0; cursor: pointer; color: var(--text-muted); padding: 0.3rem; border-radius: 6px; min-width: 32px; min-height: 32px; }
 .f-quitar:hover { background: var(--surface-3); color: var(--danger); }
-.f-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1rem; margin-top: 1rem; }
+.f-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1rem; margin-top: 1rem; align-items: end; }  /* campos alineados aunque un rótulo ocupe dos renglones */
 .f-campos label { display: block; margin: 0.6rem 0 0.3rem; }
 .f-ancho { grid-column: 1 / -1; }
 .f-trampa { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }

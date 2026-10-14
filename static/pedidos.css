@@ -65,3 +65,4 @@
 .card label.pd-check { display: flex; flex-direction: row; align-items: center; margin: 0; }
 .pd-urgente-box { padding-top: 1.85rem; }
 .pd-check input { flex: none; }
+.pd-main .f-campos { align-items: start; }  /* acá cada campo lleva su mensaje de error debajo */
