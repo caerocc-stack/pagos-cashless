@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, extract
 
@@ -390,7 +391,8 @@ def _validar_pago(forma_pago, fecha_pago, fecha_factura=None):
 @router.post("/", response_model=GastoResponse, status_code=201)
 def crear(data: GastoCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     d = data.model_dump()
-    _validar_pago(d.get("forma_pago"), d.get("fecha_pago"))
+    # el pago se registra después: conciliando con el banco o registrando el pago en efectivo
+    d["forma_pago"] = d["fecha_pago"] = None
     cuit = _norm_cuit(d.get("cuit"))
     if cuit and not cuit_valido(cuit):
         raise HTTPException(400, "El CUIT no es válido (revisá los 11 dígitos).")
@@ -442,12 +444,21 @@ def actualizar(gasto_id: int, data: GastoUpdate, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
     cambios = _completar_proveedor(data.model_dump(exclude_unset=True), db)
-    if "forma_pago" in cambios or "fecha_pago" in cambios:
-        vinculado = g.caja_mov_id or g.conciliado
-        if vinculado and "forma_pago" in cambios and cambios["forma_pago"] != g.forma_pago:
-            raise HTTPException(400, "El pago está vinculado a un movimiento de caja o del banco: para cambiar el medio, "
-                                     "deshacé primero el pago. La fecha sí se puede corregir.")
-        _validar_pago(cambios.get("forma_pago", g.forma_pago), cambios.get("fecha_pago", g.fecha_pago))
+    # El medio de pago sale de conciliar con el banco o de registrar el pago en efectivo: no se carga a mano.
+    if "forma_pago" in cambios and (cambios["forma_pago"] or None) != (g.forma_pago or None):
+        raise HTTPException(400, "El medio de pago se completa al conciliar con el extracto del banco o al registrar "
+                                 "el pago en efectivo (botón «Vincular pago»).")
+    cambios.pop("forma_pago", None)
+    if "fecha_pago" in cambios and cambios["fecha_pago"] != g.fecha_pago:
+        if not g.forma_pago:
+            raise HTTPException(400, "Primero registrá el pago (conciliación bancaria o pago en efectivo).")
+        if g.conciliado and not g.caja_mov_id:
+            raise HTTPException(400, "La fecha de un pago por banco sale del extracto conciliado.")
+        _validar_pago(g.forma_pago, cambios["fecha_pago"])
+        if g.caja_mov_id and cambios["fecha_pago"]:
+            mov = db.get(MovimientoCaja, g.caja_mov_id)
+            if mov:
+                mov.fecha = cambios["fecha_pago"]  # el egreso de caja queda con la misma fecha
     if "cuit" in cambios and cambios["cuit"]:
         cambios["cuit"] = _norm_cuit(cambios["cuit"])
         if not cuit_valido(cambios["cuit"]):
@@ -531,14 +542,23 @@ def pago_caja(gasto_id: int, caja_id: int, db: Session = Depends(get_db)):
     return {"ok": True, "mensaje": "Pago vinculado con la caja en efectivo"}
 
 
+class PagoEfectivo(BaseModel):
+    fecha: date | None = None  # cuándo salió la plata de la caja (por defecto, hoy)
+
+
 @router.post("/{gasto_id}/pago/efectivo-nuevo")
-def pago_efectivo_nuevo(gasto_id: int, db: Session = Depends(get_db)):
+def pago_efectivo_nuevo(gasto_id: int, data: PagoEfectivo | None = None, db: Session = Depends(get_db)):
     """Registra un egreso de caja por el importe del gasto y lo vincula como pago en efectivo."""
     g = db.get(Gasto, gasto_id)
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
+    if g.forma_pago or g.caja_mov_id:
+        raise HTTPException(400, "Esta factura ya tiene el pago registrado.")
+    fecha = (data.fecha if data and data.fecha else None) or ahora_ar().date()
+    if fecha > ahora_ar().date():
+        raise HTTPException(400, "La fecha de pago no puede ser futura.")
     c = MovimientoCaja(
-        fecha=g.fecha or ahora_ar().date(),
+        fecha=fecha,
         concepto=f"Pago {g.razon_social or 'proveedor'}",
         tipo_movimiento="Pago proveedor",
         tipo="egreso",

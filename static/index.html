@@ -943,7 +943,8 @@
                                 <div><label for="gasto-fecha-pago">Fecha de pago <span style="color:var(--text-muted);font-weight:400">(cuándo salió la plata)</span></label>
                                     <input type="date" id="gasto-fecha-pago" onchange="gastoPagoCambio()"></div>
                             </div>
-                            <small class="muted">Va en la columna PAGOS del Excel para la contadora. Si se pagó en otro mes que la factura, poné acá la fecha real del pago.</small>
+                            <small class="muted" id="gasto-pago-ayuda">El medio y la fecha de pago se completan al conciliar con el extracto del banco o al registrar
+                            el pago en efectivo (botón «Vincular pago» en la lista). Van en la columna PAGOS del Excel para la contadora.</small>
                         </div>
                         <div><label>Rubro <span style="color:var(--text-muted);font-weight:400">(del proveedor)</span></label><input type="text" id="gasto-rubro" placeholder="ej: Librería, Ferretería..."></div>
                         <div style="grid-column:1/-1"><label>Concepto <span style="color:var(--text-muted);font-weight:400">(qué se compró — se carga a mano)</span></label><input type="text" id="gasto-concepto" placeholder="ej: Resmas A4, tóner..."></div>

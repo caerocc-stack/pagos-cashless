@@ -2007,8 +2007,9 @@ async function abrirVincularPago(id) {
             <table><thead><tr><th>Fecha</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
             <tbody>${fCaja}</tbody></table>
             <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:space-between">
-                <button class="btn btn-success" onclick="pagoEfectivoNuevo(${id})">+ Registrar pago en efectivo (crea el egreso de caja)</button>
-                <button class="btn btn-outline" onclick="cerrarModal();editarGasto(${id});gastoIrAlPago()">Cargar el pago a mano (medio y fecha)</button>
+                <span class="pago-efectivo-box"><label for="pago-ef-fecha">Pagada en efectivo el</label>
+                    <input type="date" id="pago-ef-fecha" value="${hoyISO()}" max="${hoyISO()}">
+                    <button class="btn btn-success" onclick="pagoEfectivoNuevo(${id})">+ Registrar pago en efectivo (crea el egreso de caja)</button></span>
             </div>`;
         document.getElementById('modal-content').innerHTML = html;
         document.getElementById('modal-overlay').style.display = 'flex';
@@ -2028,8 +2029,9 @@ async function pagoCaja(id, cajaId) {
     } catch (err) { toast(err.message, 'error'); }
 }
 async function pagoEfectivoNuevo(id) {
-    if (!confirm('Se va a registrar un egreso en el Libro de Caja por este importe. ¿Continuar?')) return;
-    try { await api(`/api/gastos/${id}/pago/efectivo-nuevo`, { method: 'POST' });
+    const fecha = (document.getElementById('pago-ef-fecha') || {}).value || hoyISO();
+    if (!confirm(`Se va a registrar un egreso en el Libro de Caja por este importe, con fecha ${fmtFecha(fecha)}. ¿Continuar?`)) return;
+    try { await api(`/api/gastos/${id}/pago/efectivo-nuevo`, { method: 'POST', body: JSON.stringify({ fecha }) });
         toast('Pago en efectivo registrado'); cerrarModal(); cargarGastos();
     } catch (err) { toast(err.message, 'error'); }
 }
@@ -2375,25 +2377,22 @@ function gastoPagoLlenar(g) {
     sel.dataset.original = sel.value;
     document.getElementById('gasto-fecha-pago').value = (g && g.fecha_pago) || '';
     document.getElementById('gasto-categoria').value = (g && g.categoria) || '';
-    const vinc = g && (g.caja_mov_id || g.conciliado);
-    sel.disabled = !!vinc;
-    document.getElementById('gasto-pago-vinc').textContent = !g || !vinc ? ''
-        : g.caja_mov_id ? '· vinculado al libro de caja (para cambiar el medio, deshacé el pago; la fecha se puede corregir)'
-        : '· vinculado al extracto del banco (para cambiar el medio, deshacé el pago; la fecha se puede corregir)';
+    // El medio sale de conciliar con el banco o de registrar el pago en efectivo: no se elige a mano.
+    sel.disabled = true;
+    const fp = document.getElementById('gasto-fecha-pago');
+    const editable = !!(g && g.forma_pago && (g.caja_mov_id || !g.conciliado));
+    fp.disabled = !editable;
+    fp.dataset.original = fp.value;
+    document.getElementById('gasto-pago-vinc').textContent = !g || !g.forma_pago ? '· sin pagar todavía'
+        : g.caja_mov_id ? '· pagada en efectivo (libro de caja): podés corregir la fecha'
+        : g.conciliado ? '· pagada por banco (conciliada con el extracto)' : '';
     gastoPagoCambio();
 }
 function gastoPagoCambio() {
     const f = document.getElementById('gasto-fecha-pago'), m = document.getElementById('gasto-forma-pago');
     f.max = hoyISO();
-    f.classList.toggle('pd-mal', !!m.value && !f.value && m.value !== (m.dataset.original || ''));
+    f.classList.toggle('pd-mal', false);
 }
-function gastoIrAlPago() {
-    setTimeout(() => {
-        const box = document.querySelector('.gasto-pago-box');
-        if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('gasto-forma-pago').focus({ preventScroll: true }); }
-    }, 150);
-}
-
 async function guardarGasto(e) {
     e.preventDefault();
     const editId = document.getElementById('gasto-edit-id').value;
@@ -2422,12 +2421,9 @@ async function guardarGasto(e) {
         vencimiento: document.getElementById('gasto-vencimiento').value || null,
         cae: document.getElementById('gasto-cae').value || null,
         categoria: document.getElementById('gasto-categoria').value || null,
-        forma_pago: document.getElementById('gasto-forma-pago').value || null,
-        fecha_pago: document.getElementById('gasto-fecha-pago').value || null,
     };
-    const medioNuevo = body.forma_pago !== (document.getElementById('gasto-forma-pago').dataset.original || null);
-    if (body.forma_pago && !body.fecha_pago && medioNuevo) { toast('Poné la fecha en que se pagó (cuándo salió la plata)', 'error'); document.getElementById('gasto-fecha-pago').focus(); return; }
-    if (body.fecha_pago && !body.forma_pago) { toast('Elegí el medio de pago', 'error'); document.getElementById('gasto-forma-pago').focus(); return; }
+    const fp = document.getElementById('gasto-fecha-pago');
+    if (editId && !fp.disabled && fp.value && fp.value !== (fp.dataset.original || '')) body.fecha_pago = fp.value;
     const recibida = document.getElementById('gasto-recibida-id').value;
     if (recibida && !editId) body.factura_recibida_id = Number(recibida);
     if (e.submitter && e.submitter.dataset.revisar) body.revisado = true;
@@ -5971,7 +5967,7 @@ function escFila(f, archivo) {
         v: {
             fecha: d.fecha || '', tipo: d.tipo || '', punto_venta: d.punto_venta || '', numero: d.numero || '',
             cuit: d.cuit || '', razon_social: d.razon_social || '', importe: d.importe != null ? fmtNumero(Math.abs(d.importe)) : '',
-            concepto: '', rubro: s.rubro || '', categoria: s.categoria || '', forma_pago: '', fecha_pago: '',
+            concepto: '', rubro: s.rubro || '', categoria: s.categoria || '',
         },
         concepto_sug: s.concepto || '', ok: false, error: null,
     };
@@ -6032,9 +6028,6 @@ function escItem(f, i) {
                     ${Object.entries(ESC_HOJAS).map(([k, t]) => `<option value="${k}" ${f.v.categoria === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
                 <div class="esc-f esc-ancho"><label>Concepto</label><input type="text" data-i="${i}" data-c="concepto" value="${escapeHtml(f.v.concepto)}" placeholder="${escapeHtml(f.concepto_sug || 'Qué se compró')}"></div>
                 ${campo('rubro', 'Rubro')}
-                <div class="esc-f"><label>Medio de pago</label><select data-i="${i}" data-c="forma_pago"><option value="">Sin pagar</option>
-                    ${FORMAS_PAGO_GASTO.map(m => `<option ${f.v.forma_pago === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
-                <div class="esc-f"><label>Fecha de pago</label><input type="date" data-i="${i}" data-c="fecha_pago" value="${f.v.fecha_pago}"></div>
             </div>
         </div>
     </div>`;
@@ -6088,9 +6081,6 @@ async function escRegistrar() {
         if (!f.v.razon_social.trim()) {
             f.error = 'Falta la razón social'; msg.textContent = f.error; msg.className = 'esc-msg error'; mal++; continue;
         }
-        if (f.v.forma_pago && !f.v.fecha_pago) {
-            f.error = 'Poné la fecha de pago'; msg.textContent = f.error; msg.className = 'esc-msg error'; mal++; continue;
-        }
         msg.textContent = 'Registrando…'; msg.className = 'esc-msg';
         let adjunto = null;
         const img = ESC.imagenes[f.paginas[0]];
@@ -6104,8 +6094,7 @@ async function escRegistrar() {
         const body = {
             fecha: f.v.fecha, tipo_comprobante: f.v.tipo || null, punto_venta: f.v.punto_venta || null, numero: f.v.numero || null,
             cuit: f.v.cuit || null, razon_social: f.v.razon_social || null, importe: nc ? -Math.abs(importe) : importe,
-            concepto: f.v.concepto || null, rubro: f.v.rubro || null, categoria: f.v.categoria || null,
-            forma_pago: f.v.forma_pago || null, fecha_pago: f.v.fecha_pago || null, adjunto_url: adjunto,
+            concepto: f.v.concepto || null, rubro: f.v.rubro || null, categoria: f.v.categoria || null, adjunto_url: adjunto,
             notas: `Cargada desde ${f.archivo} (pág. ${f.paginas.join('-')})`.slice(0, 400),
         };
         try {
