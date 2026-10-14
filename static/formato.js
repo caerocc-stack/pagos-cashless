@@ -255,10 +255,26 @@ function _gridItems(items, sinSufijo) {
         if (est === 'a_vencer') { est = primera ? 'a_vencer' : 'futura'; primera = false; }
         const concepto = sinSufijo ? it.concepto.replace(/ \(.*\)$/, '') : it.concepto;
         const nombre = it.es_matricula ? 'Matrícula' : (items.length > 2 ? MESES_CORTOS[it.mes - 1] : concepto);
-        const det = { pagada: 'Pagada', parcial: 'Falta ' + fmtMoneda(it.saldo), adeudada: 'Debe ' + fmtMoneda(it.saldo),
-            a_vencer: 'Vence ' + fmtFecha(it.vence), futura: fmtMoneda(it.importe) }[est];
-        return `<div class="cc-item cc-${est}" title="${_escCC(it.concepto)} · vence ${fmtFecha(it.vence)}"><b>${_escCC(nombre)}</b><small>${det}</small></div>`;
-    }).join('') + '</div>';
+        const dia = f => fmtFecha(f).slice(0, 5);  // 12/10
+        const pagos = it.pagos || [];
+        const ultimo = pagos.length ? pagos[pagos.length - 1].fecha : null;
+        let det = { pagada: it.prepaga ? 'Pagada antes' : (ultimo ? 'Pagó ' + dia(ultimo) : 'Pagada'),
+            parcial: 'Falta ' + fmtMoneda(it.saldo), adeudada: 'Debe ' + fmtMoneda(it.saldo),
+            a_vencer: 'Vence ' + dia(it.vence), futura: 'Pendiente' }[est];
+        if (est === 'parcial' && ultimo) det += `<br>Pagó ${fmtMoneda(it.pagado)}`;
+        const atraso = it.con_atraso && (est === 'pagada' || est === 'parcial');
+        const titulo = [it.concepto, 'vence ' + fmtFecha(it.vence)]
+            .concat(pagos.map(x => `pagó ${fmtMoneda(x.importe)} (proceso ${fmtFecha(x.fecha)})`)).join(' · ');
+        return `<div class="cc-item cc-${est}${atraso ? ' cc-atraso' : ''}" title="${_escCC(titulo)}">
+            <b>${_escCC(nombre)}</b><small>${det}</small>${atraso ? '<em class="cc-tarde">Con atraso</em>' : ''}</div>`;
+    }).join('') + '</div>' + htmlLeyendaCuotas();
+}
+
+function htmlLeyendaCuotas() {
+    return `<div class="cc-leyenda" aria-hidden="true">
+        <span><i class="cc-pagada"></i>Pagada</span><span><i class="cc-pagada cc-atraso"></i>Pagada con atraso</span>
+        <span><i class="cc-adeudada"></i>Adeudada</span><span><i class="cc-parcial"></i>Pago parcial</span>
+        <span><i class="cc-a_vencer"></i>Próxima a vencer</span><span><i class="cc-futura"></i>Pendiente</span></div>`;
 }
 
 // "Cuotas adeudadas: 2 · Monto total: $90.000 · Meses sin pago: agosto y septiembre"
@@ -281,18 +297,29 @@ function htmlResumenDeuda(e) {
         ${prox ? `<div class="cc-prox">${prox}</div>` : ''}</div>`;
 }
 
-// Cada pago con su fecha de proceso (la que define el mes), la de pago como referencia, el medio y a qué cuota se imputó
+// Pagos del año: un renglón por cada cuota que pagó cada pago, con su fecha de proceso. Si un pago cubre la
+// cuota del mes y una vieja (o dos pagos en el mismo mes), cada cuota va en su línea y las viejas se marcan.
 function htmlPagosImputados(pagos, cursos = null) {
     if (!pagos || !pagos.length) return '<p class="muted" style="padding:0.75rem 0">Todavía no hay pagos registrados este año.</p>';
     const elegir = cursos && cursos.length > 1 && typeof imputarPagoCurso === 'function';
     return '<ul class="cc-pagos">' + pagos.slice().reverse().map(p => {
         const pagado = p.fecha_pago && p.fecha_pago !== p.fecha ? ` · pagado el ${fmtFecha(p.fecha_pago)}` : '';
+        const medio = `${_escCC(nombreCanal(p))}${pagado}`;
         const sel = elegir ? `<label class="cc-imp">Imputar a: <select onchange="imputarPagoCurso(${p.id}, this.value)">
             <option value="">automático (por mes e importe)</option>${cursos.map(c => `<option value="${c.curso_id}" ${p.curso_id === c.curso_id ? 'selected' : ''}>${_escCC(c.nombre)}</option>`).join('')}
             </select></label>` : '';
-        return `<li><div><b>${fmtFecha(p.fecha)}</b> <span class="muted">· ${_escCC(nombreCanal(p))}${pagado}</span>
-            ${p.imputado_a ? `<div class="cc-imp">Pagó: ${_escCC(p.imputado_a)}</div>` : ''}${sel}</div>
-            <span class="cc-monto">${fmtMoneda(p.importe)}</span></li>`;
+        const lineas = (p.detalle && p.detalle.length) ? p.detalle : [{ concepto: p.imputado_a || 'Pago', importe: p.importe }];
+        const varias = lineas.length > 1;
+        return lineas.map((d, i) => {
+            const marca = d.atrasada ? '<span class="cc-tag cc-tag-atraso">Cuota atrasada</span>'
+                : d.adelanto ? '<span class="cc-tag cc-tag-adelanto">Adelanto</span>'
+                : d.tipo === 'a_favor' ? '<span class="cc-tag">Saldo a favor</span>' : '';
+            const ultima = i === lineas.length - 1;
+            return `<li class="${varias ? 'cc-parte' : ''}${varias && ultima ? ' cc-parte-fin' : ''}">
+                <div><b>${fmtFecha(p.fecha)}</b> · ${_escCC(d.concepto)} ${marca}
+                <div class="cc-imp">${medio}${varias ? ` · parte de un pago de ${fmtMoneda(p.importe)}` : ''}</div>${i === 0 ? sel : ''}</div>
+                <span class="cc-monto">${fmtMoneda(d.importe)}</span></li>`;
+        }).join('');
     }).join('') + '</ul>';
 }
 
