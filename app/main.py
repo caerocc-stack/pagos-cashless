@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -68,7 +68,7 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"  # datos personales: que no queden en caché
-    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer", "/portal"):
+    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer", "/portal", "/facturas", "/pedidos"):
         # Siempre revalidar (ETag): después de cada actualización nadie queda con CSS/JS viejos
         response.headers["Cache-Control"] = "no-cache"
     return response
@@ -120,6 +120,8 @@ app.include_router(planilla_siro.router, dependencies=_auth)  # antes que cupone
 app.include_router(cupones_siro.router, dependencies=_auth)
 app.include_router(facturas_recibidas.router, dependencies=_auth)
 app.include_router(facturas_recibidas.publico)  # portal público de facturas (sin cuenta)
+app.include_router(pedidos.router, dependencies=_auth)
+app.include_router(pedidos.publico)  # formulario público de pedidos de materiales (sin cuenta)
 # Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
 app.include_router(portal.router)
 
@@ -152,6 +154,12 @@ def portal_page():
 def facturas_page():
     """Portal público para que los proveedores suban sus facturas (sin cuenta)."""
     return FileResponse(str(STATIC_DIR / "facturas.html"))
+
+
+@app.get("/pedidos")
+def pedidos_page():
+    """Formulario público para que profesores y personal pidan materiales o servicios (sin cuenta)."""
+    return FileResponse(str(STATIC_DIR / "pedidos.html"))
 
 
 @app.get("/restablecer")

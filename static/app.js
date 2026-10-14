@@ -26,6 +26,7 @@ const PAGINAS = {
     reportes: ['Tarjeta APAI', 'Consumos y reportes', 'Uso de la tarjeta por curso y por día, ranking de consumo y exportación a Excel o PDF.'],
     gastos: ['Finanzas', 'Gastos y facturas', 'Facturas de proveedores. Con una foto del QR de AFIP los datos se completan solos.'],
     proveedores: ['Finanzas', 'Proveedores', 'CUIT, rubro y datos de contacto de cada proveedor.'],
+    pedidos: ['Finanzas', 'Pedidos de materiales', 'Lo que piden profesores y personal desde el formulario. Gestioná cada pedido y armá el PDF para pedir presupuestos.'],
     caja: ['Finanzas', 'Libro de caja', 'Ingresos y egresos en efectivo con el saldo siempre al día.'],
     conciliacion: ['Finanzas', 'Conciliación bancaria', 'Cruzá los pagos del extracto del banco con las facturas cargadas.'],
     horario: ['Personal', 'Control horario', 'Entradas, salidas, horas extras y liquidación mensual del personal.'],
@@ -1663,10 +1664,12 @@ async function dashKPIs() {
         try { movsHoy = (await api('/api/operaciones/diario')).length; } catch { /* sin datos */ }
         html = kpi('Saldo total en tarjetas', saldoTotal, `${conSaldo} alumnos con saldo`, '$') + html + kpi('Movimientos de hoy', movsHoy, 'operaciones');
     } else {
-        let porRevisar = 0, consultas = 0;
+        let porRevisar = 0, consultas = 0, pedidos = 0;
         try { porRevisar = (await api('/api/facturas-recibidas/contador')).por_revisar; } catch {}
         try { consultas = (await api('/api/consultas/contador')).sin_leer; } catch {}
-        html += kpi('Facturas por revisar', porRevisar, 'recibidas de proveedores') + kpi('Consultas sin leer', consultas, 'de familias y del personal');
+        try { pedidos = (await api('/api/pedidos/contador')).nuevos; } catch {}
+        html += kpi('Facturas por revisar', porRevisar, 'recibidas de proveedores') + kpi('Consultas sin leer', consultas, 'de familias y del personal')
+            + kpi('Pedidos nuevos', pedidos, 'de materiales y servicios');
     }
     grid.innerHTML = html + `<div class="dash-kpi"><div class="dash-kpi-label">Estado del sistema</div>
             <div class="dash-kpi-valor" style="color:var(--green)"><span class="dash-online-dot"></span> En línea</div>
@@ -4945,6 +4948,7 @@ let sistemaCfg = { tarjeta_activa: false, apai: {} };
 async function cargarSistema() {
     try { sistemaCfg = await api('/api/config/sistema'); } catch {}
     actualizarBadgeRecibidas();
+    actualizarBadgePedidos();
     document.body.classList.toggle('sin-tarjeta', !sistemaCfg.tarjeta_activa);
     if (!sistemaCfg.tarjeta_activa && ['cobrar', 'operaciones', 'tarjetas', 'reportes'].includes(location.hash.slice(1))) history.replaceState(null, '', location.pathname);
     dashKPIs();
@@ -5400,4 +5404,322 @@ async function psDescargar() {
         toast('Planilla descargada. Subila en SIRO para generar los cupones.');
     } catch (e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; }
+}
+
+// =========================================================
+// --- PEDIDOS DE MATERIALES (formulario público /pedidos) ---
+// =========================================================
+const PDX_ESTADOS = { nuevo: 'Nuevo', en_revision: 'En revisión', presupuestando: 'Pidiendo presupuestos', aprobado: 'Aprobado',
+    comprado: 'Comprado', entregado: 'Entregado', rechazado: 'Rechazado' };
+const PDX_FILTROS = [['abiertos', 'Abiertos'], ['nuevo', 'Nuevos'], ['en_revision', 'En revisión'], ['presupuestando', 'Pidiendo presupuestos'],
+    ['aprobado', 'Aprobados'], ['comprado', 'Comprados'], ['entregado', 'Entregados'], ['rechazado', 'Rechazados'], ['', 'Todos']];
+const PDX_UNIDADES = ['Unidad', 'Caja', 'Paquete', 'Resma', 'Bolsa', 'Rollo', 'Juego', 'Par', 'Docena', 'Metro', 'Metro²',
+    'Litro', 'Kilo', 'Gramo', 'Hora', 'Servicio', 'Otra'];
+let pdxFiltro = 'abiertos';
+let pdxLista = [];
+const pdxSel = new Set();
+let pdxActual = null;   // pedido abierto en el modal
+let pdxEditando = false;
+
+function pdxEstadoBadge(e) {
+    const cls = { nuevo: 'badge-pdx-nuevo', en_revision: 'badge-pdx-rev', presupuestando: 'badge-pdx-pres', aprobado: 'badge-pdx-ok',
+        comprado: 'badge-pdx-ok', entregado: 'badge-activa', rechazado: 'badge-pdx-no' }[e] || '';
+    return `<span class="badge ${cls}">${escapeHtml(PDX_ESTADOS[e] || e)}</span>`;
+}
+const pdxCant = n => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+
+async function actualizarBadgePedidos() {
+    try {
+        const c = await api('/api/pedidos/contador');
+        const b = document.getElementById('side-badge-pedidos');
+        if (b) { b.textContent = c.nuevos; b.hidden = !c.nuevos; }
+        return c;
+    } catch { return null; }
+}
+
+async function cargarPedidos() {
+    document.getElementById('pdx-url').textContent = location.origin + '/pedidos';
+    document.getElementById('pdx-estados').innerHTML = PDX_FILTROS.map(([k, t]) =>
+        `<button type="button" class="chip ${k === pdxFiltro ? 'chip-activo' : ''}" onclick="pdxFiltrar('${k}')">${t}${k === 'nuevo' ? ' <span class="side-badge" id="pdx-badge-nuevos" hidden></span>' : ''}</button>`).join('');
+    try {
+        pdxLista = await api('/api/pedidos/' + (pdxFiltro ? '?estado=' + pdxFiltro : ''));
+    } catch (e) { toast(e.message, 'error'); pdxLista = []; }
+    const c = await actualizarBadgePedidos();
+    const bn = document.getElementById('pdx-badge-nuevos');
+    if (bn && c) { bn.textContent = c.nuevos; bn.hidden = !c.nuevos; }
+    pintarPedidos();
+}
+
+function pdxFiltrar(k) { pdxFiltro = k; cargarPedidos(); }
+
+function pintarPedidos() {
+    const q = normTxt(document.getElementById('pdx-filtro').value.trim());
+    const lista = pdxLista.filter(p => !q || normTxt([p.numero, p.solicitante, p.cargo, p.sector, p.resumen].join(' ')).includes(q));
+    const hoy = hoyISO();
+    document.getElementById('body-pedidos').innerHTML = lista.map(p => {
+        const vencido = p.necesario_para && p.necesario_para < hoy && !['entregado', 'rechazado'].includes(p.estado);
+        return `<tr class="pdx-fila ${p.estado === 'nuevo' ? 'pdx-nuevo' : ''}" onclick="if(!event.target.closest('.pdx-chk'))verPedido(${p.id})" tabindex="0"
+                onkeydown="if(event.key==='Enter')verPedido(${p.id})">
+            <td class="pdx-chk"><input type="checkbox" ${pdxSel.has(p.id) ? 'checked' : ''} onchange="pdxMarcar(${p.id}, this.checked)" aria-label="Seleccionar el pedido ${p.numero}"></td>
+            <td class="num"><b>${p.numero}</b></td>
+            <td class="num">${fmtFecha(p.creado.slice(0, 10))}</td>
+            <td>${escapeHtml(p.solicitante)}${p.cargo ? `<br><small class="muted">${escapeHtml(p.cargo)}</small>` : ''}</td>
+            <td>${escapeHtml(p.sector)}</td>
+            <td><b>${p.n_items}</b> <span class="muted">· ${escapeHtml(p.resumen)}</span></td>
+            <td>${p.urgente ? '<span class="badge badge-pdx-no">Urgente</span> ' : ''}${p.necesario_para ? `<span class="${vencido ? 'pdx-vencido' : ''}">${fmtFecha(p.necesario_para)}</span>` : (p.urgente ? '' : '<span class="muted">—</span>')}</td>
+            <td>${pdxEstadoBadge(p.estado)}</td></tr>`;
+    }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center;padding:1.6rem">${pdxLista.length ? 'Ningún pedido coincide con la búsqueda.'
+        : 'No hay pedidos en esta lista. Compartí el enlace del formulario con los profesores y el personal.'}</td></tr>`;
+    pdxActualizarSeleccion();
+}
+
+function pdxMarcar(id, on) { on ? pdxSel.add(id) : pdxSel.delete(id); pdxActualizarSeleccion(); }
+function pdxMarcarTodos(on) { pdxLista.forEach(p => on ? pdxSel.add(p.id) : pdxSel.delete(p.id)); pintarPedidos(); }
+function pdxLimpiarSeleccion() { pdxSel.clear(); pintarPedidos(); }
+function pdxActualizarSeleccion() {
+    const n = pdxSel.size;
+    document.getElementById('pdx-seleccion').hidden = !n;
+    document.getElementById('pdx-sel-txt').innerHTML = `<b>${n}</b> pedido${n === 1 ? '' : 's'} seleccionado${n === 1 ? '' : 's'}: sus productos van juntos en un solo PDF.`;
+    const todos = document.getElementById('pdx-todos');
+    todos.checked = pdxLista.length > 0 && pdxLista.every(p => pdxSel.has(p.id));
+}
+
+// ---------------------------------------------------------------- detalle
+async function verPedido(id) {
+    try { pdxActual = await api('/api/pedidos/' + id); } catch (e) { return toast(e.message, 'error'); }
+    pdxEditando = false;
+    pdxPintarModal();
+    const ov = document.getElementById('modal-overlay');
+    ov.querySelector('.modal').classList.add('modal-ancho');
+    ov.style.display = 'flex';
+}
+
+function pdxDetalleItem(it) {
+    return [['Marca', it.marca], ['Modelo', it.modelo], ['Color', it.color], ['Medida', it.tamanio], ['Características', it.caracteristicas]]
+        .filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ');
+}
+
+function pdxPintarModal() {
+    const p = pdxActual, esAdmin = usuarioActual.rol === 'admin';
+    const tipo = { materiales: 'Materiales', servicio: 'Servicio', ambos: 'Materiales y servicio' }[p.tipo] || p.tipo;
+    const items = pdxEditando ? pdxTablaEditable(p.items) : `<div class="pdx-items"><table><thead><tr><th>#</th><th>Producto o servicio</th>
+        <th style="text-align:right">Cantidad</th><th>Unidad</th></tr></thead><tbody>${p.items.map((it, i) => `<tr>
+            <td class="muted">${i + 1}</td>
+            <td><b>${escapeHtml(it.producto)}</b>${pdxDetalleItem(it) ? `<div class="pdx-det">${escapeHtml(pdxDetalleItem(it))}</div>` : ''}${it.descripcion ? `<div class="pdx-det pdx-desc">${escapeHtml(it.descripcion)}</div>` : ''}</td>
+            <td class="num" style="text-align:right"><b>${pdxCant(it.cantidad)}</b></td><td>${escapeHtml(it.unidad)}</td></tr>`).join('')}</tbody></table></div>`;
+    document.getElementById('modal-content').innerHTML = `
+        <div class="pdx-cab">
+            <div><h2 style="margin:0">Pedido N° ${p.numero}</h2>
+                <p class="muted" style="margin:0.15rem 0 0">Recibido el ${fmtFechaHora(p.creado)} · ${escapeHtml(tipo)}${p.urgente ? ' · <span class="badge badge-pdx-no">Urgente</span>' : ''}</p></div>
+            <label class="pdx-estado">Estado
+                <select id="pdx-estado" ${esAdmin ? '' : 'disabled'}>${Object.entries(PDX_ESTADOS).map(([k, t]) => `<option value="${k}" ${k === p.estado ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        </div>
+        <div class="pdx-bloques">
+            <div class="pdx-bloque"><h4>Pedido por</h4>
+                <p><b>${escapeHtml(p.solicitante)}</b>${p.cargo ? `<br><span class="muted">${escapeHtml(p.cargo)}</span>` : ''}</p>
+                ${p.email ? `<p><a href="mailto:${escapeHtml(p.email)}?subject=${encodeURIComponent('Pedido de materiales N° ' + p.numero)}">${escapeHtml(p.email)}</a></p>` : ''}
+                ${p.telefono ? `<p>${escapeHtml(p.telefono)}</p>` : ''}</div>
+            <div class="pdx-bloque"><h4>Destino</h4>
+                <p><b>${escapeHtml(p.sector)}</b></p>
+                <p>${p.necesario_para ? `Lo necesita para el <b>${fmtFecha(p.necesario_para)}</b>` : '<span class="muted">Sin fecha límite</span>'}</p>
+                ${p.motivo ? `<p class="pdx-motivo">${escapeHtml(p.motivo)}</p>` : ''}</div>
+        </div>
+        <div class="pdx-items-cab"><h4 style="margin:0">Productos (${p.items.length})</h4>
+            ${esAdmin && !pdxEditando ? '<button type="button" class="btn btn-ghost btn-sm" onclick="pdxEditar(true)"><svg class="ic"><use href="#i-pencil"/></svg>Corregir productos</button>' : ''}</div>
+        ${items}
+        <label for="pdx-notas" style="display:block;margin-top:1rem">Notas internas <span class="muted">(no las ve quien hizo el pedido)</span></label>
+        <textarea id="pdx-notas" rows="3" maxlength="3000" ${esAdmin ? '' : 'disabled'} placeholder="Ej.: pedí presupuesto a Ferretería X y Y el 15/10…">${escapeHtml(p.notas || '')}</textarea>
+        <div class="form-actions pdx-acciones">
+            ${esAdmin ? `<button class="btn btn-ghost pdx-borrar" onclick="borrarPedido(${p.id})"><svg class="ic"><use href="#i-trash"/></svg>Eliminar</button>` : ''}
+            <span style="flex:1"></span>
+            <button class="btn btn-outline" onclick="pdfPresupuesto([pdxActual])"><svg class="ic"><use href="#i-download"/></svg>PDF para presupuesto</button>
+            ${esAdmin ? `<button class="btn btn-primary" onclick="guardarPedido()">Guardar cambios</button>` : ''}
+        </div>`;
+}
+
+function pdxTablaEditable(items) {
+    const campo = (i, c, v, ph = '', ancho = '') => `<input type="text" data-i="${i}" data-c="${c}" value="${escapeHtml(v ?? '')}" placeholder="${ph}" ${ancho}>`;
+    return `<div class="pdx-edit" id="pdx-edit">${items.map((it, i) => `<div class="pdx-edit-it">
+        <div class="pdx-edit-fila">${campo(i, 'producto', it.producto, 'Producto o servicio', 'class="pdx-e-prod" aria-label="Producto"')}
+            ${campo(i, 'cantidad', pdxCant(it.cantidad), 'Cant.', 'class="pdx-e-cant" inputmode="decimal" aria-label="Cantidad"')}
+            <select data-i="${i}" data-c="unidad" aria-label="Unidad">${PDX_UNIDADES.concat(PDX_UNIDADES.includes(it.unidad) ? [] : [it.unidad]).map(u => `<option ${u === it.unidad ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('')}</select>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="pdxQuitarItem(${i})" aria-label="Quitar"><svg class="ic"><use href="#i-trash"/></svg></button></div>
+        <div class="pdx-edit-fila pdx-edit-det">${campo(i, 'marca', it.marca, 'Marca')}${campo(i, 'modelo', it.modelo, 'Modelo')}${campo(i, 'color', it.color, 'Color')}${campo(i, 'tamanio', it.tamanio, 'Medida')}</div>
+        <div class="pdx-edit-fila">${campo(i, 'caracteristicas', it.caracteristicas, 'Características')}</div>
+        <div class="pdx-edit-fila"><textarea data-i="${i}" data-c="descripcion" rows="1" placeholder="Descripción adicional">${escapeHtml(it.descripcion || '')}</textarea></div>
+    </div>`).join('')}
+    <div class="pdx-edit-btns"><button type="button" class="btn btn-ghost btn-sm" onclick="pdxAgregarItem()"><svg class="ic"><use href="#i-plus"/></svg>Agregar producto</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="pdxEditar(false)">Cancelar corrección</button></div></div>`;
+}
+
+function pdxLeerEdicion() {
+    const box = document.getElementById('pdx-edit');
+    if (!box) return pdxActual.items;
+    const items = pdxActual.items.map(it => ({ ...it }));
+    box.querySelectorAll('[data-i]').forEach(el => {
+        let v = el.value;
+        if (el.dataset.c === 'cantidad') v = Number(String(v).trim().replace(/\./g, '').replace(',', '.'));
+        items[+el.dataset.i][el.dataset.c] = v;
+    });
+    return items;
+}
+
+function pdxEditar(on) {
+    if (on === false) { pdxEditando = false; return verPedido(pdxActual.id); }
+    pdxActual.notas = document.getElementById('pdx-notas').value;
+    pdxEditando = true;
+    pdxPintarModal();
+}
+function pdxAgregarItem() {
+    pdxActual.items = pdxLeerEdicion();
+    pdxActual.notas = document.getElementById('pdx-notas').value;
+    pdxActual.items.push({ producto: '', cantidad: 1, unidad: 'Unidad' });
+    pdxPintarModal();
+}
+function pdxQuitarItem(i) {
+    pdxActual.items = pdxLeerEdicion();
+    pdxActual.notas = document.getElementById('pdx-notas').value;
+    if (pdxActual.items.length === 1) return toast('El pedido tiene que tener al menos un producto', 'error');
+    pdxActual.items.splice(i, 1);
+    pdxPintarModal();
+}
+
+async function guardarPedido() {
+    const cuerpo = { estado: document.getElementById('pdx-estado').value, notas: document.getElementById('pdx-notas').value };
+    if (pdxEditando) {
+        const items = pdxLeerEdicion().map(it => {
+            const o = {};
+            ['producto', 'marca', 'modelo', 'color', 'tamanio', 'caracteristicas', 'unidad', 'descripcion'].forEach(k => { o[k] = (it[k] || '').toString().trim() || null; });
+            o.cantidad = it.cantidad;
+            return o;
+        });
+        const mal = items.findIndex(it => !it.producto || !(it.cantidad > 0));
+        if (mal >= 0) return toast(`Revisá el producto ${mal + 1}: falta el nombre o la cantidad`, 'error');
+        cuerpo.items = items.map(it => ({ ...it, unidad: it.unidad || 'Unidad' }));
+    }
+    try {
+        pdxActual = await api('/api/pedidos/' + pdxActual.id, { method: 'PUT', body: JSON.stringify(cuerpo) });
+        pdxEditando = false;
+        pdxPintarModal();
+        toast('Pedido guardado');
+        cargarPedidos();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function borrarPedido(id) {
+    if (!confirm(`¿Eliminar el pedido N° ${pdxActual.numero}? No se puede deshacer.`)) return;
+    try {
+        await api('/api/pedidos/' + id, { method: 'DELETE' });
+        pdxSel.delete(id);
+        cerrarModal();
+        toast('Pedido eliminado');
+        cargarPedidos();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---------------------------------------------------------------- PDF para pedir presupuestos
+// Solo los productos: no lleva los datos de quien hizo el pedido ni el sector.
+async function pdfPresupuestoSeleccion() {
+    try {
+        const pedidos = await Promise.all([...pdxSel].sort((a, b) => a - b).map(id => api('/api/pedidos/' + id)));
+        await pdfPresupuesto(pedidos);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function pdfPresupuesto(pedidos) {
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    if (pdxEditando && pedidos.length === 1 && pedidos[0] === pdxActual) return toast('Guardá primero la corrección de los productos', 'error');
+    const items = pedidos.flatMap(p => p.items);
+    if (!items.length) return toast('No hay productos para cotizar', 'error');
+    let apai = {};
+    try { apai = await (await fetch('/api/publico/apai')).json(); } catch { }
+    const fechas = pedidos.map(p => p.necesario_para).filter(Boolean).sort();
+    const refs = pedidos.map(p => p.numero).join(', ');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const logo = await _imagenLogo();
+
+    doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
+    doc.setFillColor(160, 30, 34); doc.rect(0, 30, W, 1.4, 'F');
+    if (logo) { doc.setFillColor(255, 255, 255); doc.circle(21, 15, 9.5, 'F'); doc.addImage(logo, 'PNG', 12.5, 6.5, 17, 17); }
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+    doc.text('Solicitud de presupuesto', 36, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(200, 214, 234);
+    doc.text(apai.razon_social || 'Asociación de Padres y Alumnos del I.N.A.C.', 36, 21);
+    doc.setFontSize(9);
+    doc.text(`Fecha: ${fmtFecha(hoyISO())}`, W - 14, 14, { align: 'right' });
+    doc.text(`Ref.: pedido${pedidos.length > 1 ? 's' : ''} N° ${refs}`.slice(0, 60), W - 14, 21, { align: 'right' });
+
+    // Datos de la Asociación (a nombre de quién se presupuesta)
+    let y = 40;
+    doc.setTextColor(91, 107, 128); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+    doc.text('PRESUPUESTO A NOMBRE DE', 14, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59); doc.setFontSize(10);
+    const datos = [apai.razon_social, apai.cuit ? 'CUIT ' + apai.cuit : null, apai.condicion_iva, apai.domicilio].filter(Boolean);
+    doc.text(datos.slice(0, 2).join('  ·  '), 14, y + 6);
+    if (datos.length > 2) doc.text(datos.slice(2).join('  ·  '), 14, y + 11.5);
+    y += datos.length > 2 ? 18 : 13;
+    if (fechas.length) {
+        doc.setFillColor(253, 243, 230); doc.roundedRect(14, y - 4.5, W - 28, 8, 1.5, 1.5, 'F');
+        doc.setTextColor(180, 83, 9); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        doc.text(`Se necesita para el ${fmtFecha(fechas[0])}`, 17, y + 0.8);
+        doc.setFont('helvetica', 'normal');
+        y += 9;
+    }
+
+    const detalle = it => [pdxDetalleItem(it), it.descripcion].filter(Boolean).join('\n');
+    doc.autoTable({
+        startY: y + 2, margin: { left: 14, right: 14 }, theme: 'grid',
+        head: [['#', 'Producto o servicio', 'Cant.', 'Unidad', 'Precio unit.', 'Subtotal']],
+        body: items.map((it, i) => [String(i + 1), { content: it.producto + (detalle(it) ? '\n' + detalle(it) : ''), producto: it.producto },
+            pdxCant(it.cantidad), it.unidad, '', '']),
+        foot: [['', '', '', '', 'TOTAL', '']],
+        styles: { fontSize: 9.5, cellPadding: 2.4, textColor: [30, 41, 59], lineColor: [210, 218, 230], lineWidth: 0.2, valign: 'top' },
+        headStyles: { fillColor: [21, 35, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+        footStyles: { fillColor: [243, 245, 249], textColor: [21, 35, 59], fontStyle: 'bold', halign: 'right' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { cellWidth: 9, halign: 'center', textColor: [120, 130, 145] }, 1: { cellWidth: 'auto' },
+            2: { cellWidth: 16, halign: 'right', fontStyle: 'bold' }, 3: { cellWidth: 20 }, 4: { cellWidth: 26 }, 5: { cellWidth: 26 } },
+        didParseCell: d => {  // el nombre en negrita y el detalle más chico debajo
+            if (d.section === 'body' && d.column.index === 1 && d.cell.raw && d.cell.raw.producto) d.cell.styles.fontStyle = 'normal';
+        },
+        willDrawCell: d => {
+            if (d.section === 'body' && d.column.index === 1 && d.cell.raw && d.cell.raw.producto) {
+                d.cell.text = [];  // se dibuja a mano en didDrawCell
+            }
+        },
+        didDrawCell: d => {
+            if (d.section !== 'body' || d.column.index !== 1 || !d.cell.raw || !d.cell.raw.producto) return;
+            const x = d.cell.x + 2.4, ancho = d.cell.width - 4.8;
+            let yy = d.cell.y + 2.4 + 3.2;
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(21, 35, 59);
+            const nom = doc.splitTextToSize(d.cell.raw.producto, ancho);
+            doc.text(nom, x, yy); yy += nom.length * 4.1;
+            const det = d.cell.raw.content.slice(d.cell.raw.producto.length).trim();
+            if (det) {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(91, 107, 128);
+                doc.text(doc.splitTextToSize(det, ancho), x, yy);
+            }
+        },
+    });
+
+    y = doc.lastAutoTable.finalY + 8;
+    if (y > H - 40) { doc.addPage(); y = 20; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(21, 35, 59);
+    doc.text('Por favor, en el presupuesto indicar:', 14, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 72, 90);
+    ['Precio unitario y total de cada producto (aclarar si incluye IVA).', 'Plazo de entrega y si incluye envío.',
+        'Forma de pago y validez del presupuesto.', 'Si ofrecen una marca o modelo alternativo, detallarlo.']
+        .forEach((t, i) => doc.text('•  ' + t, 17, y + 6 + i * 5));
+
+    const paginas = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= paginas; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(226, 232, 240); doc.line(14, H - 13, W - 14, H - 13);
+        doc.setFontSize(8); doc.setTextColor(140, 150, 165);
+        doc.text(apai.razon_social || 'APAI', 14, H - 8);
+        doc.text(`Página ${i} de ${paginas}`, W - 14, H - 8, { align: 'right' });
+    }
+    doc.save(`solicitud_presupuesto_${pedidos.map(p => p.numero).join('_').slice(0, 40)}.pdf`);
 }

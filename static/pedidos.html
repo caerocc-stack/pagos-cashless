@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#15233b">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex">
+    <title>Pedido de materiales · APAI</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/portal.css">
+    <link rel="stylesheet" href="/static/facturas.css">
+    <link rel="stylesheet" href="/static/pedidos.css">
+</head>
+<body class="portal">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+        <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+    </svg>
+
+    <header class="p-top">
+        <div class="p-marca">
+            <img src="/static/logo.png" alt="" class="p-logo">
+            <div><div class="p-t1">Pedido de materiales y servicios</div><div class="p-t2">Asociación de Padres y Alumnos del I.N.A.C.</div></div>
+        </div>
+    </header>
+
+    <main class="p-main pd-main" id="contenido">
+        <div id="pd-formulario">
+            <div class="f-intro">
+                <h1>¿Qué necesitás?</h1>
+                <p class="muted">Completá este formulario para pedirle a APAI materiales o servicios para tu sector. Cuanto más detalle pongas
+                (marca, modelo, medida…), más rápido se pueden pedir presupuestos y comprar.</p>
+            </div>
+
+            <form id="pd-form" onsubmit="enviarPedido(event)" novalidate>
+                <section class="card" aria-labelledby="t-datos">
+                    <h2 id="t-datos"><span class="pd-paso">1</span>Tus datos</h2>
+                    <div class="f-campos">
+                        <div><label for="pd-nombre">Nombre y apellido <span class="pd-req" aria-hidden="true">*</span></label>
+                            <input type="text" id="pd-nombre" maxlength="120" autocomplete="name" required>
+                            <div class="pd-error" id="err-nombre"></div></div>
+                        <div><label for="pd-cargo">Cargo o función</label>
+                            <input type="text" id="pd-cargo" maxlength="80" list="pd-cargos" placeholder="Ej.: Profesor/a de taller">
+                            <datalist id="pd-cargos"><option value="Profesor/a"><option value="Jefe/a de área"><option value="Preceptor/a">
+                                <option value="Directivo/a"><option value="Secretaría / Administración"><option value="Mantenimiento"><option value="Bibliotecario/a">
+                                <option value="Integrante de APAI"></datalist></div>
+                        <div><label for="pd-email">Correo electrónico <span class="muted">(te mandamos el comprobante)</span></label>
+                            <input type="email" id="pd-email" maxlength="150" autocomplete="email" inputmode="email">
+                            <div class="pd-error" id="err-email"></div></div>
+                        <div><label for="pd-tel">Teléfono <span class="muted">(opcional)</span></label>
+                            <input type="tel" id="pd-tel" maxlength="40" autocomplete="tel" inputmode="tel"></div>
+                    </div>
+                </section>
+
+                <section class="card" aria-labelledby="t-destino">
+                    <h2 id="t-destino"><span class="pd-paso">2</span>¿Para dónde es?</h2>
+                    <div class="f-campos">
+                        <div class="f-ancho"><label for="pd-sector">Sector o área de destino <span class="pd-req" aria-hidden="true">*</span></label>
+                            <input type="text" id="pd-sector" maxlength="120" list="pd-sectores" placeholder="Elegí de la lista o escribilo" required>
+                            <datalist id="pd-sectores"><option value="Ciclo Básico"><option value="Aviónica"><option value="Mecánica"><option value="Aeronavegantes">
+                                <option value="Exámenes (RAAC)"><option value="Talleres"><option value="Laboratorio"><option value="Biblioteca"><option value="Preceptoría">
+                                <option value="Dirección"><option value="Secretaría / Administración"><option value="Mantenimiento"><option value="Educación Física"><option value="APAI"></datalist>
+                            <div class="pd-error" id="err-sector"></div></div>
+                        <div class="f-ancho"><span class="pd-label" id="lbl-tipo">¿Qué pedís?</span>
+                            <div class="pd-segmento" role="radiogroup" aria-labelledby="lbl-tipo">
+                                <label><input type="radio" name="pd-tipo" value="materiales" checked><span>Materiales</span></label>
+                                <label><input type="radio" name="pd-tipo" value="servicio"><span>Un servicio</span></label>
+                                <label><input type="radio" name="pd-tipo" value="ambos"><span>Las dos cosas</span></label>
+                            </div></div>
+                        <div><label for="pd-fecha">¿Para cuándo lo necesitás? <span class="muted">(opcional)</span></label>
+                            <input type="date" id="pd-fecha">
+                            <div class="pd-error" id="err-fecha"></div></div>
+                        <div class="pd-urgente-box"><label class="pd-check"><input type="checkbox" id="pd-urgente"><span><b>Es urgente</b><small>Se necesita cuanto antes</small></span></label></div>
+                        <div class="f-ancho"><label for="pd-motivo">¿Para qué se usa? <span class="muted">(opcional)</span></label>
+                            <textarea id="pd-motivo" rows="2" maxlength="1500" placeholder="Ej.: prácticas de soldadura de 5° año, reposición del laboratorio…"></textarea></div>
+                    </div>
+                </section>
+
+                <section class="card" aria-labelledby="t-items">
+                    <h2 id="t-items"><span class="pd-paso">3</span>Productos o servicios</h2>
+                    <p class="muted pd-ayuda">Un renglón por cada producto distinto. Solo el nombre y la cantidad son obligatorios.</p>
+                    <ol class="pd-items" id="pd-items"></ol>
+                    <button type="button" class="btn btn-outline pd-agregar" onclick="agregarItem()"><svg class="ic"><use href="#i-plus"/></svg>Agregar otro producto</button>
+                </section>
+
+                <div class="f-trampa" aria-hidden="true"><label for="pd-web">No completar</label><input type="text" id="pd-web" tabindex="-1" autocomplete="off"></div>
+                <div class="p-msg" id="pd-msg" role="alert" hidden></div>
+                <div class="pd-enviar">
+                    <p class="muted" id="pd-resumen"></p>
+                    <button type="submit" class="btn btn-primary p-ancho" id="pd-boton"><svg class="ic"><use href="#i-send"/></svg>Enviar pedido</button>
+                </div>
+                <p class="f-pie muted">Tus datos solo los ve la administración de APAI. Lo que escribís se guarda en este dispositivo hasta que lo envíes.</p>
+            </form>
+        </div>
+
+        <section id="pd-listo" class="card pd-listo" hidden aria-live="polite"></section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/formato.js"></script>
+    <script src="/static/pedidos.js"></script>
+</body>
+</html>

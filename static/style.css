@@ -753,6 +753,60 @@ th.sortable.sorted-desc::after { content: ' ▼'; opacity: 1; color: var(--prima
 .cupon-como summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .cupon-como ul { margin: 0.4rem 0 0 1.1rem; padding: 0; line-height: 1.5; }
 @media (max-width: 640px) { .cupon { grid-template-columns: 1fr; } .cupon-qr { order: 2; } .cupon-qr img { max-width: 200px; } }
+/* Pedidos de materiales */
+.pdx-enlace { display: flex; align-items: center; gap: 0.8rem 1.2rem; flex-wrap: wrap; padding: 0.9rem 1.1rem; }
+.pdx-enlace > div:first-child { flex: 1 1 260px; }
+.pdx-enlace code { background: var(--surface-3); padding: 0.4rem 0.7rem; border-radius: var(--radius-sm); font-size: 0.88rem; color: var(--heading); word-break: break-all; }
+.pdx-enlace-btns { display: flex; gap: 0.4rem; }
+.pdx-barra { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; flex-wrap: wrap; margin: 0.4rem 0 0.8rem; }
+.pdx-barra .gasto-estados { margin: 0; }
+.pdx-buscar { flex: 1 1 260px; max-width: 360px; }
+.pdx-seleccion { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.6rem 0.9rem; margin-bottom: 0.7rem;
+    background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); border-radius: var(--radius-sm); animation: aparecer 0.2s ease-out; }
+.pdx-seleccion > span { flex: 1; min-width: 200px; }
+.pdx-seleccion[hidden] { display: none; }
+.pdx-tabla .pdx-chk { width: 40px; text-align: center; }
+.pdx-tabla .pdx-chk input { width: 18px; height: 18px; }
+.pdx-fila { cursor: pointer; }
+.pdx-fila:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.pdx-fila.pdx-nuevo td:nth-child(2) { box-shadow: inset 3px 0 0 var(--primary); }
+.pdx-fila.pdx-nuevo td { font-weight: 500; }
+.pdx-vencido { color: var(--danger); font-weight: 700; }
+.badge-pdx-nuevo { background: var(--primary-soft); color: var(--primary); }
+.badge-pdx-rev { background: var(--surface-3); color: var(--text); }
+.badge-pdx-pres { background: var(--warning-soft); color: var(--warning); }
+.badge-pdx-ok { background: var(--success-soft); color: var(--success); }
+.badge-pdx-no { background: var(--danger-soft); color: var(--danger); }
+.pdx-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; padding-right: 2rem; }
+.pdx-estado { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; }
+.pdx-estado select { min-width: 200px; margin: 0; }
+.pdx-bloques { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin: 1rem 0; }
+.pdx-bloque { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.7rem 0.9rem; }
+.pdx-bloque h4 { margin: 0 0 0.35rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.pdx-bloque p { margin: 0.15rem 0; }
+.pdx-motivo { margin-top: 0.4rem !important; font-size: 0.9rem; color: var(--text-muted); white-space: pre-wrap; }
+.pdx-items-cab { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.4rem; }
+.pdx-items { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: auto; max-height: 360px; }
+.pdx-items table { margin: 0; }
+.pdx-det { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.1rem; }
+.pdx-desc { white-space: pre-wrap; font-style: italic; }
+.pdx-edit { display: flex; flex-direction: column; gap: 0.6rem; }
+.pdx-edit-it { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.55rem; background: var(--surface-2); display: flex; flex-direction: column; gap: 0.4rem; }
+.pdx-edit-fila { display: flex; gap: 0.4rem; align-items: center; }
+.pdx-edit-fila input, .pdx-edit-fila select, .pdx-edit-fila textarea { margin: 0; min-width: 0; }
+.pdx-e-prod { flex: 1; font-weight: 600; }
+.pdx-e-cant { width: 5.5rem; text-align: right; }
+.pdx-edit-fila select { width: 8rem; }
+.pdx-edit-det input { flex: 1; }
+.pdx-edit-btns { display: flex; justify-content: space-between; }
+.pdx-acciones { flex-wrap: wrap; }
+.pdx-borrar:hover { color: var(--danger); }
+@media (max-width: 640px) {
+    .pdx-bloques { grid-template-columns: 1fr; }
+    .pdx-edit-det { flex-wrap: wrap; }
+    .pdx-edit-det input { flex: 1 1 45%; }
+}
+
 /* Importar alumnos */
 .imp-card { max-width: 1100px; }
 .imp-zona { display: flex; align-items: center; gap: 0.9rem; padding: 1.1rem 1.2rem; border: 2px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; transition: border-color 0.15s, background-color 0.15s; margin: 0; }

@@ -39,6 +39,9 @@
         <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
         <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
         <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+        <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+        <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
         <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
         <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
         <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
@@ -111,6 +114,7 @@
             <div class="side-group-body">
                 <button class="nav-btn side-item" data-section="gastos" onclick="cargarGastos();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Gastos y facturas</button>
                 <button class="nav-btn side-item" data-section="proveedores" onclick="cargarProveedores();cerrarSidebarMobile()"><svg class="ic"><use href="#i-building"/></svg>Proveedores</button>
+                <button class="nav-btn side-item" data-section="pedidos" onclick="cargarPedidos();cerrarSidebarMobile()"><svg class="ic"><use href="#i-box"/></svg>Pedidos de materiales <span class="side-badge" id="side-badge-pedidos" hidden></span></button>
                 <button class="nav-btn side-item" data-section="caja" onclick="cargarCaja();cerrarSidebarMobile()"><svg class="ic"><use href="#i-book"/></svg>Libro de caja</button>
                 <button class="nav-btn side-item" data-section="conciliacion" onclick="cargarConciliacion();cerrarSidebarMobile()"><svg class="ic"><use href="#i-bank"/></svg>Conciliación bancaria</button>
             </div>
@@ -213,6 +217,11 @@
                     <div class="dash-icon"><svg class="ic"><use href="#i-receipt"/></svg></div>
                     <div class="dash-nombre">Gastos y facturas</div>
                     <div class="dash-desc">Facturas de proveedores, rubro y destino del gasto.</div>
+                </div>
+                <div class="dash-card" data-color="purple" tabindex="0" role="button" data-tags="pedidos materiales compras presupuestos profesores insumos servicios" onclick="dashIr('pedidos')">
+                    <div class="dash-icon"><svg class="ic"><use href="#i-box"/></svg></div>
+                    <div class="dash-nombre">Pedidos de materiales</div>
+                    <div class="dash-desc">Lo que piden profesores y personal; PDF para pedir presupuestos.</div>
                 </div>
                 <div class="dash-card" tabindex="0" role="button" data-tags="proveedores razon social cuit" onclick="dashIr('proveedores')">
                     <div class="dash-icon"><svg class="ic"><use href="#i-building"/></svg></div>
@@ -753,6 +762,38 @@
         </section>
 
         <!-- PROVEEDORES -->
+        <!-- PEDIDOS DE MATERIALES (formulario público /pedidos) -->
+        <section id="sec-pedidos" class="section">
+            <div class="card pdx-enlace">
+                <div>
+                    <b>Formulario para profesores y personal</b>
+                    <p class="muted" style="margin:0.15rem 0 0">Compartí este enlace: no hace falta cuenta. Cada pedido llega acá.</p>
+                </div>
+                <code id="pdx-url"></code>
+                <div class="pdx-enlace-btns">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="copiarTexto(document.getElementById('pdx-url').textContent, 'Enlace copiado')"><svg class="ic"><use href="#i-copy"/></svg>Copiar enlace</button>
+                    <a class="btn btn-ghost btn-sm" href="/pedidos" target="_blank" rel="noopener"><svg class="ic"><use href="#i-external"/></svg>Abrir</a>
+                </div>
+            </div>
+            <div class="pdx-barra">
+                <div class="concept-chips gasto-estados" id="pdx-estados" role="group" aria-label="Estado de los pedidos"></div>
+                <div class="ps-buscar pdx-buscar">
+                    <svg class="ic"><use href="#i-search"/></svg>
+                    <input type="search" id="pdx-filtro" placeholder="Buscar producto, sector o persona…" oninput="pintarPedidos()" aria-label="Buscar pedidos">
+                </div>
+            </div>
+            <div class="pdx-seleccion" id="pdx-seleccion" hidden>
+                <span id="pdx-sel-txt"></span>
+                <button type="button" class="btn btn-primary btn-sm" onclick="pdfPresupuestoSeleccion()"><svg class="ic"><use href="#i-download"/></svg>PDF para presupuesto</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="pdxLimpiarSeleccion()">Quitar selección</button>
+            </div>
+            <table id="tabla-pedidos" class="pdx-tabla">
+                <thead><tr><th class="pdx-chk"><input type="checkbox" id="pdx-todos" onchange="pdxMarcarTodos(this.checked)" aria-label="Seleccionar todos"></th>
+                    <th>N°</th><th>Fecha</th><th>Pedido por</th><th>Sector</th><th>Productos</th><th>Para cuándo</th><th>Estado</th></tr></thead>
+                <tbody id="body-pedidos"></tbody>
+            </table>
+        </section>
+
         <section id="sec-proveedores" class="section">
             <div class="section-titulo">Proveedores</div>
             <div class="toolbar">

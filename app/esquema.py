@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.database import engine, Base, SessionLocal
 from app.auth import crear_usuario_inicial
 from app import models  # noqa: F401 (registra las tablas principales)
-from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario, seguridad, portal, factura_recibida  # noqa: F401
+from app.models import configuracion, proveedor, gasto, caja, banco, curso, pago_cuota, horario, seguridad, portal, factura_recibida, pedido  # noqa: F401
 
 MIGRACIONES = [
     "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS email VARCHAR(150)",
