@@ -659,7 +659,8 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------- egresos que no llevan factura (sueldos, AFIP)
 
 # devuelta: transferencia hecha por error y reintegrada a la cuenta (se anota de dónde volvió la plata)
-MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "afip": "AFIP", "devuelta": "transferencia devuelta"}
+MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "cargas_sociales": "cargas sociales", "afip": "AFIP",
+                       "devuelta": "transferencia devuelta"}
 
 
 def _no_es_sin_factura(mov: MovimientoBanco):
@@ -669,13 +670,13 @@ def _no_es_sin_factura(mov: MovimientoBanco):
 
 
 class SinFactura(BaseModel):
-    motivo: str | None = None  # "sueldo", "afip", "devuelta" o None para volver a dejarlo pendiente
+    motivo: str | None = None  # "sueldo", "cargas_sociales", "afip", "devuelta" o None (vuelve a pendiente)
     nota: str | None = None
 
 
 @router.post("/{mov_id}/sin-factura")
 def marcar_sin_factura(mov_id: int, data: SinFactura, request: Request, db: Session = Depends(get_db)):
-    """Saca el movimiento de los pendientes: es un sueldo o un pago a AFIP, no un gasto con factura."""
+    """Saca el movimiento de los pendientes: sueldo, cargas sociales, AFIP o devuelta; no es un gasto con factura."""
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")

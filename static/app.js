@@ -2755,7 +2755,7 @@ async function cargarResumenConc() {
                 <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Sin factura</div>
                 <div class="gasto-kpi-valor">${r.sin_factura || 0}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · sueldos, AFIP, devueltas</div></div>`;
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · sueldos, cargas sociales, AFIP, devueltas</div></div>`;
     } catch (err) { /* sin datos */ }
 }
 
@@ -2900,11 +2900,9 @@ function renderConciliacion(lista) {
         const fecha = fmtFecha(m.fecha);
         const tipo = TIPOS_BANCO[m.concepto] || m.concepto || '—';
         let estado, acciones;
-        // Transferencias y DEBIN: siempre a un CUIT; son las únicas que pueden ser un sueldo
-        const puedeSueldo = ['190', '190100', 'F30', 'F30100'].includes(m.concepto) && (m.cuit || '').replace(/\D/g, '').length === 11;
-        const btnSueldo = puedeSueldo ? `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, 'sueldo')" title="Es un sueldo: no lleva factura y sale de los pendientes">Sueldo</button>` : '';
+        const btnSueldo = `<button class="btn btn-sm" onclick="abrirSinFactura(${m.id})" title="Sueldo, cargas sociales o transferencia devuelta: no lleva factura y sale de los pendientes">Sin factura</button>`;
         if (m.sin_factura) {
-            const SF = { sueldo: ['Sueldo', 'no lleva factura'], afip: ['AFIP', 'impuestos, no lleva factura'], devuelta: ['Devuelta', 'se reintegró a la cuenta'] };
+            const SF = { sueldo: ['Sueldo', 'no lleva factura'], afip: ['AFIP', 'impuestos, no lleva factura'], devuelta: ['Devuelta', 'se reintegró a la cuenta'], cargas_sociales: ['Cargas sociales', 'no lleva factura'] };
             const [et, det] = SF[m.sin_factura] || [m.sin_factura, 'no lleva factura'];
             estado = `<span class="conc-sf">${et}</span> <span style="color:var(--text-muted)">· ${escapeHtml(m.sin_factura_nota || det)}</span>`;
             acciones = `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, null)" title="Volver a dejarlo pendiente de conciliar">Deshacer</button>`;
@@ -2974,12 +2972,32 @@ async function importarExtracto(input) {
     }
 }
 
-async function marcarSinFactura(movId, motivo) {
+// Egresos que no llevan factura: sueldo (transferencia o DEBIN a un CUIT), cargas sociales, o devuelta (con nota)
+function abrirSinFactura(movId) {
     const m = (concCache || []).find(x => x.id === movId) || {};
-    if (motivo && !confirm(`¿Marcar la transferencia de ${fmtMoneda(Math.abs(m.importe || 0))} a ${m.razon_social || m.cuit || ''} como sueldo?\n\nNo lleva factura y sale de los pendientes de conciliar.`)) return;
+    const puedeSueldo = ['190', '190100', 'F30', 'F30100'].includes(m.concepto) && (m.cuit || '').replace(/\D/g, '').length === 11;
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Egreso sin factura</h2>
+        <p class="muted" style="margin-top:-0.4rem">${fmtFecha(m.fecha)} · ${escapeHtml(m.razon_social || m.descripcion || '')} · <b>${fmtMoneda(Math.abs(m.importe || 0))}</b></p>
+        <p>Sale de los pendientes de conciliar y no se le pide factura.</p>
+        <div class="sf-opciones">
+            ${puedeSueldo ? `<button class="btn" onclick="marcarSinFactura(${movId}, 'sueldo')"><b>Sueldo</b><small>Transferencia a un empleado</small></button>` : ''}
+            <button class="btn" onclick="marcarSinFactura(${movId}, 'cargas_sociales')"><b>Cargas sociales</b><small>Aportes, contribuciones, ART, sindicato</small></button>
+            <button class="btn" onclick="marcarSinFactura(${movId}, 'devuelta')"><b>Devuelta</b><small>Se transfirió por error y la reintegraron</small></button>
+        </div>
+        <label for="sf-nota" style="margin-top:0.9rem">Nota <span class="muted">(obligatoria si fue devuelta: cuándo y de quién volvió la plata)</span></label>
+        <input type="text" id="sf-nota" maxlength="300" placeholder="Ej.: F.931 de agosto · Devuelta el 29/09 por …">
+        <div class="form-actions"><button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function marcarSinFactura(movId, motivo) {
+    const nota = motivo ? ((document.getElementById('sf-nota') || {}).value || '').trim() : null;
+    if (motivo === 'devuelta' && !nota) { toast('Anotá cuándo y de quién volvió la plata', 'error'); return; }
     try {
-        await api(`/api/conciliacion/${movId}/sin-factura`, { method: 'POST', body: JSON.stringify({ motivo }) });
-        toast(motivo ? 'Marcada como sueldo' : 'Volvió a quedar pendiente de conciliar');
+        await api(`/api/conciliacion/${movId}/sin-factura`, { method: 'POST', body: JSON.stringify({ motivo, nota }) });
+        if (motivo) cerrarModal();
+        toast(motivo ? 'Marcado: ' + ({ sueldo: 'sueldo', cargas_sociales: 'cargas sociales', devuelta: 'devuelta' }[motivo] || motivo) : 'Volvió a quedar pendiente de conciliar');
         cargarConciliacion();
     } catch (e) { toast(e.message, 'error'); }
 }

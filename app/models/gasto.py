@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import String, ForeignKey, DateTime, Date, Numeric, Boolean
+from sqlalchemy import String, ForeignKey, DateTime, Date, Numeric, Boolean, Integer, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.tz import ahora_ar
@@ -77,3 +77,16 @@ class Gasto(Base):
     creado_por: Mapped[str | None] = mapped_column(String(60))
 
     proveedor: Mapped["Proveedor"] = relationship()
+
+
+class GastoAdjunto(Base):
+    """Comprobante guardado en la base (p. ej. las páginas escaneadas de la factura). Se ve en /api/gastos/adjuntos/{id}."""
+    __tablename__ = "gastos_adjuntos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    gasto_id: Mapped[int | None] = mapped_column(ForeignKey("gastos.id"), index=True)
+    nombre: Mapped[str] = mapped_column(String(160), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(80), default="application/pdf")
+    tamanio: Mapped[int] = mapped_column(Integer, default=0)
+    contenido: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

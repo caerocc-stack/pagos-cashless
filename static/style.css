@@ -1090,3 +1090,6 @@ td:has(> .td-acc) { width: 1%; }
     td:has(> .pago-ok) { white-space: normal; }  /* el ✕ de deshacer baja de renglón si no entra */
 }
 .conc-sf { color: var(--text-muted); font-weight: 600; background: var(--surface-3); border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.8rem; }
+.sf-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; }
+.sf-opciones .btn { flex-direction: column; align-items: flex-start; text-align: left; height: auto; padding: 0.7rem 0.85rem; white-space: normal; }
+.sf-opciones .btn small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }

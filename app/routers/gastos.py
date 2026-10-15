@@ -1,12 +1,14 @@
 from datetime import date, timedelta
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import re
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, extract
 
 from app.database import get_db
-from app.models.gasto import Gasto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE
+from app.models.gasto import Gasto, GastoAdjunto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE
 from app.models.proveedor import Proveedor
 from app.models.caja import MovimientoCaja
 from app.models.banco import MovimientoBanco, ExtractoBancario
@@ -74,6 +76,17 @@ async def subir_adjunto(archivo: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"url": url}
+
+
+@router.get("/adjuntos/{adj_id}")
+def ver_adjunto(adj_id: int, db: Session = Depends(get_db)):
+    """Comprobante guardado en la base (las facturas escaneadas que se cargaron desde los PDF)."""
+    a = db.get(GastoAdjunto, adj_id)
+    if not a:
+        raise HTTPException(404, "Comprobante no encontrado")
+    nombre = re.sub(r'[^\w .()-]', "_", a.nombre)
+    return Response(a.contenido, media_type=a.content_type,
+                    headers={"Content-Disposition": f'inline; filename="{nombre}"', "Cache-Control": "private, max-age=3600"})
 
 
 @router.post("/adjunto-firma")
@@ -618,6 +631,8 @@ def borrar_gasto(db: Session, g: Gasto) -> bool:
         e.comisiones_gasto_id = None
     for nc in db.query(Gasto).filter(Gasto.nc_de_id == g.id).all():
         nc.nc_de_id = None
+    for a in db.query(GastoAdjunto).filter(GastoAdjunto.gasto_id == g.id).all():
+        db.delete(a)
     from app.models.factura_recibida import FacturaRecibida
     for fr in db.query(FacturaRecibida).filter(FacturaRecibida.gasto_id == g.id).all():
         # se eliminó a propósito: queda descartada (no vuelve a la bandeja para cargar)
