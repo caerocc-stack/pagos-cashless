@@ -1062,3 +1062,30 @@ select.esc-vacio { border-color: var(--warning); }
 .rend-enc input[type=text] { margin: 0; }
 .rend-enc .rend-acc { white-space: nowrap; }
 .btn-link { background: none; border: 0; color: var(--primary); padding: 0.2rem 0; text-decoration: underline; cursor: pointer; }
+
+/* Tablas al 100% de zoom en pantallas de notebook: botones compactos y celdas más justas */
+td .btn-ico { padding: 0.3rem 0.45rem; }
+td .btn-ico .ic { width: 16px; height: 16px; margin: 0; }
+.pago-det { font-size: 0.78rem; color: var(--text-muted); white-space: normal; margin-top: 0.15rem; }
+.td-acc { display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: flex-start; min-width: 11.5rem; }
+.td-acc .btn + .btn { margin-left: 0; }
+@media (max-width: 1500px) {
+    main { padding-left: 1.25rem; padding-right: 1.25rem; }
+    thead th { padding: 0.6rem 0.55rem; white-space: normal; }
+    td { padding: 0.55rem 0.55rem; }
+    td .btn { padding: 0.28rem 0.5rem; }
+    td .btn + .btn, td .btn + select { margin-left: 0.2rem; }
+}
+td:has(> .td-acc) { width: 1%; }
+@media (max-width: 1300px) {
+    :root { --sidebar-w: 222px; }
+    main { padding-left: 1rem; padding-right: 1rem; }
+    table { font-size: 0.85rem; }
+    thead th { font-size: 0.7rem; letter-spacing: 0.03em; }
+    td .btn { font-size: 0.78rem; padding: 0.25rem 0.45rem; }
+    .td-acc { min-width: 9.5rem; }
+    .cat-select { max-width: 8.5rem; }
+    thead th { padding-left: 0.45rem; padding-right: 0.45rem; }
+    td { padding-left: 0.45rem; padding-right: 0.45rem; }
+    td:has(> .pago-ok) { white-space: normal; }  /* el ✕ de deshacer baja de renglón si no entra */
+}

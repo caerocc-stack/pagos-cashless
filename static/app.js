@@ -401,8 +401,8 @@ function renderAlumnos(lista) {
             <td>
                 <button class="btn btn-sm" onclick="verAlumno(${a.id})">Ver</button>
                 <button class="btn btn-sm" onclick="editarAlumno(${a.id})">Editar</button>
-                <button class="btn btn-sm btn-outline solo-admin" ${usuarioActual.rol === 'admin' ? '' : 'style="display:none"'} onclick="verComoFamilia(${a.id})" title="Abrir el portal tal cual lo ve la familia">Ver como familia</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarAlumno(${a.id})">Eliminar</button>
+                <button class="btn btn-sm btn-outline solo-admin" ${usuarioActual.rol === 'admin' ? '' : 'style="display:none"'} onclick="verComoFamilia(${a.id})" title="Ver como familia: abrir el portal tal cual lo ve la familia">Familia</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="eliminarAlumno(${a.id})" title="Eliminar" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button>
             </td>
         </tr>`;
     }).join('');
@@ -1727,7 +1727,7 @@ function renderProveedores(lista) {
             <td>
                 ${t.cantidad ? `<button class="btn btn-sm btn-primary" onclick="verFacturasProveedor(${p.id})">Facturas</button>` : ''}
                 <button class="btn btn-sm" onclick="editarProveedor(${p.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarProveedor(${p.id})">Eliminar</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="eliminarProveedor(${p.id})" title="Eliminar" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button>
             </td>
         </tr>`;
     }).join('') ||
@@ -1943,8 +1943,9 @@ function renderGastos(lista) {
         } else if (g.forma_pago) {
             const fp = g.fecha_pago ? g.fecha_pago.split('-').reverse().join('/') : '';
             const icono = g.forma_pago === 'Efectivo' ? '💵' : '🏦';
-            pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}${fp ? ' · ' + fp : ''}${g.pagado_por ? ` · vía ${escapeHtml(g.pagado_por)}` : ''}</span>
-                <button class="btn btn-sm" title="Deshacer" onclick="desvincularPagoGasto(${g.id})">✕</button>`;
+            pago = `<span class="pago-ok">${icono} ${escapeHtml(g.forma_pago)}</span>
+                <button class="btn btn-sm" title="Deshacer el pago" aria-label="Deshacer el pago" onclick="desvincularPagoGasto(${g.id})">✕</button>
+                <div class="pago-det">${[fp, g.pagado_por ? 'vía ' + escapeHtml(g.pagado_por) : ''].filter(Boolean).join(' · ')}</div>`;
         } else {
             pago = `<button class="btn btn-sm btn-primary" onclick="abrirVincularPago(${g.id})">Vincular pago</button>${vence}`;
         }
@@ -1957,7 +1958,7 @@ function renderGastos(lista) {
             <td style="text-align:right;${neg ? 'color:var(--red)' : ''}">${fmtMoneda(g.importe)}</td>
             <td>
                 <button class="btn btn-sm" onclick="editarGasto(${g.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarGasto(${g.id})">Eliminar</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="eliminarGasto(${g.id})" title="Eliminar" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button>
             </td>
         </tr>`;
     }).join('') ||
@@ -2548,7 +2549,7 @@ function renderCaja(lista) {
             <td>
                 ${esIng ? `<button class="btn btn-sm btn-primary" title="Imputar como pago de cuota" onclick="imputarCuotaDesdeCaja(${m.id}, ${m.monto})">→ Cuota</button>` : ''}
                 <button class="btn btn-sm" onclick="editarCaja(${m.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarCaja(${m.id})">Eliminar</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="eliminarCaja(${m.id})" title="Eliminar" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button>
             </td>
         </tr>`;
     }).join('') ||
@@ -2907,9 +2908,9 @@ function renderConciliacion(lista) {
             acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
-            acciones = `<button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
+            acciones = `<div class="td-acc"><button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
                 <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>
-                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}`;
+                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}</div>`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -3725,7 +3726,7 @@ function renderCursos() {
             <td>${c.cobra_cuotas_viejas ? 'Sí' : 'No'}</td>
             <td>
                 <button class="btn btn-sm" onclick="editarCurso(${c.id})">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="eliminarCurso(${c.id})">Eliminar</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="eliminarCurso(${c.id})" title="Eliminar" aria-label="Eliminar"><svg class="ic"><use href="#i-trash"/></svg></button>
             </td>
         </tr>`).join('') ||
         '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sin cursos cargados</td></tr>';
