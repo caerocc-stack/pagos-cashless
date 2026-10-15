@@ -78,16 +78,30 @@ def es_afip(descripcion: str | None, cuit: str | None = None) -> bool:
     return bool(RE_AFIP.search(descripcion or "")) or re.sub(r"\D", "", cuit or "") == CUIT_AFIP
 
 
+def cuit_ok(c: str) -> bool:
+    """Dígito verificador del CUIT/CUIL: descarta números de 11 cifras que no son un CUIT (códigos de pago, etc.)."""
+    if len(c) != 11 or not c.isdigit():
+        return False
+    suma = sum(int(d) * p for d, p in zip(c[:10], (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)))
+    v = 11 - suma % 11
+    return int(c[10]) == (0 if v == 11 else 9 if v == 10 else v)
+
+
+RE_DEBITO_DIRECTO = re.compile(r"^DEBITO DIRECTO\s*-?\s*(.+)$", re.I)
+
+
 def extraer_cuit_y_nombre(desc: str):
-    """CUIT del destinatario y el nombre que lo acompaña (el banco a veces lo corta)."""
-    desc = desc or ""
-    if desc.startswith("DEBITO DIRECTO-"):
-        empresa = desc[len("DEBITO DIRECTO-"):].split("-")[0].strip() or None
-        m = RE_CUIT.search(desc)
-        return (m.group(1) if m and m.group(1) != CUIT_PROPIO else None), empresa
-    m = RE_CUIT.search(desc)
-    if m and m.group(1) == CUIT_PROPIO:
-        m = None
+    """CUIT del destinatario y el nombre que lo acompaña (el banco a veces lo corta).
+    Sirve para el PDF y para el Excel del banco: la descripción puede venir partida en dos renglones."""
+    desc = re.sub(r"\s+", " ", desc or "").strip()
+    validos = [m for m in RE_CUIT.finditer(desc) if m.group(1) != CUIT_PROPIO and cuit_ok(m.group(1))]
+    # "DEBITO DIRECTO-UPNET INTERNET S-0000083055120222474-CUOTAS" o "DEBITO DIRECTO UPNET INTERNET S-…":
+    # la empresa es lo que sigue hasta el primer guion; el número largo es el código de pago, no un CUIT
+    dd = RE_DEBITO_DIRECTO.match(desc)
+    if dd:
+        empresa = re.split(r"\s*-\s*", dd.group(1))[0].strip() or None
+        return (validos[0].group(1) if validos else None), empresa
+    m = validos[0] if validos else None
     if not m:
         return None, None
     resto = desc[m.end():].strip(" -.,")

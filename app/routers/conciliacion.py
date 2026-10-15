@@ -31,17 +31,6 @@ def _solo_digitos(s) -> str:
     return "".join(ch for ch in str(s or "") if ch.isdigit())
 
 
-def _parsear_descripcion(desc: str):
-    """Extrae el CUIT (11 dígitos) y la razón social del texto del movimiento."""
-    desc = (desc or "").strip()
-    m = re.search(r"(\d{11})", desc)
-    if not m:
-        return None, None
-    cuit = m.group(1)
-    razon = desc[m.end():].strip(" .,-").strip() or None
-    return cuit, razon
-
-
 def _hash_mov(fecha, comprobante, concepto, importe, desc) -> str:
     base = f"{fecha}|{comprobante}|{concepto}|{importe}|{desc}"
     return hashlib.sha1(base.encode("utf-8")).hexdigest()[:40]
@@ -87,9 +76,9 @@ def _parsear_extracto_xls(contenido: bytes):
             fecha = xlrd.xldate.xldate_as_datetime(float(sh.cell_value(r, c_fecha)), datemode).date()
         except Exception:
             continue
-        desc = str(sh.cell_value(r, c_desc)).strip()
+        desc = " ".join(str(sh.cell_value(r, c_desc)).split())  # a veces viene en dos renglones dentro de la celda
         comp = str(sh.cell_value(r, c_comp)).strip() if c_comp is not None else ""
-        cuit, razon = _parsear_descripcion(desc)
+        cuit, razon = extracto_roela.extraer_cuit_y_nombre(desc)
         cuenta = str(sh.cell_value(r, c_cuenta)).strip() if c_cuenta is not None else None
         movimientos.append({
             "fecha": fecha, "cuenta": cuenta, "comprobante": comp or None, "concepto": concepto,
