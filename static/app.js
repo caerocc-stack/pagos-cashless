@@ -1987,14 +1987,15 @@ async function abrirVincularPago(id) {
                 <td>${g && Math.abs(Number(g.importe) - r.saldo) <= 1 ? '<span class="conc-tag-ok">Importe ✓</span>' : ''}</td>
                 <td><button class="btn btn-sm btn-primary" onclick="pagoPorEncargado(${id}, ${r.id}, ${r.encargado ? r.encargado.id : 'null'})">Vincular</button></td></tr>`).join('')
             || '<tr><td colspan="4" style="color:var(--text-muted)">No hay transferencias a encargados pendientes de rendir. Cargá los encargados en Conciliación bancaria.</td></tr>';
-        const tag = (m, mo) => [m ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
+        const tag = (m, mo, no) => [m ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
+            no ? '<span class="conc-tag-ok">Razón social ✓</span>' : '',
             mo ? '<span class="conc-tag-ok">Importe ✓</span>' : ''].join(' ');
         const fBanco = (c.banco || []).map(b => {
             const f = b.fecha ? b.fecha.split('-').reverse().join('/') : '';
             return `<tr><td>${f}</td><td>${escapeHtml(b.razon_social || b.descripcion || '')}</td>
                 <td style="text-align:right">${fmtMoneda(b.importe)}</td>
-                <td>${tag(b.coincide_cuit, b.coincide_monto)}</td>
-                <td><button class="btn btn-sm btn-primary" onclick="pagoBanco(${id},${b.id})">Vincular</button></td></tr>`;
+                <td>${tag(b.coincide_cuit, b.coincide_monto, b.coincide_nombre)}${b.coincide_monto ? '' : ` <span class="conc-tag-dif">Dif. ${fmtMoneda(Math.abs(b.importe - Math.abs(g ? g.importe : 0)))}</span>`}</td>
+                <td><button class="btn btn-sm btn-primary" onclick="pagoBanco(${id},${b.id},${b.coincide_monto ? 0 : b.importe},${g ? Math.abs(g.importe) : 0})">Vincular</button></td></tr>`;
         }).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">Sin movimientos de banco que coincidan.</td></tr>';
         const fCaja = (c.caja || []).map(k => {
             const f = k.fecha ? k.fecha.split('-').reverse().join('/') : '';
@@ -2027,8 +2028,14 @@ async function abrirVincularPago(id) {
     }
 }
 
-async function pagoBanco(id, bancoId) {
-    try { await api(`/api/gastos/${id}/pago/banco/${bancoId}`, { method: 'POST' });
+async function pagoBanco(id, bancoId, importeBanco, importeFactura) {
+    let nota = null;
+    if (importeBanco) {
+        nota = motivoDiferencia(importeBanco, importeFactura);
+        if (nota === null) return;
+        if (!nota) { toast('Anotá el motivo de la diferencia', 'error'); return; }
+    }
+    try { await api(`/api/gastos/${id}/pago/banco/${bancoId}`, { method: 'POST', body: JSON.stringify({ nota }) });
         toast('Pago vinculado (transferencia)'); cerrarModal(); cargarGastos();
     } catch (err) { toast(err.message, 'error'); }
 }
@@ -2915,7 +2922,8 @@ function renderConciliacion(lista) {
             const fg = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
             const badge = m.conciliado_manual ? 'manual' : 'auto';
             estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')}
-                <span style="color:var(--text-muted)">· ${escapeHtml(g.concepto || '')} · ${fg}</span>`;
+                <span style="color:var(--text-muted)">· ${escapeHtml(g.concepto || '')} · ${fg}</span>
+                ${m.nota_conciliacion ? `<div class="conc-dif">Factura ${fmtMoneda(g.importe)}: ${escapeHtml(m.nota_conciliacion)}</div>` : ''}`;
             acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
@@ -3020,14 +3028,15 @@ async function abrirCandidatos(movId) {
         const filas = cands.map(c => {
             const f = c.fecha ? c.fecha.split('-').reverse().join('/') : '';
             const tags = [c.coincide_cuit ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
-                c.coincide_monto ? '<span class="conc-tag-ok">Importe ✓</span>' : ''].join(' ');
+                c.coincide_nombre ? '<span class="conc-tag-ok">Razón social ✓</span>' : '',
+                c.coincide_monto ? '<span class="conc-tag-ok">Importe ✓</span>' : `<span class="conc-tag-dif">Dif. ${fmtMoneda(c.diferencia)}</span>`].join(' ');
             return `<tr>
                 <td>${f}</td>
                 <td>${escapeHtml(c.razon_social || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(c.concepto || '')}</small></td>
                 <td>${escapeHtml(c.cuit || '-')}</td>
                 <td style="text-align:right">${fmtMoneda(c.importe)}</td>
                 <td>${tags}</td>
-                <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id})">Vincular</button></td>
+                <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id},${c.coincide_monto ? 0 : c.importe})">Vincular</button></td>
             </tr>`;
         }).join('') ||
             `<tr><td colspan="6">No hay facturas libres con ese CUIT ni ese importe.
@@ -3050,9 +3059,25 @@ async function abrirCandidatos(movId) {
     }
 }
 
-async function matchManual(movId, gastoId) {
+// Importes distintos (ej. nota de crédito, interés, redondeo): se pide el motivo y queda anotado
+function motivoDiferencia(pagado, facturado) {
+    const dif = Math.abs(pagado) - Math.abs(facturado);
+    const nota = prompt(`El banco muestra ${fmtMoneda(Math.abs(pagado))} y la factura es de ${fmtMoneda(Math.abs(facturado))}: `
+        + `${dif > 0 ? 'se pagó' : 'se pagaron'} ${fmtMoneda(Math.abs(dif))} ${dif > 0 ? 'de más' : 'de menos'}.\n\n¿Por qué? Queda anotado en la factura y en la conciliación.`,
+        dif < 0 ? 'Nota de crédito por la diferencia' : '');
+    return nota === null ? null : nota.trim();
+}
+
+async function matchManual(movId, gastoId, importeFactura) {
+    let nota = null;
+    if (importeFactura) {
+        const mov = concCache.find(m => m.id === movId) || {};
+        nota = motivoDiferencia(mov.importe, importeFactura);
+        if (nota === null) return;
+        if (!nota) { toast('Anotá el motivo de la diferencia', 'error'); return; }
+    }
     try {
-        await api(`/api/conciliacion/${movId}/match/${gastoId}`, { method: 'POST' });
+        await api(`/api/conciliacion/${movId}/match/${gastoId}`, { method: 'POST', body: JSON.stringify({ nota }) });
         toast('Movimiento conciliado');
         cerrarModal();
         cargarConciliacion();

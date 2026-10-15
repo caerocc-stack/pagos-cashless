@@ -108,6 +108,36 @@ def _facturas_libres(db: Session) -> list[Gasto]:
             if g.id not in usados]
 
 
+MARCA_DIF = "Diferencia con el banco: "
+
+
+def _fmt(n: Decimal) -> str:
+    return f"${n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def registrar_diferencia(mov: MovimientoBanco, g: Gasto, nota: str | None):
+    """Si el pago del banco no es igual a la factura, exige el motivo y lo deja anotado en los dos."""
+    pagado, facturado = abs(Decimal(str(mov.importe))), abs(Decimal(str(g.importe)))
+    dif = pagado - facturado
+    quitar_diferencia(mov, g)
+    if abs(dif) <= TOLERANCIA:
+        return
+    nota = (nota or "").strip()
+    if not nota:
+        raise HTTPException(400, f"El banco muestra {_fmt(pagado)} y la factura es de {_fmt(facturado)} "
+                                 f"(diferencia {_fmt(abs(dif))}). Anotá el motivo para vincularlas.")
+    texto = f"{'se pagó' if dif > 0 else 'se pagaron'} {_fmt(abs(dif))} {'de más' if dif > 0 else 'de menos'} — {nota}"
+    mov.nota_conciliacion = texto[:300]
+    g.notas = " · ".join(x for x in (g.notas, MARCA_DIF + texto) if x)[:400]
+
+
+def quitar_diferencia(mov: MovimientoBanco | None, g: Gasto | None):
+    if mov is not None:
+        mov.nota_conciliacion = None
+    if g is not None and g.notas and MARCA_DIF in g.notas:
+        g.notas = " · ".join(x for x in g.notas.split(" · ") if not x.startswith(MARCA_DIF)) or None
+
+
 def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
     mov.gasto_id = g.id
     mov.conciliado = True
@@ -118,25 +148,31 @@ def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
 
 
 _PALABRAS_VACIAS = {"S.A.", "S.R.L.", "SRL", "SA", "SAS", "S.A.S.", "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y",
-                    "DEBITO", "DIRECTO", "INTERNET", "SERVICIOS", "GRUPO"}
+                    "DEBITO", "DIRECTO", "INTERNET", "SERVICIOS", "GRUPO",
+                    # palabras del texto del banco que no son del nombre del destinatario
+                    "TRANSF", "INTERB", "DISTINTO", "TITULAR", "DEBIN", "INMEDIATO", "CUOTAS", "PAGO", "HABER"}
 
 
 def _palabras(texto: str | None) -> set[str]:
     return {p for p in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]{4,}", (texto or "").upper()) if p not in _PALABRAS_VACIAS}
 
 
+def _nombre_mov(mov: MovimientoBanco) -> set[str]:
+    """Palabras del destinatario según el banco (con CUIT, la razón social; sin CUIT, también la descripción)."""
+    return _palabras(mov.razon_social if mov.cuit else f"{mov.razon_social or ''} {mov.descripcion or ''}")
+
+
 def _intentar_match(mov: MovimientoBanco, libres: list[Gasto]) -> bool:
     """Concilia solo si hay UNA factura libre con el mismo importe (±$1) y el mismo CUIT;
-    si el banco no informa CUIT (ej. débitos directos), con el nombre del proveedor."""
+    si el CUIT no coincide o el banco no lo informa (débitos directos, DEBIN a otra cuenta), con la razón social."""
     if mov.conciliado or mov.sin_factura:
         return False
     objetivo = abs(Decimal(str(mov.importe)))
     mismo_monto = [g for g in libres if abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
-    if mov.cuit:
-        cuit = _solo_digitos(mov.cuit)
-        cand = [g for g in mismo_monto if _solo_digitos(g.cuit) == cuit]
-    else:
-        nombre_banco = _palabras(f"{mov.razon_social or ''} {mov.descripcion or ''}")
+    cuit = _solo_digitos(mov.cuit)
+    cand = [g for g in mismo_monto if cuit and _solo_digitos(g.cuit) == cuit]
+    if not cand:  # 2º intento: razón social + importe
+        nombre_banco = _nombre_mov(mov)
         cand = [g for g in mismo_monto if nombre_banco & _palabras(g.razon_social)] if nombre_banco else []
     if len(cand) == 1:
         _vincular(mov, cand[0], manual=False)
@@ -555,24 +591,32 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
         actual = db.get(Gasto, mov.gasto_id)
         if actual:
             libres.append(actual)
+    nombre_banco = _nombre_mov(mov)
     salida = []
     for g in libres:
         mismo_cuit = bool(cuit) and _solo_digitos(g.cuit) == cuit
+        mismo_nombre = bool(nombre_banco & _palabras(g.razon_social))
         dif = abs(abs(Decimal(str(g.importe))) - objetivo)
         mismo_monto = dif <= TOLERANCIA
-        if not (mismo_cuit or mismo_monto):
+        if not (mismo_cuit or mismo_nombre or mismo_monto):
             continue
         salida.append({
             "id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "cuit": g.cuit,
             "importe": float(g.importe), "concepto": g.concepto, "numero": g.numero,
-            "coincide_cuit": mismo_cuit, "coincide_monto": mismo_monto, "diferencia": float(dif),
+            "coincide_cuit": mismo_cuit, "coincide_nombre": mismo_nombre, "coincide_monto": mismo_monto,
+            "diferencia": float(dif),
         })
-    salida.sort(key=lambda x: (not (x["coincide_cuit"] and x["coincide_monto"]), not x["coincide_monto"], x["diferencia"]))
+    # primero las que coinciden en más cosas (CUIT, razón social, importe), después por diferencia de importe
+    salida.sort(key=lambda x: (-(x["coincide_cuit"] + x["coincide_nombre"] + x["coincide_monto"]), not x["coincide_monto"], x["diferencia"]))
     return {"facturas": salida, "proveedor": _nombre_proveedor(db, mov.cuit)}
 
 
+class Vinculo(BaseModel):
+    nota: str | None = None  # motivo de la diferencia de importe (ej. "Nota de crédito por la diferencia")
+
+
 @router.post("/{mov_id}/match/{gasto_id}")
-def match_manual(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
+def match_manual(mov_id: int, gasto_id: int, data: Vinculo | None = None, db: Session = Depends(get_db)):
     mov = db.get(MovimientoBanco, mov_id)
     g = db.get(Gasto, gasto_id)
     if not mov or not g:
@@ -584,6 +628,8 @@ def match_manual(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
             anterior.conciliado = False
             anterior.forma_pago = None
             anterior.fecha_pago = None
+            quitar_diferencia(None, anterior)
+    registrar_diferencia(mov, g, data.nota if data else None)
     _vincular(mov, g, manual=True)
     db.commit()
     return {"ok": True, "mensaje": "Movimiento conciliado con la factura"}
@@ -626,12 +672,12 @@ def unmatch(mov_id: int, db: Session = Depends(get_db)):
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")
-    if mov.gasto_id:
-        g = db.get(Gasto, mov.gasto_id)
-        if g:
-            g.conciliado = False
-            g.forma_pago = None
-            g.fecha_pago = None
+    g = db.get(Gasto, mov.gasto_id) if mov.gasto_id else None
+    if g:
+        g.conciliado = False
+        g.forma_pago = None
+        g.fecha_pago = None
+    quitar_diferencia(mov, g)
     mov.gasto_id = None
     mov.conciliado = False
     mov.conciliado_manual = False

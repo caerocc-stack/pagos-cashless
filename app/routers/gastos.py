@@ -496,18 +496,22 @@ def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
     objetivo = abs(Decimal(str(g.importe)))
     cuit = _norm_cuit(g.cuit)
 
+    from app.routers.conciliacion import _palabras, _nombre_mov, TOLERANCIA
+    nombre = _palabras(g.razon_social)
     bancos = []
     for b in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False,  # noqa: E712
                                               MovimientoBanco.sin_factura.is_(None)).all():
-        coincide_monto = abs(Decimal(str(b.importe))) == objetivo
+        coincide_monto = abs(abs(Decimal(str(b.importe))) - objetivo) <= TOLERANCIA
         coincide_cuit = bool(cuit) and _norm_cuit(b.cuit) == cuit
-        if coincide_monto or coincide_cuit:
+        coincide_nombre = bool(nombre & _nombre_mov(b))  # débitos directos sin CUIT, DEBIN a otra cuenta
+        if coincide_monto or coincide_cuit or coincide_nombre:
             bancos.append({
                 "id": b.id, "fecha": str(b.fecha), "descripcion": b.descripcion,
                 "cuit": b.cuit, "razon_social": b.razon_social,
                 "importe": float(abs(b.importe)),
-                "coincide_monto": coincide_monto, "coincide_cuit": coincide_cuit,
+                "coincide_monto": coincide_monto, "coincide_cuit": coincide_cuit, "coincide_nombre": coincide_nombre,
             })
+    bancos.sort(key=lambda x: (-(x["coincide_cuit"] + x["coincide_nombre"] + x["coincide_monto"]), x["fecha"]))
 
     usados = {x.caja_mov_id for x in db.query(Gasto).filter(Gasto.caja_mov_id.isnot(None)).all()}
     cajas = []
@@ -522,19 +526,22 @@ def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
     return {"banco": bancos, "caja": cajas}
 
 
+class VinculoBanco(BaseModel):
+    nota: str | None = None  # motivo si el importe del banco no es igual al de la factura
+
+
 @router.post("/{gasto_id}/pago/banco/{banco_id}")
-def pago_banco(gasto_id: int, banco_id: int, db: Session = Depends(get_db)):
-    """Vincula el gasto a un movimiento del banco (= conciliar). Forma de pago: Transferencia."""
+def pago_banco(gasto_id: int, banco_id: int, data: VinculoBanco | None = None, db: Session = Depends(get_db)):
+    """Vincula el gasto a un movimiento del banco (= conciliar). Forma de pago: Transferencia o Débito."""
+    from app.routers.conciliacion import registrar_diferencia, _vincular
     g = db.get(Gasto, gasto_id)
     b = db.get(MovimientoBanco, banco_id)
     if not g or not b:
         raise HTTPException(404, "Gasto o movimiento no encontrado")
-    b.gasto_id = g.id
-    b.conciliado = True
-    b.conciliado_manual = True
-    g.conciliado = True
-    g.forma_pago = "Transferencia"
-    g.fecha_pago = b.fecha
+    if b.gasto_id and b.gasto_id != g.id:
+        raise HTTPException(409, "Ese movimiento del banco ya está conciliado con otra factura.")
+    registrar_diferencia(b, g, data.nota if data else None)
+    _vincular(b, g, manual=True)
     g.caja_mov_id = None
     db.commit()
     return {"ok": True, "mensaje": "Pago vinculado con el movimiento del banco"}
@@ -594,10 +601,12 @@ def desvincular_pago(gasto_id: int, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
     # Liberar movimiento de banco que apunte a este gasto
+    from app.routers.conciliacion import quitar_diferencia
     for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).all():
         b.gasto_id = None
         b.conciliado = False
         b.conciliado_manual = False
+        quitar_diferencia(b, g)
     if g.banco_mov_id:  # pagada vía un encargado: la transferencia vuelve a tener saldo a rendir
         from app import rendiciones
         rendiciones.desvincular(db, g)
