@@ -100,6 +100,7 @@ MIGRACIONES = [
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS encargado_id INTEGER REFERENCES encargados_compra(id)",
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS rendicion_cerrada BOOLEAN DEFAULT FALSE",
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS rendicion_nota VARCHAR(300)",
+    "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS sin_factura VARCHAR(20)",
 ]
 
 

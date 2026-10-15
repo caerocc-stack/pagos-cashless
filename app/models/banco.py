@@ -65,6 +65,8 @@ class MovimientoBanco(Base):
     encargado_id: Mapped[int | None] = mapped_column(ForeignKey("encargados_compra.id"))
     rendicion_cerrada: Mapped[bool] = mapped_column(Boolean, default=False)  # se dio por rendido con diferencia
     rendicion_nota: Mapped[str | None] = mapped_column(String(300))
+    # Egresos que no llevan factura de proveedor: "sueldo" (marcado a mano) o "afip" (débitos de AFIP/ARCA)
+    sin_factura: Mapped[str | None] = mapped_column(String(20))
 
     gasto: Mapped["Gasto"] = relationship(foreign_keys=[gasto_id])
 

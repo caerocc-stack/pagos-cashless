@@ -67,6 +67,15 @@ def categoria_de(concepto: str, importe: Decimal) -> str:
 
 
 CUIT_PROPIO = "33690068619"  # APAI: aparece en débitos de AFIP, no es un proveedor
+CUIT_AFIP = "33693450239"
+RE_AFIP = re.compile(r"\b(AFIP|ARCA)\b", re.I)
+# Transferencias y DEBIN: siempre a un CUIT. Son las únicas que se pueden marcar como sueldo.
+TRANSFERENCIAS = {"190", "190100", "F30", "F30100"}
+
+
+def es_afip(descripcion: str | None, cuit: str | None = None) -> bool:
+    """Débitos/pagos a AFIP (ARCA): impuestos y planes de pago, no llevan factura de proveedor."""
+    return bool(RE_AFIP.search(descripcion or "")) or re.sub(r"\D", "", cuit or "") == CUIT_AFIP
 
 
 def extraer_cuit_y_nombre(desc: str):
@@ -178,6 +187,8 @@ def resumen(datos: dict) -> dict:
     tot = {}
     for m in datos["movimientos"]:
         c = m["categoria"]
+        if c == "pago" and es_afip(m.get("descripcion"), m.get("cuit")):
+            c = "afip"
         t = tot.setdefault(c, {"cantidad": 0, "total": Decimal("0")})
         t["cantidad"] += 1
         t["total"] += m["importe"]

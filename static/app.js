@@ -2752,7 +2752,10 @@ async function cargarResumenConc() {
                 <div class="gasto-kpi-sub">cruzados con factura</div></div>
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pendientes</div>
                 <div class="gasto-kpi-valor">${r.pendientes}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>`;
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Sueldos y AFIP</div>
+                <div class="gasto-kpi-valor">${r.sin_factura || 0}</div>
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · no llevan factura</div></div>`;
     } catch (err) { /* sin datos */ }
 }
 
@@ -2770,6 +2773,7 @@ const TIPOS_BANCO = {
 const CATEG_EXTRACTO = [
     ['ingreso_siro', 'Cobros por SIRO', 'success'], ['ingreso_qr', 'Cobros por QR', 'success'],
     ['otro_ingreso', 'Otros ingresos', 'success'], ['pago', 'Pagos (a conciliar)', 'danger'],
+    ['afip', 'Débitos de AFIP (no llevan factura)', 'danger'],
     ['haberes', 'Pagos de haberes (no se concilian)', 'danger'], ['pago_automatico', 'Pagos automáticos (no se concilian)', 'danger'],
     ['otro_egreso', 'Otros egresos', 'danger'], ['comision', 'Comisiones e impuestos', 'warning'],
 ];
@@ -2896,9 +2900,18 @@ function renderConciliacion(lista) {
         const fecha = fmtFecha(m.fecha);
         const tipo = TIPOS_BANCO[m.concepto] || m.concepto || '—';
         let estado, acciones;
-        if (m.rendicion) {  // transferencia a un encargado de compras: se rinde con facturas de otros proveedores
+        // Transferencias y DEBIN: siempre a un CUIT; son las únicas que pueden ser un sueldo
+        const puedeSueldo = ['190', '190100', 'F30', 'F30100'].includes(m.concepto) && (m.cuit || '').replace(/\D/g, '').length === 11;
+        const btnSueldo = puedeSueldo ? `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, 'sueldo')" title="Es un sueldo: no lleva factura y sale de los pendientes">Sueldo</button>` : '';
+        if (m.sin_factura) {
+            estado = m.sin_factura === 'sueldo'
+                ? '<span class="conc-sf">Sueldo</span> <span style="color:var(--text-muted)">· no lleva factura</span>'
+                : '<span class="conc-sf">AFIP</span> <span style="color:var(--text-muted)">· impuestos, no lleva factura</span>';
+            acciones = `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, null)" title="Volver a dejarlo pendiente de conciliar">Deshacer</button>`;
+        } else if (m.rendicion) {  // transferencia a un encargado de compras: se rinde con facturas de otros proveedores
             estado = htmlEstadoRendicion(m);
-            acciones = `<button class="btn btn-sm ${m.conciliado ? '' : 'btn-primary'}" onclick="abrirRendicion(${m.id})">${m.conciliado ? 'Ver rendición' : 'Rendir facturas'}</button>`;
+            acciones = `<div class="td-acc"><button class="btn btn-sm ${m.conciliado ? '' : 'btn-primary'}" onclick="abrirRendicion(${m.id})">${m.conciliado ? 'Ver rendición' : 'Rendir facturas'}</button>
+                ${!m.conciliado && !m.rendicion.facturas ? btnSueldo : ''}</div>`;
         } else if (m.conciliado && m.gasto) {
             const g = m.gasto;
             const fg = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
@@ -2910,7 +2923,8 @@ function renderConciliacion(lista) {
             estado = '<span class="conc-pend">● pendiente</span>';
             acciones = `<div class="td-acc"><button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
                 <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>
-                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}</div>`;
+                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}
+                ${btnSueldo}</div>`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -2949,7 +2963,8 @@ async function importarExtracto(input) {
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados solos</div><div class="gasto-kpi-valor" style="color:var(--success)">${data.conciliados_automaticamente}</div><div class="gasto-kpi-sub">CUIT + importe</div></div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Para revisar</div><div class="gasto-kpi-valor" style="color:var(--warning)">${data.pendientes}</div><div class="gasto-kpi-sub">vinculá la factura o creá el gasto</div></div>
             </div>
-            <p class="muted">En los pendientes usá <b>Vincular factura</b> si la factura ya está cargada, o <b>Crear gasto</b> para pagos sin factura (AFIP, seguros, servicios).</p>`;
+            ${data.afip ? `<p class="muted">${data.afip} débito${data.afip === 1 ? '' : 's'} de AFIP quedaron aparte: no llevan factura ni cuentan como pendientes.</p>` : ''}
+            <p class="muted">En los pendientes usá <b>Vincular</b> si la factura ya está cargada, <b>Encargado</b> si se le transfirió a quien hizo la compra, o <b>Sueldo</b> si la transferencia fue un sueldo.</p>`;
         document.getElementById('modal-overlay').style.display = 'flex';
         cargarConciliacion();
     } catch (err) {
@@ -2957,6 +2972,16 @@ async function importarExtracto(input) {
     } finally {
         input.value = '';  // permite volver a subir el mismo archivo
     }
+}
+
+async function marcarSinFactura(movId, motivo) {
+    const m = (concCache || []).find(x => x.id === movId) || {};
+    if (motivo && !confirm(`¿Marcar la transferencia de ${fmtMoneda(Math.abs(m.importe || 0))} a ${m.razon_social || m.cuit || ''} como sueldo?\n\nNo lleva factura y sale de los pendientes de conciliar.`)) return;
+    try {
+        await api(`/api/conciliacion/${movId}/sin-factura`, { method: 'POST', body: JSON.stringify({ motivo }) });
+        toast(motivo ? 'Marcada como sueldo' : 'Volvió a quedar pendiente de conciliar');
+        cargarConciliacion();
+    } catch (e) { toast(e.message, 'error'); }
 }
 
 async function reconciliarAuto() {

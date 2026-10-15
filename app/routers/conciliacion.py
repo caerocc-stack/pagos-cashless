@@ -128,7 +128,7 @@ def _palabras(texto: str | None) -> set[str]:
 def _intentar_match(mov: MovimientoBanco, libres: list[Gasto]) -> bool:
     """Concilia solo si hay UNA factura libre con el mismo importe (±$1) y el mismo CUIT;
     si el banco no informa CUIT (ej. débitos directos), con el nombre del proveedor."""
-    if mov.conciliado:
+    if mov.conciliado or mov.sin_factura:
         return False
     objetivo = abs(Decimal(str(mov.importe)))
     mismo_monto = [g for g in libres if abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
@@ -195,6 +195,8 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
                                            "descripcion", "cuit", "razon_social", "importe", "hash")}
         datos_mov["razon_social"] = _nombre_proveedor(db, m.get("cuit")) or m.get("razon_social")
         obj = MovimientoBanco(origen=archivo.filename, extracto_id=extracto.id if extracto else None, **datos_mov)
+        if extracto_roela.es_afip(obj.descripcion, obj.cuit):
+            obj.sin_factura = "afip"  # impuestos / planes de AFIP: no llevan factura, no quedan pendientes
         db.add(obj)
         nuevos_objs.append(obj)
         nuevos += 1
@@ -202,15 +204,18 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
 
     libres = _facturas_libres(db)
     conciliados = sum(1 for obj in nuevos_objs if _intentar_match(obj, libres))
+    afip = sum(1 for obj in nuevos_objs if obj.sin_factura == "afip")
     db.commit()
     return {"ok": True, "leidos": len(movimientos), "nuevos": nuevos, "duplicados": duplicados,
-            "conciliados_automaticamente": conciliados, "pendientes": nuevos - conciliados, **info}
+            "conciliados_automaticamente": conciliados, "afip": afip,
+            "pendientes": nuevos - conciliados - afip, **info}
 
 
 @router.post("/auto")
 def re_conciliar(db: Session = Depends(get_db)):
     """Reintenta conciliar automáticamente los pendientes (útil después de cargar facturas)."""
-    pendientes = db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False).all()  # noqa: E712
+    pendientes = db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False,  # noqa: E712
+                                                  MovimientoBanco.sin_factura.is_(None)).all()
     libres = _facturas_libres(db)
     for m in pendientes:  # de paso, completar nombres con los proveedores cargados
         m.razon_social = _nombre_proveedor(db, m.cuit) or m.razon_social
@@ -337,11 +342,16 @@ def eliminar_todos_los_extractos(request: Request, db: Session = Depends(get_db)
 def resumen(db: Session = Depends(get_db)):
     total = db.query(func.count(MovimientoBanco.id)).scalar() or 0
     conc = db.query(func.count(MovimientoBanco.id)).filter(MovimientoBanco.conciliado == True).scalar() or 0  # noqa: E712
-    monto_total = db.query(func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)).scalar() or 0
-    monto_pend = db.query(func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)).filter(
-        MovimientoBanco.conciliado == False).scalar() or 0  # noqa: E712
-    return {"total": total, "conciliados": conc, "pendientes": total - conc,
-            "monto_total": float(monto_total), "monto_pendiente": float(monto_pend)}
+    monto = func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)
+    monto_total = db.query(monto).scalar() or 0
+    pend = (MovimientoBanco.conciliado == False, MovimientoBanco.sin_factura.is_(None))  # noqa: E712
+    n_pend = db.query(func.count(MovimientoBanco.id)).filter(*pend).scalar() or 0
+    monto_pend = db.query(monto).filter(*pend).scalar() or 0
+    sf = (MovimientoBanco.sin_factura.isnot(None),)
+    return {"total": total, "conciliados": conc, "pendientes": n_pend,
+            "monto_total": float(monto_total), "monto_pendiente": float(monto_pend),
+            "sin_factura": db.query(func.count(MovimientoBanco.id)).filter(*sf).scalar() or 0,
+            "monto_sin_factura": float(db.query(monto).filter(*sf).scalar() or 0)}
 
 
 @router.get("/")
@@ -352,7 +362,9 @@ def listar(estado: str | None = None, q: str | None = None,
     if estado == "conciliado":
         query = query.filter(MovimientoBanco.conciliado == True)  # noqa: E712
     elif estado == "pendiente":
-        query = query.filter(MovimientoBanco.conciliado == False)  # noqa: E712
+        query = query.filter(MovimientoBanco.conciliado == False, MovimientoBanco.sin_factura.is_(None))  # noqa: E712
+    elif estado == "sin_factura":
+        query = query.filter(MovimientoBanco.sin_factura.isnot(None))
     if q:
         t = f"%{q.strip()}%"
         query = query.filter(or_(MovimientoBanco.descripcion.ilike(t), MovimientoBanco.cuit.ilike(t),
@@ -366,7 +378,7 @@ def listar(estado: str | None = None, q: str | None = None,
     salida = []
     for m in movs:
         d = BancoMovResponse.model_validate(m).model_dump()
-        es_rendicion = not m.gasto_id and (m.encargado_id or _solo_digitos(m.cuit) in encargados)
+        es_rendicion = not m.gasto_id and not m.sin_factura and (m.encargado_id or _solo_digitos(m.cuit) in encargados)
         d["rendicion"] = rendiciones.resumen(db, m) if es_rendicion else None
         salida.append(d)
     return salida
@@ -445,6 +457,7 @@ def rendiciones_pendientes(db: Session = Depends(get_db)):
     """Transferencias a encargados que todavía no se rindieron del todo (para vincular una factura desde Gastos)."""
     salida = []
     for m in (db.query(MovimientoBanco).filter(MovimientoBanco.conciliado.is_(False), MovimientoBanco.gasto_id.is_(None),
+                                                MovimientoBanco.sin_factura.is_(None),
                                                 MovimientoBanco.importe < 0)
               .order_by(MovimientoBanco.fecha.desc()).all()):
         if not rendiciones.encargado_de(db, m):
@@ -480,6 +493,7 @@ def rendir(mov_id: int, data: Rendir, request: Request, db: Session = Depends(ge
         raise HTTPException(404, "Movimiento o encargado no encontrado")
     if mov.gasto_id:
         raise HTTPException(409, "Este movimiento está conciliado con una factura del proveedor: deshacelo primero.")
+    _no_es_sin_factura(mov)
     if Decimal(str(mov.importe)) >= 0:
         raise HTTPException(400, "Solo se rinden transferencias que salieron del banco.")
     libres = {g.id for g in _facturas_libres(db)}
@@ -563,6 +577,7 @@ def match_manual(mov_id: int, gasto_id: int, db: Session = Depends(get_db)):
     g = db.get(Gasto, gasto_id)
     if not mov or not g:
         raise HTTPException(404, "Movimiento o factura no encontrados")
+    _no_es_sin_factura(mov)
     if mov.gasto_id and mov.gasto_id != gasto_id:
         anterior = db.get(Gasto, mov.gasto_id)
         if anterior:
@@ -583,11 +598,12 @@ class GastoDesdePago(BaseModel):
 
 @router.post("/{mov_id}/crear-gasto")
 def crear_gasto(mov_id: int, data: GastoDesdePago, db: Session = Depends(get_db)):
-    """Para pagos sin factura de proveedor (sueldos, AFIP, seguros, servicios): crea el gasto
+    """Para pagos sin factura de proveedor (seguros, servicios): crea el gasto
     con los datos del banco y lo deja conciliado con este movimiento."""
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")
+    _no_es_sin_factura(mov)
     if mov.conciliado:
         raise HTTPException(409, "Este movimiento ya está conciliado.")
     cuit = _solo_digitos(mov.cuit) or None
@@ -638,3 +654,43 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
     db.delete(mov)
     db.commit()
     return {"ok": True, "mensaje": "Movimiento eliminado"}
+
+
+# ---------------------------------------------------------------- egresos que no llevan factura (sueldos, AFIP)
+
+MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "afip": "AFIP"}
+
+
+def _no_es_sin_factura(mov: MovimientoBanco):
+    if mov.sin_factura:
+        raise HTTPException(409, f"Este movimiento está marcado como {MOTIVOS_SIN_FACTURA.get(mov.sin_factura, mov.sin_factura)} "
+                                 "(no lleva factura). Deshacé esa marca primero.")
+
+
+class SinFactura(BaseModel):
+    motivo: str | None = None  # "sueldo", "afip" o None para volver a dejarlo pendiente
+
+
+@router.post("/{mov_id}/sin-factura")
+def marcar_sin_factura(mov_id: int, data: SinFactura, request: Request, db: Session = Depends(get_db)):
+    """Saca el movimiento de los pendientes: es un sueldo o un pago a AFIP, no un gasto con factura."""
+    mov = db.get(MovimientoBanco, mov_id)
+    if not mov:
+        raise HTTPException(404, "Movimiento no encontrado")
+    motivo = (data.motivo or "").strip().lower() or None
+    if motivo and motivo not in MOTIVOS_SIN_FACTURA:
+        raise HTTPException(400, "Motivo no válido")
+    if motivo:
+        if mov.gasto_id or rendiciones.facturas_de(db, mov):
+            raise HTTPException(409, "Este movimiento ya tiene facturas vinculadas: quitalas primero.")
+        if Decimal(str(mov.importe)) >= 0:
+            raise HTTPException(400, "Solo se marcan pagos que salieron del banco.")
+        if motivo == "sueldo" and (mov.concepto not in extracto_roela.TRANSFERENCIAS or len(_solo_digitos(mov.cuit)) != 11):
+            raise HTTPException(400, "Solo una transferencia o un DEBIN a un CUIT se puede marcar como sueldo.")
+        mov.rendicion_cerrada, mov.rendicion_nota = False, None
+    mov.sin_factura = motivo
+    auditar(db, "banco_sin_factura", None,
+            f"Movimiento #{mov.id} ({mov.razon_social or mov.cuit or ''}, ${abs(Decimal(str(mov.importe)))}): "
+            + (f"marcado como {MOTIVOS_SIN_FACTURA[motivo]}" if motivo else "vuelve a pendiente"), request)
+    db.commit()
+    return {"ok": True, "sin_factura": motivo}

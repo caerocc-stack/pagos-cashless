@@ -484,7 +484,8 @@ def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
     cuit = _norm_cuit(g.cuit)
 
     bancos = []
-    for b in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False).all():  # noqa: E712
+    for b in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False,  # noqa: E712
+                                              MovimientoBanco.sin_factura.is_(None)).all():
         coincide_monto = abs(Decimal(str(b.importe))) == objetivo
         coincide_cuit = bool(cuit) and _norm_cuit(b.cuit) == cuit
         if coincide_monto or coincide_cuit:
