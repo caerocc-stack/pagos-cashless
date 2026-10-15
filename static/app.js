@@ -4606,7 +4606,8 @@ async function verFacturasProveedor(pid, usarPeriodo = false) {
             <td>${escapeHtml(f.concepto || '—')}<br><small class="muted">${escapeHtml([f.categoria, f.destino].filter(Boolean).join(' · '))}</small></td>
             <td class="num" style="${f.importe < 0 ? 'color:var(--danger)' : ''}">${fmtMoneda(f.importe)}</td>
             <td>${f.forma_pago ? `<span class="pago-ok">${escapeHtml(f.forma_pago)} · ${fmtFecha(f.fecha_pago)}</span>${f.conciliado ? ' <span class="conc-tag-ok">banco ✓</span>' : ''}`
-                               : (f.importe > 0 ? '<span class="conc-pend">Pendiente</span>' : '—')}</td>
+                               : (f.importe > 0 ? '<span class="conc-pend">Pendiente</span>' : '—')}
+                ${f.nota_diferencia ? `<div class="conc-dif">En el banco: ${fmtMoneda(f.pagado_banco)}<br>${escapeHtml(f.nota_diferencia)}</div>` : ''}</td>
             <td>${f.adjunto_url ? `<a class="btn btn-sm" href="${escapeHtml(f.adjunto_url)}" target="_blank" rel="noopener">Ver</a>` : ''}</td>
         </tr>`).join('') || '<tr><td colspan="6">Sin facturas en el período.</td></tr>';
         document.getElementById('modal-content').innerHTML = `
@@ -4616,7 +4617,8 @@ async function verFacturasProveedor(pid, usarPeriodo = false) {
                ${usarPeriodo ? '<br>' + gaPeriodoTexto() : '<br>Todo el historial'}</p>
             <div class="gasto-resumen" style="margin-top:0.75rem">
                 <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Total facturado</div><div class="gasto-kpi-valor">${fmtMoneda(r.total)}</div><div class="gasto-kpi-sub">${r.cantidad} comprobante(s)</div></div>
-                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(r.pagado)}</div></div>
+                <div class="gasto-kpi"><div class="gasto-kpi-label">Pagado</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(r.pagado)}</div>
+                    ${r.diferencia_banco ? `<div class="gasto-kpi-sub conc-dif">En el banco ${fmtMoneda(Math.abs(r.diferencia_banco))} ${r.diferencia_banco > 0 ? 'de más' : 'de menos'} (ver observaciones)</div>` : ''}</div>
                 <div class="gasto-kpi"><div class="gasto-kpi-label">Pendiente</div><div class="gasto-kpi-valor" style="color:var(--warning)">${fmtMoneda(r.pendiente)}</div></div>
             </div>
             <table><thead><tr><th>Fecha</th><th>Comprobante</th><th>Concepto</th><th class="num">Importe</th><th>Pago</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;

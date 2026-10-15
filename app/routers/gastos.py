@@ -298,10 +298,16 @@ def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: st
     for x in gastos:
         k = f"{x.fecha.year}-{x.fecha.month:02d}"
         meses[k] = meses.get(k, 0) + float(x.importe)
+    # pagos del banco por un importe distinto al de la factura (con el motivo anotado al conciliar)
+    movs = {m.gasto_id: m for m in db.query(MovimientoBanco).filter(
+        MovimientoBanco.gasto_id.in_([x.id for x in gastos] or [0]), MovimientoBanco.nota_conciliacion.isnot(None))}
+    diferencia = sum((abs(Decimal(str(m.importe))) - abs(Decimal(str(x.importe))) for x in gastos
+                      for m in [movs.get(x.id)] if m), Decimal("0"))
     return {
         "proveedor": {"id": p.id, "razon_social": p.razon_social, "cuit": p.cuit, "rubro": p.rubro,
                       "contacto": p.contacto, "telefono": p.telefono, "email": p.email, "cbu": p.cbu},
         "total": float(total), "pagado": float(pagado), "pendiente": float(total - pagado),
+        "diferencia_banco": float(diferencia),  # + se transfirió de más, - de menos (por las facturas del período)
         "cantidad": len(gastos),
         "por_mes": [{"periodo": k, "total": v} for k, v in sorted(meses.items())],
         "facturas": [{
@@ -310,6 +316,8 @@ def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: st
             "categoria": x.categoria, "destino": x.destino, "importe": float(x.importe),
             "forma_pago": x.forma_pago, "fecha_pago": str(x.fecha_pago) if x.fecha_pago else None,
             "conciliado": bool(x.conciliado), "adjunto_url": x.adjunto_url,
+            "pagado_banco": float(abs(movs[x.id].importe)) if x.id in movs else None,
+            "nota_diferencia": movs[x.id].nota_conciliacion if x.id in movs else None,
         } for x in gastos],
     }
 
