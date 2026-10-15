@@ -126,7 +126,7 @@ def registrar_diferencia(mov: MovimientoBanco, g: Gasto, nota: str | None):
     if not nota:
         raise HTTPException(400, f"El banco muestra {_fmt(pagado)} y la factura es de {_fmt(facturado)} "
                                  f"(diferencia {_fmt(abs(dif))}). Anotá el motivo para vincularlas.")
-    texto = f"{'se pagó' if dif > 0 else 'se pagaron'} {_fmt(abs(dif))} {'de más' if dif > 0 else 'de menos'} — {nota}"
+    texto = f"se pagó {_fmt(abs(dif))} {'de más' if dif > 0 else 'de menos'} — {nota}"
     mov.nota_conciliacion = texto[:300]
     g.notas = " · ".join(x for x in (g.notas, MARCA_DIF + texto) if x)[:400]
 

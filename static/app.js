@@ -3063,8 +3063,8 @@ async function abrirCandidatos(movId) {
 function motivoDiferencia(pagado, facturado) {
     const dif = Math.abs(pagado) - Math.abs(facturado);
     const nota = prompt(`El banco muestra ${fmtMoneda(Math.abs(pagado))} y la factura es de ${fmtMoneda(Math.abs(facturado))}: `
-        + `${dif > 0 ? 'se pagó' : 'se pagaron'} ${fmtMoneda(Math.abs(dif))} ${dif > 0 ? 'de más' : 'de menos'}.\n\n¿Por qué? Queda anotado en la factura y en la conciliación.`,
-        dif < 0 ? 'Nota de crédito por la diferencia' : '');
+        + `se pagó ${fmtMoneda(Math.abs(dif))} ${dif > 0 ? 'de más' : 'de menos'}.\n\n¿Por qué? Queda anotado en la factura y en la conciliación.`,
+        dif < 0 ? 'Nota de crédito por la diferencia' : 'Intereses o recargo por pago fuera de término');
     return nota === null ? null : nota.trim();
 }
 
