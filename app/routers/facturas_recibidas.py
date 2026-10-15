@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app import config_util, consultas_util as cu
 from app.auth import get_current_user, requiere_admin
 from app.database import get_db
-from app.factura_pdf import a_json, leer_factura, digitos, nombre_valido
+from app.factura_pdf import a_json, leer_factura, digitos, nombre_valido, TABLA
 from app.models.factura_recibida import FacturaRecibida, ESTADOS
 from app.models.gasto import Gasto
 from app.models.proveedor import Proveedor
@@ -85,11 +85,15 @@ def procesar(db: Session, fr: FacturaRecibida, contenido: bytes, qr: str | None 
                          email=fr.email if fr.email and "@" in fr.email else None)
         db.add(prov)
         db.flush()
+    elif (nombre or fr.proveedor_declarado) and (prov.razon_social.startswith("CUIT ") or TABLA.search(prov.razon_social)):
+        prov.razon_social = (nombre or fr.proveedor_declarado)[:160]  # el proveedor había quedado sin nombre legible
     previo = (db.query(Gasto).filter(Gasto.proveedor_id == prov.id, Gasto.revisado.isnot(False))
               .order_by(Gasto.fecha.desc(), Gasto.id.desc()).first())
     notas = []
     if d.get("receptor_es_apai") is False:
         notas.append("ATENCIÓN: la factura no figura a nombre de APAI")
+    if TABLA.search(prov.razon_social):
+        prov.razon_social = f"CUIT {d['cuit']} (completar razón social)"  # quedó un rótulo leído por error
     if not nombre and not fr.proveedor_declarado and prov.razon_social.startswith("CUIT "):
         notas.append("No se pudo leer la razón social del proveedor: completala")
     if fr.comentario:

@@ -108,7 +108,12 @@ def juntar_espaciado(texto: str) -> str:
 EMPRESA = re.compile(r"\b(S\.?\s?A\.?\s?S?\.?|S\.?\s?R\.?\s?L\.?|S\.?\s?A\.?\s?C\.?\s?I\.?|S\.?\s?H\.?|COOP\w*|S\.?\s?C\.?)\s*$", re.I)
 NO_NOMBRE = re.compile(r"ORIGINAL|DUPLICADO|TRIPLICADO|FACTURA|TIQUE|COMPROBANTE|^COD\b|C[OÓ]DIGO|C\.?U\.?I\.?T|IVA|DOMICILIO|INICIO|"
                        r"ASOC|PADRES|APAI|INAC|TOTAL|FECHA|P[AÁ]GINA|PUNTO DE VENTA|RESPONSABLE|MONOTRIBUTO|CONSUMIDOR|"
-                       r"LOCALIDAD|DIRECCI[OÓ]N|CLIENTE|VENDEDOR|COND\.|REL\.|SE[NÑ]OR|REMITO|:", re.I)
+                       r"LOCALIDAD|DIRECCI[OÓ]N|CLIENTE|VENDEDOR|COND\.|REL\.|SE[NÑ]OR|REMITO|:|"
+                       # encabezados de la tabla de artículos ("# ID ART. DESCRIPCION DESCUENTOS CANT PCIO. UNIT IMPORTE")
+                       r"DESCRIPCI|\bCANT\b|CANTIDAD|IMPORTE|P\.?\s?UNIT|PCIO|SUBTOTAL|BONIF|AL[IÍ]CUOTA|"
+                       r"\bART\.|U\.?\s?MEDIDA|^#", re.I)
+# renglón donde empieza la tabla de artículos: el nombre del emisor siempre está antes
+TABLA = re.compile(r"DESCRIPCI|\bCANT(?:IDAD)?\b|P\.?\s?UNIT|PRECIO|PCIO", re.I)
 
 
 def nombre_valido(s: str | None) -> bool:
@@ -130,7 +135,11 @@ def buscar_razon_social(plano: str, cuit: str | None = None) -> str | None:
             m = re.search(rf"^\s*([^\d:]{{4,80}}?)\s*{cuit_re}\s*$", l)  # sin "CUIT:" en el medio (eso es el domicilio)
             if m and nombre_valido(m.group(1).strip(" -|·")):
                 return m.group(1).strip(" -|·")[:160]
-    lineas = [l.strip(" |·-") for l in plano.splitlines()[:15]]
+    lineas = []
+    for l in plano.splitlines()[:15]:
+        if TABLA.search(l):
+            break  # lo que sigue son los artículos, no el emisor
+        lineas.append(l.strip(" |·-"))
     for l in lineas:  # nombre de empresa al principio del renglón ("GRUPO AGG SRL Nº: 0035-…")
         m = re.match(rf"([A-ZÁÉÍÓÚÑ][\w&.,' ]{{1,70}}?\b{SUFIJO_EMPRESA})(?=\s|$)", l)
         if m and nombre_valido(m.group(1)):
