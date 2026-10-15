@@ -67,6 +67,7 @@ class MovimientoBanco(Base):
     rendicion_nota: Mapped[str | None] = mapped_column(String(300))
     # Egresos que no llevan factura de proveedor: "sueldo" (marcado a mano) o "afip" (débitos de AFIP/ARCA)
     sin_factura: Mapped[str | None] = mapped_column(String(20))
+    sin_factura_nota: Mapped[str | None] = mapped_column(String(300))  # p. ej. de dónde vino la devolución
 
     gasto: Mapped["Gasto"] = relationship(foreign_keys=[gasto_id])
 

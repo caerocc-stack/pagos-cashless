@@ -658,7 +658,8 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------- egresos que no llevan factura (sueldos, AFIP)
 
-MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "afip": "AFIP"}
+# devuelta: transferencia hecha por error y reintegrada a la cuenta (se anota de dónde volvió la plata)
+MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "afip": "AFIP", "devuelta": "transferencia devuelta"}
 
 
 def _no_es_sin_factura(mov: MovimientoBanco):
@@ -668,7 +669,8 @@ def _no_es_sin_factura(mov: MovimientoBanco):
 
 
 class SinFactura(BaseModel):
-    motivo: str | None = None  # "sueldo", "afip" o None para volver a dejarlo pendiente
+    motivo: str | None = None  # "sueldo", "afip", "devuelta" o None para volver a dejarlo pendiente
+    nota: str | None = None
 
 
 @router.post("/{mov_id}/sin-factura")
@@ -687,8 +689,11 @@ def marcar_sin_factura(mov_id: int, data: SinFactura, request: Request, db: Sess
             raise HTTPException(400, "Solo se marcan pagos que salieron del banco.")
         if motivo == "sueldo" and (mov.concepto not in extracto_roela.TRANSFERENCIAS or len(_solo_digitos(mov.cuit)) != 11):
             raise HTTPException(400, "Solo una transferencia o un DEBIN a un CUIT se puede marcar como sueldo.")
+        if motivo == "devuelta" and not (data.nota or "").strip():
+            raise HTTPException(400, "Anotá cuándo y de quién volvió la plata.")
         mov.rendicion_cerrada, mov.rendicion_nota = False, None
     mov.sin_factura = motivo
+    mov.sin_factura_nota = (data.nota or "").strip()[:300] or None if motivo else None
     auditar(db, "banco_sin_factura", None,
             f"Movimiento #{mov.id} ({mov.razon_social or mov.cuit or ''}, ${abs(Decimal(str(mov.importe)))}): "
             + (f"marcado como {MOTIVOS_SIN_FACTURA[motivo]}" if motivo else "vuelve a pendiente"), request)

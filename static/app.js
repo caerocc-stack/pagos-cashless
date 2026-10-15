@@ -2753,9 +2753,9 @@ async function cargarResumenConc() {
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pendientes</div>
                 <div class="gasto-kpi-valor">${r.pendientes}</div>
                 <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Sueldos y AFIP</div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Sin factura</div>
                 <div class="gasto-kpi-valor">${r.sin_factura || 0}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · no llevan factura</div></div>`;
+                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · sueldos, AFIP, devueltas</div></div>`;
     } catch (err) { /* sin datos */ }
 }
 
@@ -2904,9 +2904,9 @@ function renderConciliacion(lista) {
         const puedeSueldo = ['190', '190100', 'F30', 'F30100'].includes(m.concepto) && (m.cuit || '').replace(/\D/g, '').length === 11;
         const btnSueldo = puedeSueldo ? `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, 'sueldo')" title="Es un sueldo: no lleva factura y sale de los pendientes">Sueldo</button>` : '';
         if (m.sin_factura) {
-            estado = m.sin_factura === 'sueldo'
-                ? '<span class="conc-sf">Sueldo</span> <span style="color:var(--text-muted)">· no lleva factura</span>'
-                : '<span class="conc-sf">AFIP</span> <span style="color:var(--text-muted)">· impuestos, no lleva factura</span>';
+            const SF = { sueldo: ['Sueldo', 'no lleva factura'], afip: ['AFIP', 'impuestos, no lleva factura'], devuelta: ['Devuelta', 'se reintegró a la cuenta'] };
+            const [et, det] = SF[m.sin_factura] || [m.sin_factura, 'no lleva factura'];
+            estado = `<span class="conc-sf">${et}</span> <span style="color:var(--text-muted)">· ${escapeHtml(m.sin_factura_nota || det)}</span>`;
             acciones = `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, null)" title="Volver a dejarlo pendiente de conciliar">Deshacer</button>`;
         } else if (m.rendicion) {  // transferencia a un encargado de compras: se rinde con facturas de otros proveedores
             estado = htmlEstadoRendicion(m);

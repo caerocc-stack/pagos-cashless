@@ -31,6 +31,7 @@ class BancoMovResponse(BaseModel):
     conciliado_manual: bool
     origen: str | None = None
     sin_factura: str | None = None
+    sin_factura_nota: str | None = None
     created_at: datetime
     gasto: GastoMini | None = None
 
