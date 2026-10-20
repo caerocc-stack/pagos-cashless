@@ -101,6 +101,14 @@ def firmar_adjunto(datos: dict):
         raise HTTPException(400, str(e))
 
 
+def _vincular_proveedor_por_cuit(db: Session, g: Gasto):
+    """Si la factura quedó sin proveedor pero su CUIT es de un proveedor cargado, la vincula (no se pierde de su ficha)."""
+    if not g.proveedor_id and g.cuit:
+        p = db.query(Proveedor).filter(Proveedor.cuit == _norm_cuit(g.cuit)).first()
+        if p:
+            g.proveedor_id = p.id
+
+
 def _completar_proveedor(data: dict, db: Session):
     """Si se eligio un proveedor, copia su razon social y CUIT al gasto."""
     if data.get("proveedor_id"):
@@ -500,6 +508,7 @@ def actualizar(gasto_id: int, data: GastoUpdate, db: Session = Depends(get_db)):
         _error_duplicado(dup)
     for campo, valor in cambios.items():
         setattr(g, campo, valor)
+    _vincular_proveedor_por_cuit(db, g)
     db.commit()
     db.refresh(g)
     return g

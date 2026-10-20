@@ -1858,7 +1858,8 @@ async function cargarGastosMeta() {
 async function cargarGastos() {
     try {
         await cargarGastosMeta();
-        if (!proveedoresCache.length) { try { proveedoresCache = await api('/api/proveedores/'); } catch (e) {} }
+        // siempre fresca: los proveedores nuevos llegan también por el portal
+        try { proveedoresCache = await api('/api/proveedores/'); } catch (e) {}
         const cat = document.getElementById('gasto-f-categoria').value;
         const mes = document.getElementById('gasto-f-mes').value;
         const anio = document.getElementById('gasto-f-anio').value;
@@ -2356,7 +2357,12 @@ function editarGasto(id) {
     document.getElementById('gasto-tipo').value = g.tipo_comprobante || '';
     document.getElementById('gasto-pv').value = g.punto_venta || '';
     document.getElementById('gasto-numero').value = g.numero || '';
-    document.getElementById('gasto-proveedor').value = g.proveedor_id || '';
+    const selProv = document.getElementById('gasto-proveedor');
+    if (g.proveedor_id && ![...selProv.options].some(o => o.value === String(g.proveedor_id))) {
+        // proveedor que no estaba en la lista (p. ej. recién creado por el portal): se agrega para no desvincularlo al guardar
+        selProv.add(new Option(`${g.razon_social || 'Proveedor'}${g.cuit ? ' (' + g.cuit + ')' : ''}`, g.proveedor_id));
+    }
+    selProv.value = g.proveedor_id || '';
     document.getElementById('gasto-razon').value = g.razon_social || '';
     document.getElementById('gasto-cuit').value = g.cuit || '';
     document.getElementById('gasto-importe').value = g.importe;
