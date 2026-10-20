@@ -17,6 +17,8 @@ class Proveedor(Base):
     telefono: Mapped[str | None] = mapped_column(String(50))
     email: Mapped[str | None] = mapped_column(String(150))
     cbu: Mapped[str | None] = mapped_column(String(30))
+    # Otras personas/cuentas que facturan o cobran por este proveedor (ej. madre e hijo): "23320097614, 20253562944"
+    cuits_relacionados: Mapped[str | None] = mapped_column(String(200))
     notas: Mapped[str | None] = mapped_column(String(400))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

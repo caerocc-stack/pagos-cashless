@@ -1739,7 +1739,7 @@ function mostrarFormProveedor() {
     document.getElementById('form-proveedor-titulo').textContent = 'Nuevo Proveedor';
     document.getElementById('prov-edit-id').value = '';
     ['prov-cuit', 'prov-razon', 'prov-fantasia', 'prov-rubro', 'prov-contacto',
-        'prov-telefono', 'prov-email', 'prov-cbu', 'prov-notas'].forEach(id =>
+        'prov-telefono', 'prov-email', 'prov-cbu', 'prov-relacionados', 'prov-notas'].forEach(id =>
         document.getElementById(id).value = '');
 }
 
@@ -1761,6 +1761,7 @@ function editarProveedor(id) {
     document.getElementById('prov-telefono').value = p.telefono || '';
     document.getElementById('prov-email').value = p.email || '';
     document.getElementById('prov-cbu').value = p.cbu || '';
+    document.getElementById('prov-relacionados').value = p.cuits_relacionados || '';
     document.getElementById('prov-notas').value = p.notas || '';
 }
 
@@ -1776,6 +1777,7 @@ async function guardarProveedor(e) {
         telefono: document.getElementById('prov-telefono').value || null,
         email: document.getElementById('prov-email').value || null,
         cbu: document.getElementById('prov-cbu').value || null,
+        cuits_relacionados: document.getElementById('prov-relacionados').value || null,
         notas: document.getElementById('prov-notas').value || null,
     };
     try {

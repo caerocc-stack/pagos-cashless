@@ -5,6 +5,7 @@ from sqlalchemy import or_
 from app.database import get_db
 from app.models.proveedor import Proveedor
 from app.schemas.proveedor import ProveedorCreate, ProveedorUpdate, ProveedorResponse
+from app.extracto_roela import cuit_ok
 
 router = APIRouter(prefix="/api/proveedores", tags=["Proveedores"])
 
@@ -42,11 +43,24 @@ def crear(data: ProveedorCreate, db: Session = Depends(get_db)):
         raise HTTPException(400, "CUIT inválido")
     if db.query(Proveedor).filter(Proveedor.cuit == cuit).first():
         raise HTTPException(409, f"Ya existe un proveedor con CUIT {cuit}")
-    p = Proveedor(**{**data.model_dump(), "cuit": cuit})
+    p = Proveedor(**{**data.model_dump(), "cuit": cuit, "cuits_relacionados": _relacionados(data.cuits_relacionados, cuit)})
     db.add(p)
     db.commit()
     db.refresh(p)
     return p
+
+
+def _relacionados(texto: str | None, propio: str | None = None) -> str | None:
+    """'23-32009761-4 / 20253562944' -> '23320097614, 20253562944' (CUIT válidos, sin repetir ni el propio)."""
+    import re
+    cuits = []
+    for c in re.findall(r"\d{2}-?\d{8}-?\d", texto or ""):
+        c = re.sub(r"\D", "", c)
+        if not cuit_ok(c):
+            raise HTTPException(400, f"El CUIT relacionado {c} no es válido.")
+        if c != propio and c not in cuits:
+            cuits.append(c)
+    return ", ".join(cuits) or None
 
 
 @router.put("/{prov_id}", response_model=ProveedorResponse)
@@ -60,6 +74,8 @@ def actualizar(prov_id: int, data: ProveedorUpdate, db: Session = Depends(get_db
         if nuevo != p.cuit and db.query(Proveedor).filter(Proveedor.cuit == nuevo).first():
             raise HTTPException(409, f"Ya existe un proveedor con CUIT {nuevo}")
         cambios["cuit"] = nuevo
+    if "cuits_relacionados" in cambios:
+        cambios["cuits_relacionados"] = _relacionados(cambios["cuits_relacionados"], cambios.get("cuit") or p.cuit)
     antes = {"razon_social": p.razon_social, "cuit": p.cuit, "rubro": p.rubro}
     for campo, valor in cambios.items():
         setattr(p, campo, valor)

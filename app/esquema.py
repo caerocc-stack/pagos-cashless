@@ -103,6 +103,7 @@ MIGRACIONES = [
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS sin_factura VARCHAR(20)",
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS sin_factura_nota VARCHAR(300)",
     "ALTER TABLE banco_movimientos ADD COLUMN IF NOT EXISTS nota_conciliacion VARCHAR(300)",
+    "ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS cuits_relacionados VARCHAR(200)",
 ]
 
 

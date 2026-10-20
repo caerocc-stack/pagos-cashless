@@ -11,6 +11,7 @@ class ProveedorCreate(BaseModel):
     telefono: str | None = None
     email: str | None = None
     cbu: str | None = None
+    cuits_relacionados: str | None = None
     notas: str | None = None
 
 
@@ -23,6 +24,7 @@ class ProveedorUpdate(BaseModel):
     telefono: str | None = None
     email: str | None = None
     cbu: str | None = None
+    cuits_relacionados: str | None = None
     notas: str | None = None
     activo: bool | None = None
 
@@ -37,6 +39,7 @@ class ProveedorResponse(BaseModel):
     telefono: str | None = None
     email: str | None = None
     cbu: str | None = None
+    cuits_relacionados: str | None = None
     notas: str | None = None
     activo: bool
     created_at: datetime

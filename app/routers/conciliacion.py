@@ -146,20 +146,34 @@ def _palabras(texto: str | None) -> set[str]:
     return {p for p in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]{4,}", (texto or "").upper()) if p not in _PALABRAS_VACIAS}
 
 
+def cuits_equivalentes(db: Session) -> dict[str, set[str]]:
+    """CUIT -> CUIT que cobran o facturan por el mismo proveedor (se carga en la ficha, va en las dos direcciones)."""
+    eq: dict[str, set[str]] = {}
+    for p in db.query(Proveedor).filter(Proveedor.cuits_relacionados.isnot(None)).all():
+        grupo = {p.cuit} | {_solo_digitos(c) for c in (p.cuits_relacionados or "").split(",") if _solo_digitos(c)}
+        for c in grupo:
+            eq.setdefault(c, set()).update(grupo - {c})
+    return eq
+
+
+def mismo_cuit(cuit_mov: str | None, cuit_factura: str | None, eq: dict | None = None) -> bool:
+    a, b = _solo_digitos(cuit_mov), _solo_digitos(cuit_factura)
+    return bool(a) and bool(b) and (a == b or b in (eq or {}).get(a, ()))
+
+
 def _nombre_mov(mov: MovimientoBanco) -> set[str]:
     """Palabras del destinatario según el banco (con CUIT, la razón social; sin CUIT, también la descripción)."""
     return _palabras(mov.razon_social if mov.cuit else f"{mov.razon_social or ''} {mov.descripcion or ''}")
 
 
-def _intentar_match(mov: MovimientoBanco, libres: list[Gasto]) -> bool:
+def _intentar_match(mov: MovimientoBanco, libres: list[Gasto], eq: dict | None = None) -> bool:
     """Concilia solo si hay UNA factura libre con el mismo importe (±$1) y el mismo CUIT;
     si el CUIT no coincide o el banco no lo informa (débitos directos, DEBIN a otra cuenta), con la razón social."""
     if mov.conciliado or mov.sin_factura:
         return False
     objetivo = abs(Decimal(str(mov.importe)))
     mismo_monto = [g for g in libres if abs(abs(Decimal(str(g.importe))) - objetivo) <= TOLERANCIA]
-    cuit = _solo_digitos(mov.cuit)
-    cand = [g for g in mismo_monto if cuit and _solo_digitos(g.cuit) == cuit]
+    cand = [g for g in mismo_monto if mismo_cuit(mov.cuit, g.cuit, eq)]
     if not cand:  # 2º intento: razón social + importe
         nombre_banco = _nombre_mov(mov)
         cand = [g for g in mismo_monto if nombre_banco & _palabras(g.razon_social)] if nombre_banco else []
@@ -228,7 +242,8 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
     db.flush()
 
     libres = _facturas_libres(db)
-    conciliados = sum(1 for obj in nuevos_objs if _intentar_match(obj, libres))
+    eq = cuits_equivalentes(db)
+    conciliados = sum(1 for obj in nuevos_objs if _intentar_match(obj, libres, eq))
     afip = sum(1 for obj in nuevos_objs if obj.sin_factura == "afip")
     db.commit()
     return {"ok": True, "leidos": len(movimientos), "nuevos": nuevos, "duplicados": duplicados,
@@ -244,7 +259,8 @@ def re_conciliar(db: Session = Depends(get_db)):
     libres = _facturas_libres(db)
     for m in pendientes:  # de paso, completar nombres con los proveedores cargados
         m.razon_social = _nombre_proveedor(db, m.cuit) or m.razon_social
-    nuevos = sum(1 for m in pendientes if _intentar_match(m, libres))
+    eq = cuits_equivalentes(db)
+    nuevos = sum(1 for m in pendientes if _intentar_match(m, libres, eq))
     db.commit()
     return {"ok": True, "conciliados": nuevos, "pendientes": len(pendientes) - nuevos}
 
@@ -581,18 +597,19 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
         if actual:
             libres.append(actual)
     nombre_banco = _nombre_mov(mov)
+    eq = cuits_equivalentes(db)
     salida = []
     for g in libres:
-        mismo_cuit = bool(cuit) and _solo_digitos(g.cuit) == cuit
+        coincide_cuit = mismo_cuit(mov.cuit, g.cuit, eq)
         mismo_nombre = bool(nombre_banco & _palabras(g.razon_social))
         dif = abs(abs(Decimal(str(g.importe))) - objetivo)
         mismo_monto = dif <= TOLERANCIA
-        if not (mismo_cuit or mismo_nombre or mismo_monto):
+        if not (coincide_cuit or mismo_nombre or mismo_monto):
             continue
         salida.append({
             "id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "cuit": g.cuit,
             "importe": float(g.importe), "concepto": g.concepto, "numero": g.numero,
-            "coincide_cuit": mismo_cuit, "coincide_nombre": mismo_nombre, "coincide_monto": mismo_monto,
+            "coincide_cuit": coincide_cuit, "coincide_nombre": mismo_nombre, "coincide_monto": mismo_monto,
             "diferencia": float(dif),
         })
     # primero las que coinciden en más cosas (CUIT, razón social, importe), después por diferencia de importe
