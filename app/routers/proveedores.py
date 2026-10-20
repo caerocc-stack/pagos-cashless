@@ -60,8 +60,19 @@ def actualizar(prov_id: int, data: ProveedorUpdate, db: Session = Depends(get_db
         if nuevo != p.cuit and db.query(Proveedor).filter(Proveedor.cuit == nuevo).first():
             raise HTTPException(409, f"Ya existe un proveedor con CUIT {nuevo}")
         cambios["cuit"] = nuevo
+    antes = {"razon_social": p.razon_social, "cuit": p.cuit, "rubro": p.rubro}
     for campo, valor in cambios.items():
         setattr(p, campo, valor)
+    # las facturas ya cargadas toman los datos nuevos (se ven igual en Gastos y en el Excel de la contadora)
+    from app.models.gasto import Gasto
+    for g in db.query(Gasto).filter(or_(Gasto.proveedor_id == p.id, Gasto.cuit == antes["cuit"])).all():
+        g.proveedor_id = p.id
+        if p.razon_social and g.razon_social in (antes["razon_social"], None, ""):
+            g.razon_social = p.razon_social
+        if p.cuit:
+            g.cuit = p.cuit
+        if p.rubro and g.rubro in (antes["rubro"], None, ""):
+            g.rubro = p.rubro
     db.commit()
     db.refresh(p)
     return p

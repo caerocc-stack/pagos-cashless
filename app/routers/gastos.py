@@ -356,10 +356,20 @@ def _gastos_del_mes(db: Session, anio: int, mes: int, por: str) -> list[Gasto]:
     return db.query(Gasto).filter(campo >= desde, campo < hasta).order_by(Gasto.fecha, Gasto.id).all()
 
 
+def _con_proveedor(db: Session, gastos: list[Gasto]) -> list[Gasto]:
+    """Asocia a cada factura su proveedor actual (por proveedor o, si no quedó vinculada, por CUIT)."""
+    por_id = {p.id: p for p in db.query(Proveedor).all()}
+    por_cuit = {p.cuit: p for p in por_id.values() if p.cuit}
+    for g in gastos:
+        g._prov = por_id.get(g.proveedor_id) or por_cuit.get(_norm_cuit(g.cuit))
+    return gastos
+
+
 @router.get("/excel-contadora/vista")
 def excel_contadora_vista(anio: int, mes: int, por: str = "factura", db: Session = Depends(get_db)):
     """Lo que va a tener el Excel para la contadora: totales por destino y lo que conviene revisar antes."""
-    gastos = _gastos_del_mes(db, anio, mes, por)
+    from app.excel_contadora import nombre_proveedor
+    gastos = _con_proveedor(db, _gastos_del_mes(db, anio, mes, por))
     destinos = {c: {"cantidad": 0, "total": 0.0} for c in CATEGORIAS}
     sin_destino = []
     for g in gastos:
@@ -368,7 +378,7 @@ def excel_contadora_vista(anio: int, mes: int, por: str = "factura", db: Session
             destinos[g.categoria]["total"] += float(g.importe)
         else:
             sin_destino.append(g)
-    corto = lambda g: {"id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "importe": float(g.importe),
+    corto = lambda g: {"id": g.id, "fecha": str(g.fecha), "razon_social": nombre_proveedor(g), "importe": float(g.importe),
                        "categoria": g.categoria}
     return {
         "cantidad": len(gastos), "total": round(sum(d["total"] for d in destinos.values()), 2),
@@ -384,7 +394,7 @@ def excel_contadora(anio: int, mes: int, por: str = "factura", db: Session = Dep
     """Excel del mes con el formato de la planilla modelo (TOTALES + una hoja por destino)."""
     from fastapi.responses import Response
     from app.excel_contadora import MESES, generar
-    gastos = _gastos_del_mes(db, anio, mes, por)
+    gastos = _con_proveedor(db, _gastos_del_mes(db, anio, mes, por))
     nombre = f"Gastos {MESES[mes - 1].upper()}-{anio}.xlsx"
     return Response(generar(gastos, anio, mes),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

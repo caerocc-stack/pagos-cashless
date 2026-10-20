@@ -72,10 +72,38 @@ def medio(forma_pago) -> str | None:
     return "Transf/Debito" if forma_pago in ("Transferencia", "Débito") else forma_pago
 
 
+def proveedor_de(g):
+    """El proveedor actual de la factura (lo que se edita en la solapa Proveedores manda sobre lo guardado en la factura)."""
+    return getattr(g, "_prov", None) or getattr(g, "proveedor", None)
+
+
+def nombre_proveedor(g) -> str | None:
+    """Razón social del proveedor y, si tiene, el nombre de fantasía entre paréntesis: "INC S.A. (Carrefour)"."""
+    p = proveedor_de(g)
+    if not p:
+        return g.razon_social
+    nombre = (p.razon_social or g.razon_social or "").strip()
+    fantasia = (p.nombre_fantasia or "").strip()
+    if fantasia and fantasia.lower() not in nombre.lower():
+        nombre = f"{nombre} ({fantasia})"
+    return nombre or None
+
+
+def cuit_proveedor(g):
+    p = proveedor_de(g)
+    return (p.cuit if p and p.cuit else None) or g.cuit
+
+
+def rubro_proveedor(g):
+    p = proveedor_de(g)
+    return (p.rubro if p and p.rubro else None) or g.rubro
+
+
 def fila(g) -> dict:
     return {2: fecha_corta(g.fecha), 3: g.tipo_comprobante, 4: numero_comprobante(g.punto_venta, g.numero),
-            5: g.razon_social, 6: cuit_con_guiones(g.cuit), 7: float(g.importe),
-            8: ((g.concepto or g.destino or "") + (f" (pagado vía {g.pagado_por})" if getattr(g, "pagado_por", None) else "")) or None, 9: g.rubro, 10: fecha_corta(g.fecha_pago), 11: medio(g.forma_pago)}
+            5: nombre_proveedor(g), 6: cuit_con_guiones(cuit_proveedor(g)), 7: float(g.importe),
+            8: ((g.concepto or g.destino or "") + (f" (pagado vía {g.pagado_por})" if getattr(g, "pagado_por", None) else "")) or None,
+            9: rubro_proveedor(g), 10: fecha_corta(g.fecha_pago), 11: medio(g.forma_pago)}
 
 
 def _hoja_destino(ws, gastos) -> int:
@@ -129,7 +157,7 @@ def _hoja_revisar(ws, sin_destino, sin_revisar, periodo):
     filas += [(g, "Llegó por el portal de proveedores y todavía no se revisó en el sistema (ya está sumada en su hoja).")
               for g in sin_revisar]
     for n, (g, motivo) in enumerate(filas, 1):
-        vals = [str(n), g.razon_social, f"{g.tipo_comprobante or ''} {numero_comprobante(g.punto_venta, g.numero) or ''}".strip(),
+        vals = [str(n), nombre_proveedor(g), f"{g.tipo_comprobante or ''} {numero_comprobante(g.punto_venta, g.numero) or ''}".strip(),
                 fecha_corta(g.fecha), float(g.importe), HOJAS.get(g.categoria, "—"), medio(g.forma_pago), motivo]
         for i, v in enumerate(vals):
             c = ws.cell(row=r, column=2 + i, value=v)
