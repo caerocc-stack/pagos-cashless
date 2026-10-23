@@ -1095,3 +1095,10 @@ td:has(> .td-acc) { width: 1%; }
 .sf-opciones .btn small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }
 .conc-tag-dif { display: inline-block; font-size: 0.72rem; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 999px; padding: 0.05rem 0.45rem; white-space: nowrap; }
 .conc-dif { font-size: 0.8rem; color: var(--warning); margin-top: 0.15rem; }
+
+/* Exámenes por instancia */
+.ex-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 0.75rem 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.ex-acc { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.ex-acc input[type=search] { margin: 0; width: 240px; max-width: 100%; }
+.ex-mover { margin: 0; min-height: 32px; padding: 0.2rem 1.6rem 0.2rem 0.45rem; font-size: 0.8rem; max-width: 190px; }
+.cc-tag-examen { background: color-mix(in srgb, #be123c 12%, transparent); color: #be123c; }

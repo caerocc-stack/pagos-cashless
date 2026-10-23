@@ -92,6 +92,7 @@
             <button class="side-group-head" onclick="toggleGrupo(this)" aria-expanded="true"><span>Cobranzas y alumnos</span><span class="side-caret"><svg class="ic" style="width:14px;height:14px"><use href="#i-chevron"/></svg></span></button>
             <div class="side-group-body">
                 <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
+                <button class="nav-btn side-item" data-section="examenes" onclick="cargarExamenes();cerrarSidebarMobile()"><svg class="ic"><use href="#i-calendar"/></svg>Exámenes (RAAC / Pericia)</button>
                 <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
                 <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
                 <button class="nav-btn side-item" data-section="cupones-siro" onclick="cargarLotesCupones();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Cupones de pago</button>
@@ -683,6 +684,19 @@
         </section>
 
         <!-- CONSULTAS (portal de familias + reportes del personal) -->
+        <!-- EXÁMENES: cursos que se rinden por examen (RAAC 147, Pericia) -->
+        <section id="sec-examenes" class="section">
+            <div class="toolbar">
+                <select id="ex-curso" onchange="EXA.sel=null;cargarExamenes()" aria-label="Curso"></select>
+                <select id="ex-anio" onchange="EXA.sel=null;cargarExamenes()" aria-label="Año"></select>
+                <span style="flex:1"></span>
+                <button class="btn btn-primary" onclick="formInstancia(0)"><svg class="ic"><use href="#i-plus"/></svg>Instancia de examen</button>
+            </div>
+            <div class="gasto-resumen" id="ex-resumen"></div>
+            <div class="cuotas-tabs" id="ex-tabs" role="tablist"></div>
+            <div id="ex-detalle"></div>
+        </section>
+
         <section id="sec-consultas" class="section">
             <div class="toolbar">
                 <div class="cuotas-tabs" role="tablist" id="cq-filtros">
@@ -1343,6 +1357,11 @@
                         <div style="display:flex;align-items:center;gap:0.5rem;margin-top:1.5rem">
                             <input type="checkbox" id="cur-viejas" style="width:auto">
                             <label for="cur-viejas" style="margin:0">Cobra cuotas de años anteriores</label>
+                        </div>
+                        <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-top:1.5rem;grid-column:1/-1">
+                            <input type="checkbox" id="cur-examen" style="width:auto;margin-top:0.2rem">
+                            <label for="cur-examen" style="margin:0">Se rinde por examen <span class="muted" style="font-weight:400">(RAAC 147, Pericia: cada pago es la inscripción
+                                a una instancia de examen; no genera cuotas ni deuda, y pagar varias veces no queda como saldo a favor)</span></label>
                         </div>
                     </div>
                     <div class="form-actions">

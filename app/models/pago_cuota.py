@@ -25,6 +25,8 @@ class PagoCuota(Base):
 
     origen: Mapped[str | None] = mapped_column(String(120))
     curso_id: Mapped[int | None] = mapped_column(ForeignKey("cursos.id"))  # imputación manual a un curso (alumnos con más de uno)
+    # cursos por examen: instancia elegida a mano (si no, va a la primera instancia desde el mes en que pagó)
+    instancia_id: Mapped[int | None] = mapped_column(ForeignKey("examen_instancias.id"))
     hash: Mapped[str] = mapped_column(String(40), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 

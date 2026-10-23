@@ -14,6 +14,7 @@ class CursoBase(BaseModel):
     matricula: Decimal = Decimal("0")
     cuota_anio_anterior: Decimal = Decimal("0")
     cobra_cuotas_viejas: bool = False
+    por_examen: bool = False
     anio: int = 2026
     activo: bool = True
 
@@ -33,6 +34,7 @@ class CursoUpdate(BaseModel):
     matricula: Decimal | None = None
     cuota_anio_anterior: Decimal | None = None
     cobra_cuotas_viejas: bool | None = None
+    por_examen: bool | None = None
     anio: int | None = None
     activo: bool | None = None
 

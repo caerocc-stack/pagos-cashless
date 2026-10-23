@@ -11,6 +11,9 @@ Reglas (definidas por la Asociación):
 - Un alumno puede cursar más de un curso en el año (aeronavegantes, exámenes): cada curso tiene sus
   cuotas. Si en el mes del pago hay cuotas de varios cursos, se elige la del curso cuyo importe
   coincide con el pagado. Un pago puede imputarse a mano a un curso (pago.curso_id).
+- Cursos que se rinden por examen (RAAC 147, Pericia; curso.por_examen): cada pago es la inscripción a
+  una instancia de examen. No hay cuotas ni deuda, y pagar varias veces no es saldo a favor: rindió varias
+  veces. El pago va a la primera instancia desde el mes en que se pagó (o a la elegida a mano).
 """
 import calendar
 import re
@@ -41,6 +44,45 @@ def fecha_cobro(p) -> date:
 
 def anio_de_pago(p) -> int:
     return fecha_imputacion(p).year
+
+
+def es_examen(curso) -> bool:
+    return bool(getattr(curso, "por_examen", False))
+
+
+def instancia_de(p, instancias: list):
+    """Instancia de examen de un pago: la elegida a mano o la primera desde el mes en que se pagó."""
+    if getattr(p, "instancia_id", None):
+        elegida = next((i for i in instancias if i.id == p.instancia_id), None)
+        if elegida:
+            return elegida
+    f = fecha_imputacion(p)
+    return next((i for i in sorted(instancias, key=lambda i: (i.anio, i.mes)) if (i.anio, i.mes) >= (f.year, f.month)), None)
+
+
+def separar_pagos_examen(planes: list, pagos: list) -> tuple[list, dict]:
+    """Reparte los pagos entre los cursos por examen y el resto. Va a un curso por examen el pago imputado a mano
+    a ese curso, o (sin imputación) si el alumno solo tiene cursos por examen, o si el importe es el de un examen
+    y no el de la cuota de otro de sus cursos. Devuelve (pagos de cuotas, {clave del plan: [pagos de examen]})."""
+    examenes = [pl for pl in planes if es_examen(pl.get("curso"))]
+    if not examenes:
+        return pagos, {}
+    otros = [pl for pl in planes if not es_examen(pl.get("curso"))]
+    por_curso = {pl.get("curso_id"): pl for pl in planes if pl.get("curso_id")}
+    normales, por_plan = [], {pl["clave"]: [] for pl in examenes}
+    for p in pagos:
+        forzado = por_curso.get(getattr(p, "curso_id", None))
+        destino = None
+        if forzado is not None:
+            destino = forzado if es_examen(forzado.get("curso")) else None
+        elif not otros:
+            destino = next((pl for pl in examenes if _dec(pl["curso"].cuota) == _dec(p.importe)), examenes[0])
+        else:
+            cuotas_otros = {_dec(pl["curso"].cuota) for pl in otros}
+            destino = next((pl for pl in examenes if _dec(pl["curso"].cuota) == _dec(p.importe)
+                            and _dec(p.importe) not in cuotas_otros), None)
+        (por_plan[destino["clave"]] if destino else normales).append(p)
+    return normales, por_plan
 
 
 def _dec(x) -> Decimal:
@@ -119,6 +161,7 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
 
     # Cuotas de cada curso
     items = []
+    pagos, pagos_examen = separar_pagos_examen(planes, pagos)
     for orden, pl in enumerate(planes):
         c = pl["curso"]
         cuota = _dec(getattr(alumno, "cuota_personalizada", None) if pl.get("principal") and getattr(alumno, "cuota_personalizada", None) else c.cuota)
@@ -126,6 +169,9 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         inicio = max(1, min(12, int(pl.get("mes_inicio") or MES_INICIO)))
         n = max(0, min(int(c.n_cuotas or 0), 12 - inicio + 1))
         pl["_cuota"], pl["_matricula"], pl["_n"], pl["_orden"] = cuota, matricula, n, orden
+        if es_examen(c):  # sin cuotas: cada pago es un examen (ver más abajo)
+            pl["_matricula"], pl["_n"] = CERO, 0
+            continue
         sufijo = f" ({pl['nombre']})" if varios else ""
         if matricula > 0:
             items.append({"plan": pl["clave"], "orden": orden, "clave": "matricula", "concepto": "Matrícula" + sufijo,
@@ -195,6 +241,28 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
             destino.append({"concepto": "Saldo a favor", "importe": resto, "tipo": "a_favor"})
         imputaciones.append(_pago_dto(p, destino, anio))
 
+    # Cursos por examen: cada pago es la inscripción a una instancia (pagada; nunca saldo a favor ni deuda)
+    for clave, lista in pagos_examen.items():
+        pl = next(x for x in planes if x["clave"] == clave)
+        instancias = getattr(pl["curso"], "_instancias", None) or []
+        for p in lista:
+            inst = instancia_de(p, instancias)
+            f = fecha_imputacion(p)
+            mes = inst.mes if inst and inst.anio == anio else (f.month if f.year == anio else 12)
+            cuando = f"{MESES[inst.mes - 1]} {inst.anio}" if inst else "sin instancia asignada"
+            nombre_curso = re.sub(r"\s*\(.*\)$", "", pl["nombre"])
+            concepto = f"Examen {nombre_curso} · {cuando}"
+            importe = _dec(p.importe)
+            it = {"plan": clave, "orden": pl["_orden"], "clave": f"examen-{p.id}", "concepto": concepto, "mes": mes,
+                  "importe": importe, "pagado": importe, "es_matricula": False, "examen": True,
+                  "instancia_id": inst.id if inst else None,
+                  "pagos": [{"id": p.id, "fecha": str(p.fecha), "importe": float(importe), "mes_pago": _mes_relativo(f, anio)}]}
+            items.append(it)
+            imputaciones.append(_pago_dto(p, [{"concepto": concepto, "importe": importe, "plan": clave, "tipo": "examen"}], anio))
+    if pagos_examen:
+        items.sort(key=lambda it: (it["mes"], 0 if it["es_matricula"] else 1, it["orden"]))
+        imputaciones.sort(key=lambda x: (x["fecha_pago"] or x["fecha"], x["id"] or 0))
+
     # Resumen general y por curso
     tot = {"esperado": CERO, "deuda": CERO, "adeudadas": 0, "matricula": CERO}
     meses_gral, proximo, salida = [], None, []
@@ -205,7 +273,10 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         venc = fin_de_mes(anio, it["mes"])
         es_vencido = vencido(it["mes"])
         pp = por_plan[it["plan"]]
-        if saldo <= 0:
+        if it.get("examen"):
+            est = "pagada"
+            es_vencido = False
+        elif saldo <= 0:
             est = "pagada"
         elif es_vencido:
             est = "parcial" if it["pagado"] > 0 else "adeudada"
@@ -234,8 +305,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                # pagos que la cubrieron (fecha de proceso) y si se pagó después de su mes
                "pagos": [{k: v for k, v in x.items() if k != "mes_pago"} for x in pagos_it],
                "pagada_el": pagos_it[-1]["fecha"] if pagos_it and saldo <= 0 else None,
-               "con_atraso": any(x["mes_pago"] > it["mes"] for x in pagos_it),
-               "prepaga": bool(it.get("prepago"))}
+               "con_atraso": False if it.get("examen") else any(x["mes_pago"] > it["mes"] for x in pagos_it),
+               "prepaga": bool(it.get("prepago")), "examen": bool(it.get("examen")), "instancia_id": it.get("instancia_id")}
         salida.append(dto)
         pp["items"].append(dto)
 
@@ -249,8 +320,10 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         cobrado = sum((it["pagado"] - it.get("prepago", CERO) for it in items if it["plan"] == pl["clave"]), CERO)
         if pl is planes[0]:  # lo que fue a deuda anterior o quedó a favor se cuenta en el curso principal
             cobrado += (deuda_ant - ant_saldo) + a_favor
-        completo = all(it["pagado"] >= it["importe"] for it in items if it["plan"] == pl["clave"])
+        # un curso por examen nunca está "completo": siempre se puede volver a rendir
+        completo = not es_examen(pl["curso"]) and all(it["pagado"] >= it["importe"] for it in items if it["plan"] == pl["clave"])
         est_plan = ("Moroso" if cobrado > 0 else "Sin pagos") if pp["deuda"] > 0 else ("Pagado" if completo else "Al día")
+        examenes = sum(1 for it in items if it["plan"] == pl["clave"] and it.get("examen"))
         cursos.append({"clave": pl["clave"], "nombre": pl["nombre"], "curso_id": pl.get("curso_id"),
                        "etiqueta": etiqueta_curso(pl, alumno), "area": getattr(pl["curso"], "area", None),
                        "esperado_anual": float(esperado_anual), "cobrado": float(cobrado), "completo": completo,
@@ -259,7 +332,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                        "esperado": float(pp["esperado"]), "deuda": float(pp["deuda"]), "cuotas_adeudadas": pp["adeudadas"],
                        "matricula_adeudada": float(pp["matricula"]), "meses_adeudados": [MESES[m - 1] for m in pp["meses"]],
                        "detalle_deuda": _detalle(pp["adeudadas"], pp["meses"], pp["matricula"]),
-                       "estado": est_plan, "proximo": pp["proximo"], "items": pp["items"]})
+                       "estado": est_plan, "proximo": pp["proximo"], "items": pp["items"],
+                       "por_examen": es_examen(pl["curso"]), "examenes_pagos": examenes})
 
     if varios:
         detalle = " · ".join(f"{c['nombre']}: {c['detalle_deuda'][0].lower()}{c['detalle_deuda'][1:]}" for c in cursos if c["detalle_deuda"])
@@ -283,7 +357,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         imputado_deuda_anterior=float(deuda_ant - ant_saldo),
         items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),
         meses_adeudados=meses_txt, detalle_deuda=detalle, proximo=proximo, saldo_a_favor=float(a_favor),
-        cuotas_pagas=sum(1 for s in salida if s["estado"] == "pagada" and not s["es_matricula"]),
+        cuotas_pagas=sum(1 for s in salida if s["estado"] == "pagada" and not s["es_matricula"] and not s["examen"]),
+        examenes_pagos=sum(1 for s in salida if s["examen"]),
         pagos=imputaciones, cuota=principal["cuota"], matricula=principal["matricula"], n_cuotas=principal["n_cuotas"],
         cursos=cursos,
     )

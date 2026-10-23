@@ -19,6 +19,7 @@ const PAGINAS = {
     alumnos: ['Cobranzas y alumnos', 'Alumnos', 'Padrón completo: datos personales, curso, condición y saldo de la tarjeta.'],
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
     'cupones-siro': ['Cobranzas y alumnos', 'Cupones de pago', 'Enviá el cupón de la cuota por correo y publicá en el portal los cupones que descargás de SIRO.'],
+    examenes: ['Cobranzas y alumnos', 'Exámenes por instancia', 'RAAC 147 y Pericia se rinden por examen: cargá los meses en que hubo examen y mirá quién pagó cada instancia, con la fecha de proceso.'],
     consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
     operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
@@ -3793,11 +3794,11 @@ async function cargarCursos() {
 function renderCursos() {
     document.getElementById('body-cursos').innerHTML = cursosCache.map(c => `
         <tr>
-            <td><b>${escapeHtml(c.nombre)}</b>${c.patron ? ` <span style="color:var(--text-muted);font-size:.8rem">(${escapeHtml(c.patron)})</span>` : ''}</td>
+            <td><b>${escapeHtml(c.nombre)}</b>${c.patron ? ` <span style="color:var(--text-muted);font-size:.8rem">(${escapeHtml(c.patron)})</span>` : ''}${c.por_examen ? ' <span class="badge">por examen</span>' : ''}</td>
             <td>${escapeHtml(c.area || '-')}</td>
             <td>${escapeHtml(c.divisiones || '-')}</td>
             <td style="text-align:right">${fmtMoneda(c.cuota)}</td>
-            <td style="text-align:right">${c.n_cuotas}</td>
+            <td style="text-align:right">${c.por_examen ? '—' : c.n_cuotas}</td>
             <td style="text-align:right">${Number(c.matricula) ? '$' + gastoFmt(c.matricula) : '—'}</td>
             <td>${c.cobra_cuotas_viejas ? 'Sí' : 'No'}</td>
             <td>
@@ -3816,6 +3817,7 @@ function mostrarFormCurso() {
         'cur-ncuotas', 'cur-matricula', 'cur-cuota-ant'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('cur-anio').value = '2026';
     document.getElementById('cur-viejas').checked = false;
+    document.getElementById('cur-examen').checked = false;
     document.getElementById('form-curso').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -3839,6 +3841,7 @@ function editarCurso(id) {
     document.getElementById('cur-cuota-ant').value = c.cuota_anio_anterior;
     document.getElementById('cur-anio').value = c.anio;
     document.getElementById('cur-viejas').checked = !!c.cobra_cuotas_viejas;
+    document.getElementById('cur-examen').checked = !!c.por_examen;
     document.getElementById('form-curso').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -3856,6 +3859,7 @@ async function guardarCurso(e) {
         cuota_anio_anterior: parseFloat(document.getElementById('cur-cuota-ant').value) || 0,
         anio: parseInt(document.getElementById('cur-anio').value) || 2026,
         cobra_cuotas_viejas: document.getElementById('cur-viejas').checked,
+        por_examen: document.getElementById('cur-examen').checked,
     };
     try {
         if (editId) {
@@ -6388,4 +6392,181 @@ async function pagoPorEncargado(gastoId, movId, encId) {
         cerrarModal();
         cargarGastos();
     } catch (e) { toast(e.message, 'error'); }
+}
+
+// =========================================================
+// --- EXÁMENES (cursos que se rinden por examen: RAAC 147, Pericia) ---
+// =========================================================
+// Cada pago es la inscripción a una instancia de examen (no una cuota): se ve quién pagó cada instancia,
+// con la fecha de proceso del pago, y se exporta el listado en PDF.
+let EXA = { cursos: [], datos: null, sel: null };
+
+async function cargarExamenes() {
+    const selCurso = document.getElementById('ex-curso'), selAnio = document.getElementById('ex-anio');
+    try {
+        if (!selAnio.options.length) {
+            const hoy = new Date().getFullYear();
+            selAnio.innerHTML = [hoy + 1, hoy, hoy - 1].map(a => `<option value="${a}" ${a === hoy ? 'selected' : ''}>${a}</option>`).join('');
+        }
+        EXA.cursos = await api('/api/examenes/cursos');
+        const previo = selCurso.value;
+        selCurso.innerHTML = EXA.cursos.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
+        if (previo && EXA.cursos.some(c => String(c.id) === previo)) selCurso.value = previo;
+        if (!EXA.cursos.length) {
+            document.getElementById('ex-resumen').innerHTML = '';
+            document.getElementById('ex-tabs').innerHTML = '';
+            document.getElementById('ex-detalle').innerHTML = `<div class="card"><p style="margin:0">Todavía no hay cursos que se rindan por examen.
+                En <b>Cuotas y estado de cuenta → Cursos</b>, editá el curso (RAAC 147, Pericia) y marcá <b>"Se rinde por examen"</b>.</p></div>`;
+            return;
+        }
+        EXA.datos = await api(`/api/examenes/${selCurso.value}?anio=${selAnio.value}`);
+        if (!EXA.sel || !(EXA.sel === 'sin' || EXA.datos.instancias.some(i => i.id === EXA.sel))) {
+            EXA.sel = EXA.datos.instancias.length ? EXA.datos.instancias[EXA.datos.instancias.length - 1].id : (EXA.datos.sin_instancia.length ? 'sin' : null);
+        }
+        pintarExamenes();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function pintarExamenes() {
+    const d = EXA.datos;
+    const alumnosUnicos = new Set([...d.instancias.flatMap(i => i.pagos), ...d.sin_instancia].map(p => p.alumno_id)).size;
+    document.getElementById('ex-resumen').innerHTML = `
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Instancias ${d.anio}</div><div class="gasto-kpi-valor">${d.instancias.length}</div>
+            <div class="gasto-kpi-sub">${d.instancias.map(i => i.nombre.split(' ')[0].slice(0, 3)).join(' · ') || 'sin cargar'}</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Exámenes pagados</div><div class="gasto-kpi-valor">${d.total_pagos}</div>
+            <div class="gasto-kpi-sub">${alumnosUnicos} alumno${alumnosUnicos === 1 ? '' : 's'}</div></div>
+        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Cobrado</div><div class="gasto-kpi-valor">${fmtMoneda(d.total)}</div>
+            <div class="gasto-kpi-sub">cuota ${fmtMoneda(d.curso.cuota)}</div></div>`;
+    const tabs = d.instancias.map(i => `<button class="cuota-tab ${EXA.sel === i.id ? 'activo' : ''}" onclick="EXA.sel=${i.id};pintarExamenes()">${escapeHtml(i.nombre)} <span class="badge">${i.cantidad}</span></button>`);
+    if (d.sin_instancia.length) tabs.push(`<button class="cuota-tab ${EXA.sel === 'sin' ? 'activo' : ''}" onclick="EXA.sel='sin';pintarExamenes()">Sin instancia <span class="badge badge-revisar">${d.sin_instancia.length}</span></button>`);
+    document.getElementById('ex-tabs').innerHTML = tabs.join('');
+    const det = document.getElementById('ex-detalle');
+    if (!EXA.sel) {
+        det.innerHTML = `<div class="card"><p style="margin:0">No hay instancias ni pagos de ${escapeHtml(d.curso.nombre)} en ${d.anio}.
+            Cargá los meses en que hubo examen con <b>+ Instancia de examen</b>.</p></div>`;
+        return;
+    }
+    const inst = EXA.sel === 'sin' ? null : d.instancias.find(i => i.id === EXA.sel);
+    const pagos = inst ? inst.pagos : d.sin_instancia;
+    const q = normTxt((document.getElementById('ex-buscar') || {}).value || '');
+    const lista = pagos.filter(p => !q || normTxt(`${p.apellido} ${p.nombre} ${p.dni} ${p.legajo}`).includes(q));
+    const opciones = sel => `<option value="">Automática (por fecha de pago)</option>` + d.instancias.map(i => `<option value="${i.id}" ${sel === i.id ? 'selected' : ''}>${escapeHtml(i.nombre)}</option>`).join('');
+    const mesesSin = d.meses_sin_instancia.map(m => MESES[m - 1].toLowerCase());
+    det.innerHTML = `
+        <div class="ex-cab">
+            <div>${inst ? `<h3 style="margin:0">Instancia de ${escapeHtml(inst.nombre.toLowerCase())}</h3>
+                <p class="muted" style="margin:0.15rem 0 0">${inst.fecha ? 'Examen el ' + fmtFecha(inst.fecha) + ' · ' : ''}${inst.descripcion ? escapeHtml(inst.descripcion) + ' · ' : ''}
+                ${inst.alumnos} alumno${inst.alumnos === 1 ? '' : 's'} · ${fmtMoneda(inst.total)}</p>`
+                : `<h3 style="margin:0">Pagos sin instancia</h3>
+                <p class="muted" style="margin:0.15rem 0 0">Pagados en ${mesesSin.join(', ')}, después de la última instancia cargada.
+                Cargá la instancia de ese mes y pasan solos, o movelos a mano.</p>`}</div>
+            <div class="ex-acc">
+                <input type="search" id="ex-buscar" placeholder="Buscar alumno, DNI o legajo…" oninput="pintarExamenes()" value="${escapeHtml((document.getElementById('ex-buscar') || {}).value || '')}">
+                ${inst ? `<button class="btn btn-sm" onclick="formInstancia(${inst.id})">Editar</button>
+                <button class="btn btn-sm btn-danger btn-ico" onclick="borrarInstancia(${inst.id})" title="Eliminar instancia" aria-label="Eliminar instancia"><svg class="ic"><use href="#i-trash"/></svg></button>` : ''}
+                <button class="btn btn-sm btn-primary" onclick="pdfExamen()" ${pagos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>
+            </div>
+        </div>
+        <div class="tabla-wrap"><table>
+            <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Fecha de proceso</th><th>Fecha de pago</th><th>Medio</th><th class="num">Importe</th><th>Instancia</th></tr></thead>
+            <tbody>${lista.map((p, n) => `<tr>
+                <td class="muted">${n + 1}</td>
+                <td><b>${escapeHtml(p.apellido)}</b>, ${escapeHtml(p.nombre)}<br><small class="muted">${escapeHtml(p.curso || '')}</small></td>
+                <td>${escapeHtml(p.dni || '')}</td><td>${escapeHtml(p.legajo || '')}</td>
+                <td><b>${fmtFecha(p.fecha)}</b></td><td>${p.fecha_pago ? fmtFecha(p.fecha_pago) : '—'}</td>
+                <td>${escapeHtml(nombreCanal(p))}</td>
+                <td class="num">${fmtMoneda(p.importe)}</td>
+                <td><select class="ex-mover" onchange="moverPagoExamen(${p.pago_id}, this.value)" aria-label="Instancia del pago">${opciones(p.manual ? p.instancia_id : null)}</select>
+                    ${p.manual ? '<small class="muted">elegida a mano</small>' : ''}</td>
+            </tr>`).join('') || `<tr><td colspan="9" class="muted">${q ? 'Nadie coincide con la búsqueda.' : 'Todavía no hay pagos para esta instancia.'}</td></tr>`}</tbody>
+        </table></div>`;
+    const b = document.getElementById('ex-buscar');
+    if (q && b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
+}
+
+function formInstancia(id) {
+    const d = EXA.datos, i = id ? d.instancias.find(x => x.id === id) : null;
+    const mesDef = i ? i.mes : new Date().getMonth() + 1;
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">${i ? 'Editar' : 'Nueva'} instancia de examen</h2>
+        <p class="muted" style="margin-top:-0.4rem">${escapeHtml(d.curso.nombre)} · cada pago va a la primera instancia desde el mes en que se pagó.</p>
+        <form onsubmit="guardarInstancia(event, ${id || 0})">
+            <div class="form-grid">
+                <div><label for="exi-mes">Mes del examen</label><select id="exi-mes">${MESES.map((m, k) => `<option value="${k + 1}" ${k + 1 === mesDef ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+                <div><label for="exi-anio">Año</label><input type="number" id="exi-anio" value="${i ? i.anio : d.anio}" min="2020" max="2100"></div>
+                <div><label for="exi-fecha">Día del examen <span class="muted">(opcional)</span></label><input type="date" id="exi-fecha" value="${i && i.fecha ? i.fecha : ''}"></div>
+                <div><label for="exi-desc">Descripción <span class="muted">(opcional)</span></label><input type="text" id="exi-desc" maxlength="120" value="${escapeHtml(i && i.descripcion || '')}" placeholder="Ej.: Mesa de la mañana"></div>
+            </div>
+            <div class="form-actions"><button type="submit" class="btn btn-primary">Guardar</button><button type="button" class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>
+        </form>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function guardarInstancia(e, id) {
+    e.preventDefault();
+    const body = { mes: +document.getElementById('exi-mes').value, anio: +document.getElementById('exi-anio').value,
+        fecha: document.getElementById('exi-fecha').value || null, descripcion: document.getElementById('exi-desc').value || null };
+    try {
+        const r = await api(id ? `/api/examenes/instancias/${id}` : `/api/examenes/${EXA.datos.curso.id}/instancias`,
+            { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        toast(id ? 'Instancia actualizada' : 'Instancia creada');
+        cerrarModal();
+        EXA.sel = r.id;
+        if (String(body.anio) !== document.getElementById('ex-anio').value) document.getElementById('ex-anio').value = body.anio;
+        cargarExamenes();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function borrarInstancia(id) {
+    const i = EXA.datos.instancias.find(x => x.id === id);
+    if (!confirm(`¿Eliminar la instancia de ${i ? i.nombre.toLowerCase() : ''}? Sus pagos se vuelven a asignar por la fecha de pago (no se borra ningún pago).`)) return;
+    try { toast((await api(`/api/examenes/instancias/${id}`, { method: 'DELETE' })).mensaje); EXA.sel = null; cargarExamenes(); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+async function moverPagoExamen(pagoId, instId) {
+    try {
+        await api(`/api/examenes/pagos/${pagoId}/instancia`, { method: 'PUT', body: JSON.stringify({ instancia_id: instId ? +instId : null }) });
+        toast(instId ? 'Pago movido de instancia' : 'El pago vuelve a asignarse por su fecha');
+        cargarExamenes();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// PDF: listado de los alumnos que pagaron la instancia, con la fecha de proceso
+async function pdfExamen() {
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    const d = EXA.datos, inst = EXA.sel === 'sin' ? null : d.instancias.find(i => i.id === EXA.sel);
+    const pagos = (inst ? inst.pagos : d.sin_instancia).slice().sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre));
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const logo = await _imagenLogo();
+    const curso = d.curso.nombre.replace(/\s*\(.*\)$/, '');
+    doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
+    doc.setFillColor(160, 30, 34); doc.rect(0, 30, W, 1.4, 'F');
+    if (logo) { doc.setFillColor(255, 255, 255); doc.circle(21, 15, 9.5, 'F'); doc.addImage(logo, 'PNG', 12.5, 6.5, 17, 17); }
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    doc.text(`Examen ${curso} · ${inst ? inst.nombre : 'pagos sin instancia'}`, 36, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(200, 214, 234);
+    doc.text('Asociación de Padres y Alumnos del I.N.A.C.', 36, 21);
+    doc.setFontSize(8.5); doc.text(`Generado el ${fmtFecha(hoyISO())}`, W - 14, 21, { align: 'right' });
+    doc.setTextColor(30, 41, 59); doc.setFontSize(10);
+    const sub = [inst && inst.fecha ? `Examen el ${fmtFecha(inst.fecha)}` : '', inst && inst.descripcion ? inst.descripcion : '',
+        `${pagos.length} alumno${pagos.length === 1 ? '' : 's'} que pagaron el examen · ${fmtMoneda(pagos.reduce((s, p) => s + p.importe, 0))}`].filter(Boolean).join(' · ');
+    doc.text(sub, 14, 40);
+    doc.autoTable({
+        startY: 45, margin: { left: 14, right: 14 },
+        head: [['#', 'Apellido y nombre', 'DNI', 'Legajo', 'Fecha de proceso', 'Fecha de pago', 'Importe']],
+        body: pagos.map((p, n) => [n + 1, `${p.apellido}, ${p.nombre}`, p.dni || '', p.legajo || '', fmtFecha(p.fecha),
+            p.fecha_pago ? fmtFecha(p.fecha_pago) : '—', fmtMoneda(p.importe)]),
+        styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [21, 35, 59] },
+        alternateRowStyles: { fillColor: [244, 246, 250] },
+        columnStyles: { 0: { cellWidth: 9, halign: 'right' }, 4: { fontStyle: 'bold' }, 6: { halign: 'right' } },
+    });
+    const n = doc.internal.getNumberOfPages();
+    for (let k = 1; k <= n; k++) {
+        doc.setPage(k); doc.setFontSize(8); doc.setTextColor(120, 130, 145);
+        doc.text(`Página ${k} de ${n}`, W - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+    doc.save(`Examen ${curso} - ${inst ? inst.nombre : 'sin instancia'}.pdf`);
 }

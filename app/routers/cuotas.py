@@ -328,7 +328,16 @@ def planes_de(alumno, cursos: list[Curso], extras: list[AlumnoCurso]) -> list[di
 
 def cursos_vigentes(db: Session, anio: int) -> list[Curso]:
     cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
-    return cursos or db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    cursos = cursos or db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    # cursos por examen: sus instancias, para saber a qué examen fue cada pago (ver cuenta_alumno.instancia_de)
+    por_examen = {c.id: c for c in cursos if c.por_examen}
+    if por_examen:
+        from app.models.curso import InstanciaExamen
+        for c in por_examen.values():
+            c._instancias = []
+        for i in db.query(InstanciaExamen).filter(InstanciaExamen.curso_id.in_(list(por_examen))).all():
+            por_examen[i.curso_id]._instancias.append(i)
+    return cursos
 
 
 def extras_por_alumno(db: Session, anio: int, alumno_id: int | None = None) -> dict[int, list[AlumnoCurso]]:

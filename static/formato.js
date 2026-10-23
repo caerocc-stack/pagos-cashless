@@ -254,11 +254,12 @@ function _gridItems(items, sinSufijo) {
         let est = it.estado;
         if (est === 'a_vencer') { est = primera ? 'a_vencer' : 'futura'; primera = false; }
         const concepto = sinSufijo ? it.concepto.replace(/ \(.*\)$/, '') : it.concepto;
-        const nombre = it.es_matricula ? 'Matrícula' : (items.length > 2 ? MESES_CORTOS[it.mes - 1] : concepto);
+        const nombre = it.es_matricula ? 'Matrícula' : it.examen ? 'Examen ' + MESES_CORTOS[it.mes - 1]
+            : (items.length > 2 ? MESES_CORTOS[it.mes - 1] : concepto);
         const dia = f => fmtFecha(f).slice(0, 5);  // 12/10
         const pagos = it.pagos || [];
         const ultimo = pagos.length ? pagos[pagos.length - 1].fecha : null;
-        let det = { pagada: it.prepaga ? 'Pagada antes' : (ultimo ? 'Pagó ' + dia(ultimo) : 'Pagada'),
+        let det = { pagada: it.prepaga ? 'Pagada antes' : it.examen && !it.instancia_id ? 'Pagó ' + dia(ultimo) + '<br>sin instancia' : (ultimo ? 'Pagó ' + dia(ultimo) : 'Pagada'),
             parcial: 'Falta ' + fmtMoneda(it.saldo), adeudada: 'Debe ' + fmtMoneda(it.saldo),
             a_vencer: 'Vence ' + dia(it.vence), futura: 'Pendiente' }[est];
         if (est === 'parcial' && ultimo) det += `<br>Pagó ${fmtMoneda(it.pagado)}`;
@@ -281,7 +282,8 @@ function htmlLeyendaCuotas() {
 function htmlResumenDeuda(e) {
     const prox = e.proximo ? `Próximo vencimiento: <b>${_escCC(e.proximo.concepto)}</b>, ${fmtMoneda(e.proximo.importe)}, vence el <b>${fmtFecha(e.proximo.vence)}</b>.` : '';
     if (!(e.deuda_total > 0)) {
-        return `<div class="cc-resumen cc-ok"><b>Al día.</b> No hay cuotas vencidas sin pagar. ${prox}</div>`;
+        const ex = e.examenes_pagos ? ` Exámenes pagados en el año: <b>${e.examenes_pagos}</b>.` : '';
+        return `<div class="cc-resumen cc-ok"><b>Al día.</b> No hay cuotas vencidas sin pagar.${ex} ${prox}</div>`;
     }
     const partes = [];
     if (e.cuotas_adeudadas) partes.push(`Cuotas adeudadas: <b>${e.cuotas_adeudadas}</b>`);
@@ -313,7 +315,8 @@ function htmlPagosImputados(pagos, cursos = null) {
         return lineas.map((d, i) => {
             const marca = d.atrasada ? '<span class="cc-tag cc-tag-atraso">Cuota atrasada</span>'
                 : d.adelanto ? '<span class="cc-tag cc-tag-adelanto">Adelanto</span>'
-                : d.tipo === 'a_favor' ? '<span class="cc-tag">Saldo a favor</span>' : '';
+                : d.tipo === 'a_favor' ? '<span class="cc-tag">Saldo a favor</span>'
+                : d.tipo === 'examen' ? '<span class="cc-tag cc-tag-examen">Examen</span>' : '';
             const ultima = i === lineas.length - 1;
             return `<li class="${varias ? 'cc-parte' : ''}${varias && ultima ? ' cc-parte-fin' : ''}">
                 <div><b>${fmtFecha(p.fecha)}</b> · ${_escCC(d.concepto)} ${marca}
