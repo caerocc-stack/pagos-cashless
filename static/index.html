@@ -858,6 +858,7 @@
                 <button class="cuota-tab gasto-tab activo" data-tab="facturas" onclick="gastosTab('facturas')">Facturas</button>
                 <button class="cuota-tab gasto-tab" data-tab="analisis" onclick="gastosTab('analisis')">Análisis y gráficos</button>
                 <button class="cuota-tab gasto-tab" data-tab="proveedores" onclick="gastosTab('proveedores')">Por proveedor</button>
+                <button class="cuota-tab gasto-tab" data-tab="sectores" onclick="gastosTab('sectores')">Cuenta por sector</button>
                 <button class="cuota-tab gasto-tab" data-tab="recibidas" onclick="gastosTab('recibidas')">Recibidas de proveedores <span class="side-badge" id="badge-recibidas" hidden></span></button>
             </div>
 
@@ -875,6 +876,9 @@
                 <input type="text" id="buscar-gasto" placeholder="Buscar por proveedor, CUIT, concepto, rubro, destino o N° ...">
                 <select id="gasto-f-categoria" onchange="cargarGastos()">
                     <option value="">Todas las categorías</option>
+                </select>
+                <select id="gasto-f-sector" onchange="cargarGastos()" aria-label="Sector">
+                    <option value="">Todos los sectores</option>
                 </select>
                 <select id="gasto-f-mes" onchange="cargarGastos()"></select>
                 <select id="gasto-f-anio" onchange="cargarGastos()"></select>
@@ -952,6 +956,8 @@
                         <div><label for="gasto-categoria">Hoja del Excel <span style="color:var(--text-muted);font-weight:400">(destino)</span></label>
                             <select id="gasto-categoria"><option value="">— Sin asignar —</option><option value="Oficina">Gtos. de Oficina</option>
                                 <option value="Infraestructura">Infraestructura</option><option value="Escuela">Gtos. de la Escuela</option><option value="Honorarios">Honorarios</option></select></div>
+                        <div><label for="gasto-sector">Sector / área <span style="color:var(--text-muted);font-weight:400">(para su cuenta corriente)</span></label>
+                            <select id="gasto-sector"><option value="">— Sin asignar —</option></select></div>
                         <div class="gasto-pago-box" style="grid-column:1/-1">
                             <div class="gasto-pago-tit">Pago <span id="gasto-pago-vinc" class="muted"></span></div>
                             <div class="gasto-pago-campos">
@@ -1031,6 +1037,24 @@
             </div>
 
             <!-- RECIBIDAS DEL PORTAL DE PROVEEDORES -->
+            <div id="gastos-tab-sectores" style="display:none">
+                <p class="muted" style="margin-top:0">Cuenta corriente de cada sector: lo cobrado en cuotas de sus cursos (por fecha de proceso) menos las
+                facturas destinadas a ese sector. El sector de cada factura se elige en la lista de Facturas o al editarla.</p>
+                <div class="toolbar">
+                    <select id="cs-sector" onchange="cargarCuentaSector()" aria-label="Sector"></select>
+                    <label class="cs-fecha">Desde <input type="date" id="cs-desde" onchange="cargarCuentaSector()"></label>
+                    <label class="cs-fecha">Hasta <input type="date" id="cs-hasta" onchange="cargarCuentaSector()"></label>
+                    <span style="flex:1"></span>
+                    <button class="btn btn-primary" onclick="pdfCuentaSector()"><svg class="ic"><use href="#i-download"/></svg>Estado de cuenta en PDF</button>
+                </div>
+                <div class="cs-cursos" id="cs-cursos"></div>
+                <div class="gasto-resumen" id="cs-resumen"></div>
+                <div class="tabla-wrap"><table>
+                    <thead><tr><th>Fecha</th><th>Concepto</th><th>Proveedor</th><th class="num">Ingreso</th><th class="num">Egreso</th><th class="num">Saldo</th></tr></thead>
+                    <tbody id="cs-movs"></tbody>
+                </table></div>
+            </div>
+
             <div id="gastos-tab-recibidas" style="display:none">
                 <div class="card" style="margin-bottom:1rem">
                     <p style="margin:0">Los proveedores suben sus facturas en el <b>portal de proveedores</b>, sin cuenta:

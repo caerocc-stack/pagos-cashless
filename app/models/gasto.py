@@ -14,6 +14,10 @@ CATEGORIAS = [
     "Honorarios",
 ]
 
+# Sector / área del colegio al que se destinó el gasto (para la cuenta corriente de cada sector).
+# "General" = abarca más de un área (ej. pintar toda la escuela).
+SECTORES = ["Dirección", "Administración", "Ciclo Básico", "Aviónica", "Mecánica", "Aeronavegantes", "Exámenes", "General"]
+
 # Formas de pago
 FORMAS_PAGO = ["Efectivo", "Transferencia", "Débito", "Tarjeta", "Cheque", "Otro"]
 
@@ -48,6 +52,7 @@ class Gasto(Base):
     rubro: Mapped[str | None] = mapped_column(String(80))
     categoria: Mapped[str | None] = mapped_column(String(40))
     destino: Mapped[str | None] = mapped_column(String(160))
+    sector: Mapped[str | None] = mapped_column(String(40), index=True)   # ver SECTORES
 
     # Pago (se completa al vincular un movimiento real: banco o caja efectivo)
     forma_pago: Mapped[str | None] = mapped_column(String(30))

@@ -1102,3 +1102,16 @@ td:has(> .td-acc) { width: 1%; }
 .ex-acc input[type=search] { margin: 0; width: 240px; max-width: 100%; }
 .ex-mover { margin: 0; min-height: 32px; padding: 0.2rem 1.6rem 0.2rem 0.45rem; font-size: 0.8rem; max-width: 190px; }
 .cc-tag-examen { background: color-mix(in srgb, #be123c 12%, transparent); color: #be123c; }
+
+/* Sector en la lista de facturas y cuenta corriente por sector */
+.sec-select { display: block; margin-top: 0.25rem; }
+.cs-fecha { display: flex; align-items: center; gap: 0.4rem; margin: 0; font-weight: 600; font-size: 0.85rem; }
+.cs-fecha input { margin: 0; }
+.cs-cursos { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; align-items: center; margin: -0.25rem 0 0.9rem; font-size: 0.88rem; }
+.cs-curso { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; font-weight: 600; cursor: pointer; }
+.cs-curso input { width: auto; margin: 0; }
+.cs-in { color: var(--success); font-weight: 600; }
+.cs-out { color: var(--danger); font-weight: 600; }
+.ex-vista { margin: 0 0 0.75rem; }
+.ex-solo { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0 0 0.6rem; font-weight: 600; cursor: pointer; }
+.ex-solo input { width: auto; margin: 0; }

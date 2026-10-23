@@ -63,3 +63,14 @@ class InstanciaExamen(Base):
     fecha: Mapped[date | None] = mapped_column(Date)                 # día del examen (opcional)
     descripcion: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+
+
+class ExamenInscripto(Base):
+    """Alumno inscripto a una instancia de examen (haya pagado o no)."""
+    __tablename__ = "examen_inscriptos"
+    __table_args__ = (UniqueConstraint("instancia_id", "alumno_id", name="uq_examen_inscripto"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instancia_id: Mapped[int] = mapped_column(ForeignKey("examen_instancias.id", ondelete="CASCADE"), nullable=False, index=True)
+    alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

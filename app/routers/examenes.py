@@ -4,6 +4,7 @@ Cursos que se rinden por examen (RAAC 147, Pericia): instancias del año y alumn
 Cada pago de estos cursos es la inscripción a un examen. Va a la primera instancia desde el mes en que
 se pagó (fecha de pago), salvo que se la haya movido a mano a otra (pago.instancia_id).
 """
+import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.alumno import Alumno
-from app.models.curso import Curso, InstanciaExamen
+from app.models.curso import Curso, InstanciaExamen, ExamenInscripto
 from app.models.pago_cuota import PagoCuota
 from app.cuenta_alumno import MESES, instancia_de, separar_pagos_examen, fecha_imputacion
 from app.routers.cuotas import cursos_vigentes, extras_por_alumno, pagos_del_anio, planes_de
@@ -68,11 +69,32 @@ def detalle(curso_id: int, anio: int | None = None, db: Session = Depends(get_db
                               "instancia_id": inst.id if inst else None, "manual": bool(p.instancia_id),
                               "mes_pago": fecha_imputacion(p).month})
     filas.sort(key=lambda f: (f["apellido"], f["nombre"], f["fecha"]))
+    # inscriptos de cada instancia (cargados a mano o desde la planilla) y si pagaron esa instancia
+    insc_por_inst: dict[int, list] = {}
+    if instancias:
+        for x, a in (db.query(ExamenInscripto, Alumno).join(Alumno, Alumno.id == ExamenInscripto.alumno_id)
+                     .filter(ExamenInscripto.instancia_id.in_([i.id for i in instancias])).all()):
+            insc_por_inst.setdefault(x.instancia_id, []).append(a)
     salida = []
     for i in instancias:
         de_esta = [f for f in filas if f["instancia_id"] == i.id]
-        salida.append({**_inst_dto(i), "cantidad": len(de_esta), "alumnos": len({f["alumno_id"] for f in de_esta}),
-                       "total": sum(f["importe"] for f in de_esta), "pagos": de_esta})
+        pagaron = {f["alumno_id"] for f in de_esta}
+        inscriptos = sorted(insc_por_inst.get(i.id, []), key=lambda a: (a.apellido, a.nombre))
+        ids_insc = {a.id for a in inscriptos}
+        for f in de_esta:
+            f["inscripto"] = f["alumno_id"] in ids_insc if inscriptos else None
+        # otros pagos del alumno en el año (para ver si pagó en otra instancia)
+        otros = {}
+        for f in filas:
+            otros.setdefault(f["alumno_id"], []).append(f)
+        salida.append({**_inst_dto(i), "cantidad": len(de_esta), "alumnos": len(pagaron),
+                       "total": sum(f["importe"] for f in de_esta), "pagos": de_esta,
+                       "inscriptos": [{"alumno_id": a.id, "apellido": a.apellido, "nombre": a.nombre, "dni": a.dni,
+                                       "legajo": a.legajo, "curso": a.curso, "pago": a.id in pagaron,
+                                       "pago_fecha": next((f["fecha"] for f in de_esta if f["alumno_id"] == a.id), None),
+                                       "otras_instancias": sorted({f["instancia_id"] for f in otros.get(a.id, []) if f["instancia_id"] != i.id and f["instancia_id"]})}
+                                      for a in inscriptos],
+                       "no_pagaron": sum(1 for a in inscriptos if a.id not in pagaron)})
     sin = [f for f in filas if f["instancia_id"] is None]
     return {"curso": {"id": curso.id, "nombre": curso.nombre, "cuota": float(curso.cuota or 0)}, "anio": anio,
             "instancias": salida, "sin_instancia": sin,
@@ -127,6 +149,7 @@ def borrar_instancia(inst_id: int, db: Session = Depends(get_db)):
     if not i:
         raise HTTPException(404, "Instancia no encontrada")
     db.query(PagoCuota).filter(PagoCuota.instancia_id == inst_id).update({PagoCuota.instancia_id: None})
+    db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id).delete()
     db.delete(i)
     db.commit()
     return {"ok": True, "mensaje": "Instancia eliminada: sus pagos vuelven a asignarse por la fecha de pago"}
@@ -145,4 +168,50 @@ def mover_pago(pago_id: int, data: MoverPago, db: Session = Depends(get_db)):
         raise HTTPException(404, "Instancia no encontrada")
     p.instancia_id = data.instancia_id
     db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- inscriptos de cada instancia
+
+class Inscriptos(BaseModel):
+    dnis: list[str] = []          # DNI (o legajo) de cada inscripto; se aceptan con puntos o espacios
+    reemplazar: bool = False      # True: la lista reemplaza a la anterior
+
+
+@router.post("/instancias/{inst_id}/inscriptos")
+def cargar_inscriptos(inst_id: int, data: Inscriptos, db: Session = Depends(get_db)):
+    """Inscribe alumnos a la instancia por DNI (o legajo). Devuelve los que no se encontraron en el padrón."""
+    i = db.get(InstanciaExamen, inst_id)
+    if not i:
+        raise HTTPException(404, "Instancia no encontrada")
+    claves = []
+    for d in data.dnis:
+        d = re.sub(r"[^0-9A-Za-z]", "", str(d or ""))
+        if d and d not in claves:
+            claves.append(d)
+    if data.reemplazar:
+        db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id).delete()
+    ya = {x.alumno_id for x in db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id)}
+    nuevos, no_encontrados = 0, []
+    for c in claves:
+        sin_ceros = c.lstrip("0")
+        a = (db.query(Alumno).filter(Alumno.dni.in_([c, sin_ceros])).first()
+             or db.query(Alumno).filter(Alumno.legajo.in_([c, c.upper(), "D" + sin_ceros])).first())
+        if not a:
+            no_encontrados.append(c)
+            continue
+        if a.id not in ya:
+            db.add(ExamenInscripto(instancia_id=inst_id, alumno_id=a.id))
+            ya.add(a.id)
+            nuevos += 1
+    db.commit()
+    return {"ok": True, "agregados": nuevos, "total": len(ya), "no_encontrados": no_encontrados}
+
+
+@router.delete("/instancias/{inst_id}/inscriptos/{alumno_id}")
+def quitar_inscripto(inst_id: int, alumno_id: int, db: Session = Depends(get_db)):
+    n = db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id, ExamenInscripto.alumno_id == alumno_id).delete()
+    db.commit()
+    if not n:
+        raise HTTPException(404, "Ese alumno no está inscripto en la instancia")
     return {"ok": True}

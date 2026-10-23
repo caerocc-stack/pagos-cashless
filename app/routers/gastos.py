@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, extract
 
 from app.database import get_db
-from app.models.gasto import Gasto, GastoAdjunto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE
+from app.models.gasto import Gasto, GastoAdjunto, CATEGORIAS, FORMAS_PAGO, TIPOS_COMPROBANTE, SECTORES
 from app.models.proveedor import Proveedor
 from app.models.caja import MovimientoCaja
 from app.models.banco import MovimientoBanco, ExtractoBancario
@@ -129,6 +129,7 @@ def meta():
     """Listas fijas para los desplegables del formulario."""
     return {
         "categorias": CATEGORIAS,
+        "sectores": SECTORES,
         "formas_pago": FORMAS_PAGO,
         "tipos_comprobante": TIPOS_COMPROBANTE,
     }
@@ -142,9 +143,14 @@ def listar(
     mes: int | None = None,
     anio: int | None = None,
     estado: str | None = None,
+    sector: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(Gasto)
+    if sector == "sin":
+        query = query.filter(Gasto.sector.is_(None))
+    elif sector:
+        query = query.filter(Gasto.sector == sector)
     hoy = ahora_ar().date()
     if estado == "por_revisar":
         query = query.filter(Gasto.revisado.is_(False))

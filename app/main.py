@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos, escaneo, examenes
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos, escaneo, examenes, sectores
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -124,6 +124,7 @@ app.include_router(facturas_recibidas.publico)  # portal público de facturas (s
 app.include_router(pedidos.router, dependencies=_auth)
 app.include_router(escaneo.router, dependencies=_auth)
 app.include_router(examenes.router, dependencies=_auth)
+app.include_router(sectores.router, dependencies=_auth)
 app.include_router(pedidos.publico)  # formulario público de pedidos de materiales (sin cuenta)
 # Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
 app.include_router(portal.router)

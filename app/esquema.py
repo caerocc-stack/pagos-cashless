@@ -106,6 +106,7 @@ MIGRACIONES = [
     "ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS cuits_relacionados VARCHAR(200)",
     "ALTER TABLE cursos ADD COLUMN IF NOT EXISTS por_examen BOOLEAN DEFAULT FALSE",
     "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS instancia_id INTEGER REFERENCES examen_instancias(id)",
+    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS sector VARCHAR(40)",
 ]
 
 

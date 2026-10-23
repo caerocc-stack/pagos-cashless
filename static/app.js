@@ -1844,6 +1844,10 @@ async function cargarGastosMeta() {
     gastosMeta = await api('/api/gastos/meta');
     // Filtros
     gastoOpts('gasto-f-categoria', gastosMeta.categorias, 'Todas las categorías');
+    SECTORES_GASTO = gastosMeta.sectores || [];
+    document.getElementById('gasto-f-sector').innerHTML = '<option value="">Todos los sectores</option>' +
+        SECTORES_GASTO.map(s => `<option>${s}</option>`).join('') + '<option value="sin">Sin sector</option>';
+    document.getElementById('gasto-sector').innerHTML = '<option value="">— Sin asignar —</option>' + SECTORES_GASTO.map(s => `<option>${s}</option>`).join('');
     // Formulario
     gastoOpts('gasto-tipo', gastosMeta.tipos_comprobante, '— tipo —');
     // Filtro de mes
@@ -1868,6 +1872,8 @@ async function cargarGastos() {
         const anio = document.getElementById('gasto-f-anio').value;
         const p = new URLSearchParams();
         if (cat) p.set('categoria', cat);
+        const sec = document.getElementById('gasto-f-sector').value;
+        if (sec) p.set('sector', sec);
         if (gastoEstado) p.set('estado', gastoEstado);
         else {  // los filtros de estado muestran todo lo pendiente, sin importar el mes
             if (mes) p.set('mes', mes);
@@ -1917,6 +1923,7 @@ function filtrarGastos() {
 }
 
 const CATEGORIAS_GASTO = ['Oficina', 'Infraestructura', 'Escuela', 'Honorarios'];
+let SECTORES_GASTO = [];
 
 let gastoEstado = '';
 
@@ -1937,7 +1944,9 @@ function renderGastos(lista) {
         const opts = ['<option value="">— categoría —</option>']
             .concat(CATEGORIAS_GASTO.map(c => `<option value="${c}"${g.categoria === c ? ' selected' : ''}>${c}</option>`))
             .join('');
-        const selCat = `<select class="cat-select${g.categoria ? '' : ' cat-vacia'}" onchange="cambiarCategoriaGasto(${g.id}, this.value)">${opts}</select>`;
+        const selCat = `<select class="cat-select${g.categoria ? '' : ' cat-vacia'}" onchange="cambiarCategoriaGasto(${g.id}, this.value)" aria-label="Categoría">${opts}</select>`
+            + `<select class="cat-select sec-select${g.sector ? '' : ' cat-vacia'}" onchange="cambiarSectorGasto(${g.id}, this.value);this.classList.toggle('cat-vacia', !this.value)" aria-label="Sector">`
+            + `<option value="">— sector —</option>${SECTORES_GASTO.map(s => `<option${g.sector === s ? ' selected' : ''}>${s}</option>`).join('')}</select>`;
         // Estado de pago
         let pago;
         const hoy = hoyISO();
@@ -2402,6 +2411,7 @@ function gastoPagoLlenar(g) {
     sel.dataset.original = sel.value;
     document.getElementById('gasto-fecha-pago').value = (g && g.fecha_pago) || '';
     document.getElementById('gasto-categoria').value = (g && g.categoria) || '';
+    document.getElementById('gasto-sector').value = (g && g.sector) || '';
     // El medio sale de conciliar con el banco o de registrar el pago en efectivo: no se elige a mano.
     sel.disabled = true;
     const fp = document.getElementById('gasto-fecha-pago');
@@ -2446,6 +2456,7 @@ async function guardarGasto(e) {
         vencimiento: document.getElementById('gasto-vencimiento').value || null,
         cae: document.getElementById('gasto-cae').value || null,
         categoria: document.getElementById('gasto-categoria').value || null,
+        sector: document.getElementById('gasto-sector').value || null,
     };
     const fp = document.getElementById('gasto-fecha-pago');
     if (editId && !fp.disabled && fp.value && fp.value !== (fp.dataset.original || '')) body.fecha_pago = fp.value;
@@ -4465,9 +4476,10 @@ let chartGaRubro = null, chartGaMes = null, chartGaProv = null;
 
 function gastosTab(tab) {
     document.querySelectorAll('.gasto-tab').forEach(b => b.classList.toggle('activo', b.dataset.tab === tab));
-    ['facturas', 'analisis', 'proveedores', 'recibidas'].forEach(t =>
+    ['facturas', 'analisis', 'proveedores', 'recibidas', 'sectores'].forEach(t =>
         document.getElementById('gastos-tab-' + t).style.display = t === tab ? 'block' : 'none');
     if (tab === 'facturas') cargarGastos();
+    else if (tab === 'sectores') cargarCuentaSector();
     else if (tab === 'recibidas') cargarRecibidas();
     else if (!gaDatos) gaRango(gaRangoActual);
     else if (tab === 'analisis') dibujarAnalisisGastos();
@@ -6399,7 +6411,7 @@ async function pagoPorEncargado(gastoId, movId, encId) {
 // =========================================================
 // Cada pago es la inscripción a una instancia de examen (no una cuota): se ve quién pagó cada instancia,
 // con la fecha de proceso del pago, y se exporta el listado en PDF.
-let EXA = { cursos: [], datos: null, sel: null };
+let EXA = { cursos: [], datos: null, sel: null, vista: 'pagos', soloNoPagaron: false };
 
 async function cargarExamenes() {
     const selCurso = document.getElementById('ex-curso'), selAnio = document.getElementById('ex-anio');
@@ -6447,6 +6459,7 @@ function pintarExamenes() {
         return;
     }
     const inst = EXA.sel === 'sin' ? null : d.instancias.find(i => i.id === EXA.sel);
+    const verInsc = inst && EXA.vista === 'inscriptos';
     const pagos = inst ? inst.pagos : d.sin_instancia;
     const q = normTxt((document.getElementById('ex-buscar') || {}).value || '');
     const lista = pagos.filter(p => !q || normTxt(`${p.apellido} ${p.nombre} ${p.dni} ${p.legajo}`).includes(q));
@@ -6464,14 +6477,20 @@ function pintarExamenes() {
                 <input type="search" id="ex-buscar" placeholder="Buscar alumno, DNI o legajo…" oninput="pintarExamenes()" value="${escapeHtml((document.getElementById('ex-buscar') || {}).value || '')}">
                 ${inst ? `<button class="btn btn-sm" onclick="formInstancia(${inst.id})">Editar</button>
                 <button class="btn btn-sm btn-danger btn-ico" onclick="borrarInstancia(${inst.id})" title="Eliminar instancia" aria-label="Eliminar instancia"><svg class="ic"><use href="#i-trash"/></svg></button>` : ''}
-                <button class="btn btn-sm btn-primary" onclick="pdfExamen()" ${pagos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>
+                ${inst ? `<button class="btn btn-sm" onclick="formInscriptos(${inst.id})">Cargar inscriptos</button>` : ''}
+                ${verInsc ? `<button class="btn btn-sm btn-primary" onclick="pdfInscriptos()" ${inst.inscriptos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>PDF de inscriptos</button>`
+                    : `<button class="btn btn-sm btn-primary" onclick="pdfExamen()" ${pagos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>`}
             </div>
         </div>
-        <div class="tabla-wrap"><table>
+        ${inst ? `<div class="concept-chips ex-vista" role="group" aria-label="Ver">
+            <button type="button" class="chip ${verInsc ? '' : 'chip-activo'}" onclick="EXA.vista='pagos';pintarExamenes()">Pagaron (${inst.cantidad})</button>
+            <button type="button" class="chip ${verInsc ? 'chip-activo' : ''}" onclick="EXA.vista='inscriptos';pintarExamenes()">Inscriptos (${inst.inscriptos.length})${inst.no_pagaron ? ` · <b>${inst.no_pagaron} no pagaron</b>` : ''}</button>
+        </div>` : ''}
+        ${verInsc ? htmlInscriptos(inst) : `<div class="tabla-wrap"><table>
             <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Fecha de proceso</th><th>Fecha de pago</th><th>Medio</th><th class="num">Importe</th><th>Instancia</th></tr></thead>
             <tbody>${lista.map((p, n) => `<tr>
                 <td class="muted">${n + 1}</td>
-                <td><b>${escapeHtml(p.apellido)}</b>, ${escapeHtml(p.nombre)}<br><small class="muted">${escapeHtml(p.curso || '')}</small></td>
+                <td><b>${escapeHtml(p.apellido)}</b>, ${escapeHtml(p.nombre)}${p.inscripto === false ? ' <span class="badge badge-revisar" title="Pagó esta instancia pero no está en la lista de inscriptos">no inscripto</span>' : ''}<br><small class="muted">${escapeHtml(p.curso || '')}</small></td>
                 <td>${escapeHtml(p.dni || '')}</td><td>${escapeHtml(p.legajo || '')}</td>
                 <td><b>${fmtFecha(p.fecha)}</b></td><td>${p.fecha_pago ? fmtFecha(p.fecha_pago) : '—'}</td>
                 <td>${escapeHtml(nombreCanal(p))}</td>
@@ -6479,7 +6498,7 @@ function pintarExamenes() {
                 <td><select class="ex-mover" onchange="moverPagoExamen(${p.pago_id}, this.value)" aria-label="Instancia del pago">${opciones(p.manual ? p.instancia_id : null)}</select>
                     ${p.manual ? '<small class="muted">elegida a mano</small>' : ''}</td>
             </tr>`).join('') || `<tr><td colspan="9" class="muted">${q ? 'Nadie coincide con la búsqueda.' : 'Todavía no hay pagos para esta instancia.'}</td></tr>`}</tbody>
-        </table></div>`;
+        </table></div>`}`;
     const b = document.getElementById('ex-buscar');
     if (q && b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
 }
@@ -6569,4 +6588,209 @@ async function pdfExamen() {
         doc.text(`Página ${k} de ${n}`, W - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
     }
     doc.save(`Examen ${curso} - ${inst ? inst.nombre : 'sin instancia'}.pdf`);
+}
+
+// =========================================================
+// --- CUENTA CORRIENTE POR SECTOR (Gastos → "Cuenta por sector") ---
+// =========================================================
+// Ingresos: cuotas cobradas de los cursos del sector (Exámenes: RAAC 147, Pericia, ORR…). Egresos: facturas con ese
+// sector. El saldo es lo disponible para seguir comprando para el sector.
+let CS = { sectores: [], datos: null };
+
+async function cargarCuentaSector() {
+    const selS = document.getElementById('cs-sector');
+    try {
+        if (!CS.sectores.length) {
+            CS.sectores = await api('/api/sectores/');
+            selS.innerHTML = CS.sectores.map(s => `<option value="${escapeHtml(s.sector)}" ${s.sector === 'Exámenes' ? 'selected' : ''}>${escapeHtml(s.sector)}</option>`).join('');
+            const hoy = hoyISO();
+            document.getElementById('cs-desde').value = hoy.slice(0, 4) + '-01-01';
+            document.getElementById('cs-hasta').value = hoy;
+        }
+        const s = CS.sectores.find(x => x.sector === selS.value);
+        const caja = document.getElementById('cs-cursos');
+        const marcados = new Set([...caja.querySelectorAll('input:checked')].map(i => i.value));
+        const mismoSector = caja.dataset.sector === selS.value;
+        caja.dataset.sector = selS.value;
+        caja.innerHTML = s && s.cursos.length ? '<span class="muted">Cuotas de:</span> ' + s.cursos.map(c => `<label class="cs-curso">
+            <input type="checkbox" value="${c.id}" ${!mismoSector || marcados.has(String(c.id)) ? 'checked' : ''} onchange="cargarCuentaSector()">${escapeHtml(c.nombre.replace(/\s*\(.*\)$/, ''))}</label>`).join('')
+            : '<span class="muted">Este sector no tiene cursos con cuotas: solo se ven sus gastos.</span>';
+        const cursos = [...caja.querySelectorAll('input:checked')].map(i => i.value).join(',');
+        const p = new URLSearchParams({ sector: selS.value, desde: document.getElementById('cs-desde').value, hasta: document.getElementById('cs-hasta').value });
+        if (s && s.cursos.length) p.set('cursos', cursos || '0');
+        CS.datos = await api('/api/sectores/cuenta?' + p.toString());
+        pintarCuentaSector();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function pintarCuentaSector() {
+    const d = CS.datos;
+    document.getElementById('cs-resumen').innerHTML = `
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Ingresos por cuotas</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(d.ingresos)}</div>
+            <div class="gasto-kpi-sub">${d.cursos.filter(c => c.incluido).map(c => escapeHtml(c.nombre.replace(/\s*\(.*\)$/, ''))).join(', ') || 'sin cursos'}</div></div>
+        <div class="gasto-kpi"><div class="gasto-kpi-label">Gastos del sector</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.egresos)}</div>
+            <div class="gasto-kpi-sub">${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'}${d.egresos_sin_pagar ? ' · ' + fmtMoneda(d.egresos_sin_pagar) + ' sin pagar' : ''}</div></div>
+        <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Saldo disponible</div><div class="gasto-kpi-valor" style="color:var(--${d.saldo >= 0 ? 'success' : 'danger'})">${fmtMoneda(d.saldo)}</div>
+            <div class="gasto-kpi-sub">del ${fmtFecha(d.desde)} al ${fmtFecha(d.hasta)}</div></div>`;
+    document.getElementById('cs-movs').innerHTML = d.movimientos.map(m => `<tr class="cs-${m.tipo}">
+        <td>${fmtFecha(m.fecha)}</td>
+        <td><b>${escapeHtml(m.concepto)}</b><br><small class="muted">${escapeHtml(m.detalle || '')}${m.tipo === 'egreso' ? (m.pagado ? ` · pagada${m.fecha_pago ? ' ' + fmtFecha(m.fecha_pago) : ''}` : ' · <span class="conc-pend">sin pagar</span>') : ''}</small></td>
+        <td>${m.tipo === 'egreso' ? escapeHtml(m.razon_social || '') : '<span class="muted">Cuotas de alumnos</span>'}</td>
+        <td class="num cs-in">${m.tipo === 'ingreso' ? fmtMoneda(m.importe) : ''}</td>
+        <td class="num cs-out">${m.tipo === 'egreso' ? fmtMoneda(m.importe) : ''}</td>
+        <td class="num"><b style="color:var(--${m.saldo >= 0 ? 'text' : 'danger'})">${fmtMoneda(m.saldo)}</b></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">No hay movimientos en el período. Asigná el sector a las facturas desde la lista de Facturas (columna Categoría / sector).</td></tr>';
+}
+
+async function pdfCuentaSector() {
+    const d = CS.datos;
+    if (!d) return;
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const logo = await _imagenLogo();
+    doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
+    doc.setFillColor(160, 30, 34); doc.rect(0, 30, W, 1.4, 'F');
+    if (logo) { doc.setFillColor(255, 255, 255); doc.circle(21, 15, 9.5, 'F'); doc.addImage(logo, 'PNG', 12.5, 6.5, 17, 17); }
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    doc.text(`Estado de cuenta · ${d.sector}`, 36, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(200, 214, 234);
+    doc.text(`Asociación de Padres y Alumnos del I.N.A.C. · del ${fmtFecha(d.desde)} al ${fmtFecha(d.hasta)}`, 36, 21);
+    doc.setFontSize(8.5); doc.text(`Generado el ${fmtFecha(hoyISO())}`, W - 14, 21, { align: 'right' });
+    // Totales
+    const cursos = d.cursos.filter(c => c.incluido).map(c => c.nombre.replace(/\s*\(.*\)$/, ''));
+    doc.autoTable({
+        startY: 37, margin: { left: 14, right: 14 }, theme: 'plain',
+        body: [['Ingresos por cuotas' + (cursos.length ? ` (${cursos.join(', ')})` : ''), fmtMoneda(d.ingresos)],
+               [`Gastos del sector (${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'})`, '- ' + fmtMoneda(d.egresos)],
+               ['Saldo disponible', fmtMoneda(d.saldo)]],
+        styles: { fontSize: 10.5, cellPadding: 2.2, textColor: [30, 41, 59] },
+        columnStyles: { 1: { halign: 'right', fontStyle: 'bold', cellWidth: 45 } },
+        didParseCell: c => { if (c.row.index === 2) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fontSize = 12; c.cell.styles.fillColor = [236, 241, 248];
+            if (c.column.index === 1) c.cell.styles.textColor = d.saldo >= 0 ? [21, 128, 61] : [185, 28, 28]; } },
+    });
+    if (d.egresos_sin_pagar) {
+        doc.setFontSize(8.5); doc.setTextColor(120, 130, 145);
+        doc.text(`Incluye ${fmtMoneda(d.egresos_sin_pagar)} en facturas todavía sin pagar.`, 14, doc.lastAutoTable.finalY + 4);
+    }
+    // Movimientos
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 8, margin: { left: 14, right: 14 },
+        head: [['Fecha', 'Concepto', 'Proveedor', 'Ingreso', 'Egreso', 'Saldo']],
+        body: d.movimientos.map(m => [fmtFecha(m.fecha),
+            m.concepto + (m.detalle ? '\n' + m.detalle : '') + (m.tipo === 'egreso' && !m.pagado ? ' · sin pagar' : ''),
+            m.tipo === 'egreso' ? (m.razon_social || '') : 'Cuotas de alumnos',
+            m.tipo === 'ingreso' ? fmtMoneda(m.importe) : '', m.tipo === 'egreso' ? fmtMoneda(m.importe) : '', fmtMoneda(m.saldo)]),
+        foot: [['', 'Totales', '', fmtMoneda(d.ingresos), fmtMoneda(d.egresos), fmtMoneda(d.saldo)]],
+        styles: { fontSize: 8.5, cellPadding: 1.8, valign: 'middle' }, headStyles: { fillColor: [21, 35, 59] },
+        footStyles: { fillColor: [236, 241, 248], textColor: [30, 41, 59], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [247, 249, 252] },
+        columnStyles: { 0: { cellWidth: 19 }, 2: { cellWidth: 38 }, 3: { halign: 'right', textColor: [21, 128, 61], cellWidth: 25 },
+                        4: { halign: 'right', textColor: [185, 28, 28], cellWidth: 25 }, 5: { halign: 'right', fontStyle: 'bold', cellWidth: 26 } },
+    });
+    const n = doc.internal.getNumberOfPages();
+    for (let k = 1; k <= n; k++) {
+        doc.setPage(k); doc.setFontSize(8); doc.setTextColor(120, 130, 145);
+        doc.text(`Página ${k} de ${n}`, W - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+    doc.save(`Estado de cuenta ${d.sector} ${d.desde} a ${d.hasta}.pdf`);
+}
+
+async function cambiarSectorGasto(id, valor) {
+    try {
+        await api(`/api/gastos/${id}`, { method: 'PUT', body: JSON.stringify({ sector: valor || null }) });
+        const g = gastosCache.find(x => x.id === id);
+        if (g) g.sector = valor || null;
+        toast(valor ? `Sector: ${valor}` : 'Sin sector');
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+// ---- Inscriptos de una instancia de examen
+function formInscriptos(instId) {
+    const i = EXA.datos.instancias.find(x => x.id === instId);
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Inscriptos · ${escapeHtml(i.nombre)}</h2>
+        <p class="muted" style="margin-top:-0.4rem">Pegá los DNI de los inscriptos (uno por renglón; se puede copiar la columna de la planilla, con o sin
+        nombres al lado). Se buscan en el padrón por DNI o legajo.</p>
+        <textarea id="insc-dnis" rows="10" style="width:100%" placeholder="31106035\n34128133 Ceballos Gisela\n..."></textarea>
+        <label style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem"><input type="checkbox" id="insc-reemplazar" style="width:auto">
+            Reemplazar la lista actual (${i.inscriptos.length} inscripto${i.inscriptos.length === 1 ? '' : 's'})</label>
+        <div class="form-actions"><button class="btn btn-primary" onclick="guardarInscriptos(${instId})">Cargar</button>
+            <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+async function guardarInscriptos(instId) {
+    // de cada renglón, el primer número de 7 u 8 cifras (DNI); si no hay, el primer "D12345678"/legajo
+    const dnis = document.getElementById('insc-dnis').value.split(/\n/).map(l => {
+        const m = l.replace(/\./g, '').match(/\b\d{7,8}\b/) || l.match(/\bD\d{6,9}\b/i);
+        return m ? m[0] : null;
+    }).filter(Boolean);
+    if (!dnis.length) return toast('No encontré ningún DNI en lo pegado', 'error');
+    try {
+        const r = await api(`/api/examenes/instancias/${instId}/inscriptos`, { method: 'POST',
+            body: JSON.stringify({ dnis, reemplazar: document.getElementById('insc-reemplazar').checked }) });
+        cerrarModal();
+        toast(`${r.agregados} inscripto${r.agregados === 1 ? '' : 's'} agregado${r.agregados === 1 ? '' : 's'} · ${r.total} en total`);
+        if (r.no_encontrados.length) alert(`No están en el padrón (${r.no_encontrados.length}): ${r.no_encontrados.join(', ')}.\nCargalos en Alumnos y volvé a pegar sus DNI.`);
+        EXA.vista = 'inscriptos';
+        cargarExamenes();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function quitarInscripto(instId, alumnoId) {
+    if (!confirm('¿Quitar a este alumno de los inscriptos de la instancia?')) return;
+    try { await api(`/api/examenes/instancias/${instId}/inscriptos/${alumnoId}`, { method: 'DELETE' }); cargarExamenes(); }
+    catch (e) { toast(e.message, 'error'); }
+}
+
+function htmlInscriptos(inst) {
+    const d = EXA.datos;
+    const q = normTxt((document.getElementById('ex-buscar') || {}).value || '');
+    const soloNo = !!EXA.soloNoPagaron;
+    const lista = inst.inscriptos.filter(a => (!soloNo || !a.pago) && (!q || normTxt(`${a.apellido} ${a.nombre} ${a.dni} ${a.legajo}`).includes(q)));
+    const nombreInst = id => (d.instancias.find(x => x.id === id) || {}).nombre || '';
+    return `<label class="ex-solo"><input type="checkbox" ${soloNo ? 'checked' : ''} onchange="EXA.soloNoPagaron=this.checked;pintarExamenes()"> Solo los que no pagaron (${inst.no_pagaron})</label>
+        <div class="tabla-wrap"><table>
+        <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${lista.map((a, n) => `<tr>
+            <td class="muted">${n + 1}</td>
+            <td><b>${escapeHtml(a.apellido)}</b>, ${escapeHtml(a.nombre)}<br><small class="muted">${escapeHtml(a.curso || '')}</small></td>
+            <td>${escapeHtml(a.dni || '')}</td><td>${escapeHtml(a.legajo || '')}</td>
+            <td>${a.pago ? `<span class="conc-ok">✓ Pagó</span> <small class="muted">proceso ${fmtFecha(a.pago_fecha)}</small>`
+                : `<span class="conc-pend">● No pagó</span>${a.otras_instancias.length ? `<br><small class="muted">pagó en ${a.otras_instancias.map(nombreInst).join(', ').toLowerCase()}</small>` : ''}`}</td>
+            <td><button class="btn btn-sm btn-ghost btn-ico" onclick="quitarInscripto(${inst.id}, ${a.alumno_id})" title="Quitar de los inscriptos" aria-label="Quitar de los inscriptos"><svg class="ic"><use href="#i-x"/></svg></button></td>
+        </tr>`).join('') || `<tr><td colspan="6" class="muted">${inst.inscriptos.length ? 'Nadie coincide con el filtro.' : 'Todavía no hay inscriptos cargados: usá «Cargar inscriptos».'}</td></tr>`}</tbody>
+        </table></div>`;
+}
+
+async function pdfInscriptos() {
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    const d = EXA.datos, inst = d.instancias.find(i => i.id === EXA.sel);
+    const lista = inst.inscriptos.filter(a => !EXA.soloNoPagaron || !a.pago);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const logo = await _imagenLogo();
+    const curso = d.curso.nombre.replace(/\s*\(.*\)$/, '');
+    doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
+    doc.setFillColor(160, 30, 34); doc.rect(0, 30, W, 1.4, 'F');
+    if (logo) { doc.setFillColor(255, 255, 255); doc.circle(21, 15, 9.5, 'F'); doc.addImage(logo, 'PNG', 12.5, 6.5, 17, 17); }
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    doc.text(`Inscriptos examen ${curso} · ${inst.nombre}`, 36, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(200, 214, 234);
+    doc.text('Asociación de Padres y Alumnos del I.N.A.C.', 36, 21);
+    doc.setFontSize(8.5); doc.text(`Generado el ${fmtFecha(hoyISO())}`, W - 14, 21, { align: 'right' });
+    doc.setTextColor(30, 41, 59); doc.setFontSize(10);
+    doc.text(`${inst.inscriptos.length} inscriptos · pagaron ${inst.inscriptos.length - inst.no_pagaron} · no pagaron ${inst.no_pagaron}${EXA.soloNoPagaron ? ' (listado: solo los que no pagaron)' : ''}`, 14, 40);
+    doc.autoTable({
+        startY: 45, margin: { left: 14, right: 14 },
+        head: [['#', 'Apellido y nombre', 'DNI', 'Legajo', 'Estado', 'Fecha de proceso']],
+        body: lista.map((a, n) => [n + 1, `${a.apellido}, ${a.nombre}`, a.dni || '', a.legajo || '', a.pago ? 'Pagó' : 'No pagó', a.pago ? fmtFecha(a.pago_fecha) : '—']),
+        styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [21, 35, 59] }, alternateRowStyles: { fillColor: [244, 246, 250] },
+        columnStyles: { 0: { cellWidth: 9, halign: 'right' } },
+        didParseCell: c => { if (c.section === 'body' && c.column.index === 4) c.cell.styles.textColor = c.cell.raw === 'Pagó' ? [21, 128, 61] : [180, 83, 9]; },
+    });
+    doc.save(`Inscriptos ${curso} - ${inst.nombre}.pdf`);
 }

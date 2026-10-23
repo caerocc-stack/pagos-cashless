@@ -16,6 +16,7 @@ class GastoCreate(BaseModel):
     rubro: str | None = None
     categoria: str | None = None
     destino: str | None = None
+    sector: str | None = None
     forma_pago: str | None = None
     fecha_pago: date | None = None
     adjunto_url: str | None = None
@@ -39,6 +40,7 @@ class GastoUpdate(BaseModel):
     rubro: str | None = None
     categoria: str | None = None
     destino: str | None = None
+    sector: str | None = None
     forma_pago: str | None = None
     fecha_pago: date | None = None
     adjunto_url: str | None = None
@@ -64,6 +66,7 @@ class GastoResponse(BaseModel):
     rubro: str | None = None
     categoria: str | None = None
     destino: str | None = None
+    sector: str | None = None
     forma_pago: str | None = None
     fecha_pago: date | None = None
     caja_mov_id: int | None = None
