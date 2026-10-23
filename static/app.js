@@ -5013,9 +5013,10 @@ async function leerCuponesSiro() {
 function renderVistaCupones(soloProblemas = false) {
     const f = csFilas;
     const publicables = f.filter(x => x.alumno && !x.vencido).length;
+    const examenes = f.filter(x => x.alumno && x.examen).length;
     const cuenta = (fn) => f.filter(fn).length;
     const estado = x => !x.alumno ? '<span class="badge badge-inactiva">Sin alumno</span>'
-        : x.vencido ? '<span class="badge">Vencido: no se publica</span>'
+        : x.vencido ? `<span class="badge">Vencido: no se publica</span>${x.examen ? '<br><small class="muted">solo registra la inscripción</small>' : ''}`
         : x.repetido ? '<span class="badge">Ya cargado: se actualiza</span>' : '<span class="badge badge-activa">Nuevo</span>';
     const filas = f.filter(x => !soloProblemas || !x.alumno || x.vencido || x.avisos.length || !x.qr);
     const v = document.getElementById('cs-vista');
@@ -5024,7 +5025,7 @@ function renderVistaCupones(soloProblemas = false) {
         <h3>Revisá antes de publicar</h3>
         <div class="gasto-resumen">
             <div class="gasto-kpi"><div class="gasto-kpi-label">Cupones leídos</div><div class="gasto-kpi-valor">${f.length}</div><div class="gasto-kpi-sub">${csErrores.length ? csErrores.length + ' página(s) con error' : 'sin errores de lectura'}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Se publican</div><div class="gasto-kpi-valor" style="color:var(--success)">${publicables}</div><div class="gasto-kpi-sub">${cuenta(x => x.repetido)} ya estaban cargados</div></div>
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Se publican</div><div class="gasto-kpi-valor" style="color:var(--success)">${publicables}</div><div class="gasto-kpi-sub">${cuenta(x => x.repetido)} ya estaban cargados${examenes ? ` · ${examenes} de examen: quedan inscriptos` : ''}</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Sin alumno en el padrón</div><div class="gasto-kpi-valor" style="color:var(--${cuenta(x => !x.alumno) ? 'danger' : 'text-muted'})">${cuenta(x => !x.alumno)}</div><div class="gasto-kpi-sub">no se publican</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">Para revisar</div><div class="gasto-kpi-valor" style="color:var(--warning)">${cuenta(x => x.avisos.length || !x.qr)}</div><div class="gasto-kpi-sub">nombre o importe distinto, o sin QR</div></div>
         </div>
@@ -5035,7 +5036,8 @@ function renderVistaCupones(soloProblemas = false) {
             <td>${escapeHtml(x.archivo)} · ${x.pagina}</td>
             <td>${escapeHtml(x.identificador)}<br><span class="muted">${escapeHtml(x.nombre_cupon || '')}</span></td>
             <td>${x.alumno ? `${escapeHtml(x.alumno.nombre)}<br><span class="muted">${escapeHtml(x.alumno.curso || '')} · por ${x.alumno.via === 'dni' ? 'DNI' : 'legajo ' + escapeHtml(x.alumno.legajo)}</span>` : '<span style="color:var(--danger)">No encontrado</span>'}
-                ${x.avisos.length ? `<div style="color:var(--warning);font-size:0.8rem">⚠ ${x.avisos.map(escapeHtml).join('; ')}</div>` : ''}</td>
+                ${x.avisos.length ? `<div style="color:var(--warning);font-size:0.8rem">⚠ ${x.avisos.map(escapeHtml).join('; ')}</div>` : ''}
+                ${x.alumno && x.examen ? `<div class="cs-examen">Inscripto a ${escapeHtml(x.examen.curso.replace(/\s*\(.*\)$/, ''))} · ${x.examen.instancia ? escapeHtml(x.examen.instancia) : '<span style="color:var(--warning)">no hay instancia cargada para ese mes</span>'}</div>` : ''}</td>
             <td>${escapeHtml(x.concepto)}</td>
             <td style="text-align:right">${fmtMoneda(x.importe)}</td>
             <td>${fmtFecha(x.vence)}</td>
@@ -5043,7 +5045,7 @@ function renderVistaCupones(soloProblemas = false) {
             <td>${estado(x)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted" style="text-align:center">Nada para revisar.</td></tr>'}
         </tbody></table></div>
         <div class="form-actions">
-            <button class="btn btn-primary btn-3d" id="cs-publicar" onclick="publicarCuponesSiro()" ${publicables ? '' : 'disabled'}>Publicar ${publicables} cupón(es) en el portal</button>
+            <button class="btn btn-primary btn-3d" id="cs-publicar" onclick="publicarCuponesSiro()" ${publicables || examenes ? '' : 'disabled'}>${publicables ? `Publicar ${publicables} cupón(es) en el portal` : `Registrar ${examenes} inscripción(es) a examen`}</button>
             <button class="btn btn-ghost" onclick="document.getElementById('cs-vista').hidden=true">Cancelar</button>
         </div>`;
 }
@@ -5051,22 +5053,23 @@ function renderVistaCupones(soloProblemas = false) {
 async function publicarCuponesSiro() {
     const btn = document.getElementById('cs-publicar'); btn.disabled = true;
     const porArchivo = {};
-    csCupones.forEach((c, i) => { if (csFilas[i].alumno && !csFilas[i].vencido) (porArchivo[c.archivo] = porArchivo[c.archivo] || []).push(c); });
+    // los vencidos de un examen también van: no se publican, pero registran la inscripción
+    csCupones.forEach((c, i) => { if (csFilas[i].alumno && (!csFilas[i].vencido || csFilas[i].examen)) (porArchivo[c.archivo] = porArchivo[c.archivo] || []).push(c); });
     const total = Object.values(porArchivo).reduce((s, l) => s + l.length, 0);
-    let hechos = 0, nuevos = 0, actualizados = 0;
+    let hechos = 0, nuevos = 0, actualizados = 0, inscriptos = 0;
     try {
         for (const [archivo, lista] of Object.entries(porArchivo)) {
             const lote = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
             for (let i = 0; i < lista.length; i += 25) {
                 _progresoCupones(hechos, total, `Publicando ${archivo}: ${hechos} de ${total}…`);
                 const r = await api('/api/cupones-siro/importar', { method: 'POST', body: JSON.stringify({ archivo, lote, cupones: lista.slice(i, i + 25) }) });
-                nuevos += r.nuevos; actualizados += r.actualizados; hechos += Math.min(25, lista.length - i);
+                nuevos += r.nuevos; actualizados += r.actualizados; inscriptos += r.inscriptos || 0; hechos += Math.min(25, lista.length - i);
             }
         }
         document.getElementById('cs-estado').hidden = true;
         document.getElementById('cs-vista').hidden = true;
         document.getElementById('cs-archivos').value = '';
-        toast(`Listo: ${nuevos} cupones nuevos y ${actualizados} actualizados ya se ven en el portal`);
+        toast(`Listo: ${nuevos} cupones nuevos y ${actualizados} actualizados ya se ven en el portal` + (inscriptos ? ` · ${inscriptos} inscripto${inscriptos === 1 ? '' : 's'} a examen` : ''));
         cargarLotesCupones();
     } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
@@ -5086,7 +5089,7 @@ async function cargarLotesCupones() {
 }
 
 async function borrarLoteCupones(lote) {
-    if (!confirm('¿Quitar estos cupones del portal? Las familias dejarán de verlos.')) return;
+    if (!confirm('¿Quitar estos cupones del portal? Las familias dejarán de verlos y, si eran de un examen, esos alumnos dejan de figurar como inscriptos.')) return;
     try {
         const r = await api('/api/cupones-siro/lotes/' + encodeURIComponent(lote), { method: 'DELETE' });
         toast(`Se quitaron ${r.borrados} cupones`); cargarLotesCupones();
@@ -5563,7 +5566,7 @@ function psTablaAlumnos(c, q) {
     if (q) lista = lista.filter(a => a.alumno.toLowerCase().includes(q) || (a.cliente || '').includes(q));
     if (!lista.length) return '<p class="muted" style="margin:0.4rem 0">No hay alumnos en este curso.</p>';
     const marcados = psReciben(c).length;
-    const barra = `<div class="ps-alu-barra">${c.por_examen ? `<b>Marcá los que rinden</b> <span class="muted">(quedan inscriptos al examen) · ${marcados} marcado${marcados === 1 ? '' : 's'}</span>` : `<span class="muted">Desmarcá a quien no deba recibir cupón</span>`}
+    const barra = `<div class="ps-alu-barra">${c.por_examen ? `<b>Marcá los que rinden</b> <span class="muted">· ${marcados} marcado${marcados === 1 ? '' : 's'}</span>` : `<span class="muted">Desmarcá a quien no deba recibir cupón</span>`}
         <span class="ps-alu-acc"><button type="button" class="btn btn-sm btn-ghost" onclick="psTodos(${c.id}, true)">Todos</button>
         <button type="button" class="btn btn-sm btn-ghost" onclick="psTodos(${c.id}, false)">Ninguno</button>
         <button type="button" class="btn btn-sm" onclick="psPegar(${c.id})">Pegar DNI…</button></span></div>`;
@@ -5626,7 +5629,7 @@ async function psDescargar() {
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
         const ex = p.cursos.filter(x => psCurso(x.curso_id).por_examen).length;
-        toast('Planilla descargada. Subila en SIRO para generar los cupones.' + (ex ? ' Los alumnos del examen quedaron inscriptos.' : ''));
+        toast('Planilla descargada. Subila en SIRO para generar los cupones.' + (ex ? ' Al subir acá el PDF de esos cupones, los alumnos quedan inscriptos al examen.' : ''));
     } catch (e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; }
 }
@@ -6784,9 +6787,9 @@ function formCuponesExamen(instId) {
     const vto = `${i.anio}-${String(i.mes).padStart(2, '0')}-01`;
     document.getElementById('modal-content').innerHTML = `
         <h2 style="margin-top:0">Cupones enviados · ${escapeHtml(i.nombre)}</h2>
-        <p class="muted" style="margin-top:-0.4rem">Los inscriptos son los alumnos a los que se les mandó cupón. Al generar la planilla en
-        <b>Cupones SIRO</b> eligiendo a los que rinden quedan registrados solos; acá se registran los de una planilla que ya se subió a SIRO.
-        El cupón va a la primera instancia desde el mes de su vencimiento.</p>
+        <p class="muted" style="margin-top:-0.4rem">Los inscriptos son los alumnos a los que se les mandó cupón. Se registran solos al subir el PDF
+        de los cupones de SIRO en <b>Cupones de pago</b> (también los PDF de exámenes pasados). Esto es para cuando no tenés el PDF:
+        la planilla Excel que se subió a SIRO o la lista de DNI. El cupón va a la primera instancia desde el mes de su vencimiento.</p>
         <label for="cx-archivo">Planilla subida a SIRO (.xlsx)</label>
         <input type="file" id="cx-archivo" accept=".xlsx">
         <p class="muted" style="margin:0.6rem 0 0.3rem">… o pegá los DNI de los alumnos que recibieron cupón (uno por renglón):</p>
@@ -6847,12 +6850,12 @@ function htmlInscriptos(inst) {
             <td class="muted">${n + 1}</td>
             <td><b>${escapeHtml(a.apellido)}</b>, ${escapeHtml(a.nombre)}<br><small class="muted">${escapeHtml(a.curso || '')}</small></td>
             <td>${escapeHtml(a.dni || '')}</td><td>${escapeHtml(a.legajo || '')}</td>
-            <td>${fmtFecha(a.vencimiento)}<br><small class="muted">${fmtMoneda(a.monto, 0)}${a.origen === 'importado' ? ' · registrado' : ''}</small></td>
+            <td>${fmtFecha(a.vencimiento)}<br><small class="muted">${fmtMoneda(a.monto, 0)}${a.origen === 'importado' ? ' · cargado a mano' : ''}</small></td>
             <td>${a.pago ? `<span class="conc-ok">✓ Pagó</span> <small class="muted">proceso ${fmtFecha(a.pago_fecha)}</small>`
                 : `<span class="conc-pend">● No pagó</span>${a.otras_instancias.length ? `<br><small class="muted">pagó en ${a.otras_instancias.map(nombreInst).join(', ').toLowerCase()}</small>` : ''}`}</td>
             <td><button class="btn btn-sm btn-ghost btn-ico" onclick="quitarCuponExamen(${a.cupon_id})" title="Quitar el cupón (no se le mandó)" aria-label="Quitar el cupón"><svg class="ic"><use href="#i-x"/></svg></button></td>
         </tr>`).join('') || `<tr><td colspan="7" class="muted">${inst.inscriptos.length ? 'Nadie coincide con el filtro.'
-            : 'Todavía no se mandaron cupones para esta instancia. Se registran al generar la planilla en <b>Cupones SIRO</b> marcando a los que rinden, o con «Registrar cupones enviados».'}</td></tr>`}</tbody>
+            : 'Todavía no hay cupones de esta instancia. Los inscriptos se registran al subir el PDF de los cupones de SIRO en <b>Cupones de pago</b>.'}</td></tr>`}</tbody>
         </table></div>`;
 }
 

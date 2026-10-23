@@ -1121,3 +1121,5 @@ td:has(> .td-acc) { width: 1%; }
 .ps-alu-acc { display: inline-flex; gap: 0.3rem; flex-wrap: wrap; }
 .ps-alu-check { width: 1.6rem; }
 .ps-alu-check input { width: auto; margin: 0; }
+
+.cs-examen { margin-top: 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--primary); }

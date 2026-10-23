@@ -8,6 +8,10 @@ hasta su último vencimiento.
 
 Identificador del cupón (8 dígitos): "000" + legajo para los alumnos de 1° a 7°, o el DNI para
 aeronavegantes y exámenes (misma regla que los pagos de SIRO).
+
+Si el cupón es de un curso por examen (RAAC 147, Pericia), además el alumno queda inscripto a la instancia
+de ese examen (la primera desde el mes del 1º vencimiento). Un cupón ya vencido no se publica, pero
+igual registra la inscripción (sirve para cargar los exámenes pasados).
 """
 import re
 import uuid
@@ -20,8 +24,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import requiere_admin
+from app.cuenta_alumno import MESES
 from app.database import get_db
 from app.models.alumno import Alumno
+from app.models.curso import CuponGenerado, InstanciaExamen
 from app.models.portal import CuponEnviado
 from app.routers.cuotas import _indices, _matchear, planes_de, extras_por_alumno, cursos_vigentes
 from app.seguridad import auditar, qr_svg_data_uri
@@ -92,11 +98,29 @@ def _palabras(s: str) -> set[str]:
     return {w for w in re.findall(r"[a-zñ]+", s) if len(w) > 2}
 
 
+def _plan_examen(planes: list, importe: Decimal, texto: str):
+    """Plan del curso por examen al que corresponde el cupón, o None si es de otro curso."""
+    ex = [pl for pl in planes if pl["curso"].por_examen]
+    if not ex:
+        return None
+    cuota = lambda pl: Decimal(str(pl["curso"].cuota or 0))  # noqa: E731
+    for cand in ([pl for pl in ex if cuota(pl) == importe],
+                 [pl for pl in ex if _palabras(f"{pl['curso'].nombre} {pl['curso'].patron or ''}") & _palabras(texto)]):
+        if len(cand) == 1:
+            return cand[0]
+    # alumno que solo rinde un examen (no cursa otra cosa): el cupón es de ese examen
+    return ex[0] if len(planes) == len(ex) == 1 else None
+
+
 def _analizar(db: Session, cupones: list[CuponPDF]) -> list[dict]:
     by_leg, by_dni = _indices(db)
     hoy = ahora_ar().date()
     cursos = cursos_vigentes(db, hoy.year)
     extras = extras_por_alumno(db, hoy.year)
+    from app.routers.examenes import instancia_de_cupon
+    instancias: dict[int, list] = {}
+    for i in db.query(InstanciaExamen).all():
+        instancias.setdefault(i.curso_id, []).append(i)
     barras = [c.codigo_barras for c in cupones if c.codigo_barras]
     ya = {b for (b,) in db.query(CuponEnviado.codigo_barras).filter(CuponEnviado.codigo_barras.in_(barras)).all()} if barras else set()
     salida = []
@@ -107,8 +131,15 @@ def _analizar(db: Session, cupones: list[CuponPDF]) -> list[dict]:
         if a and c.nombre and not (_palabras(c.nombre) & _palabras(f"{a.apellido} {a.nombre}")):
             avisos.append("el nombre del cupón no coincide con el del padrón")
         importe = c.vencimientos[0].importe
+        examen = None
         if a:
             planes = planes_de(a, cursos, extras.get(a.id, []))
+            pl = _plan_examen(planes, importe, f"{c.descripcion or ''} {c.periodo or ''}")
+            if pl:
+                vto1 = min(v.fecha for v in c.vencimientos)
+                inst = instancia_de_cupon(vto1, instancias.get(pl["curso_id"], []))
+                examen = {"curso_id": pl["curso_id"], "curso": pl["curso"].nombre,
+                          "instancia": f"{MESES[inst.mes - 1].capitalize()} {inst.anio}" if inst else None}
             if planes:
                 validos = set()
                 for pl in planes:
@@ -125,7 +156,7 @@ def _analizar(db: Session, cupones: list[CuponPDF]) -> list[dict]:
             "vence": vence.isoformat(), "vencido": vence < hoy, "repetido": bool(c.codigo_barras and c.codigo_barras in ya),
             "qr": bool(c.qr_texto or c.qr_imagen), "barras": bool(c.barras_imagen),
             "alumno": {"id": a.id, "nombre": f"{a.apellido}, {a.nombre}", "curso": a.curso, "legajo": a.legajo, "via": via} if a else None,
-            "avisos": avisos,
+            "avisos": avisos, "examen": examen,
         })
     return salida
 
@@ -136,6 +167,7 @@ def previsualizar(data: Lote, db: Session = Depends(get_db), _=Depends(requiere_
     return {"filas": filas, "total": len(filas),
             "con_alumno": sum(1 for f in filas if f["alumno"]), "sin_alumno": sum(1 for f in filas if not f["alumno"]),
             "repetidos": sum(1 for f in filas if f["repetido"]), "vencidos": sum(1 for f in filas if f["vencido"]),
+            "examenes": sum(1 for f in filas if f["examen"]),
             "con_avisos": sum(1 for f in filas if f["avisos"])}
 
 
@@ -145,7 +177,11 @@ def importar(data: Lote, request: Request, db: Session = Depends(get_db), admin=
     lote = data.lote or uuid.uuid4().hex[:12]
     filas = _analizar(db, data.cupones)
     nuevos = actualizados = omitidos = 0
+    inscripciones: dict = {}  # 1º vencimiento -> cupones de examen
     for c, f in zip(data.cupones, filas):
+        if f["alumno"] and f["examen"]:
+            inscripciones.setdefault(min(v.fecha for v in c.vencimientos), []).append(
+                (f["alumno"]["id"], f["examen"]["curso_id"], _solo_digitos(c.identificador), c.vencimientos[0].importe))
         if not f["alumno"] or f["vencido"]:
             omitidos += 1
             continue
@@ -172,12 +208,16 @@ def importar(data: Lote, request: Request, db: Session = Depends(get_db), admin=
         x.qr_imagen = None if c.qr_texto else _imagen_valida(c.qr_imagen)
         x.barras_imagen = _imagen_valida(c.barras_imagen)
         x.url = c.pago_url
-    # Limpieza: los cupones de SIRO vencidos hace más de 4 meses ya no sirven
+    from app.routers.planilla_siro import registrar_cupones
+    for vto, lista in inscripciones.items():
+        registrar_cupones(db, lista, vto, "siro_pdf", lote)
+    # Limpieza: los cupones de SIRO vencidos hace más de 4 meses ya no sirven (las inscripciones quedan)
     db.query(CuponEnviado).filter(CuponEnviado.origen == "siro_pdf",
                                   CuponEnviado.vence_ultimo < ahora_ar().date() - timedelta(days=120)).delete(synchronize_session=False)
     auditar(db, "cupones_siro", admin["sub"], f"{data.archivo or ''}: {nuevos} nuevos, {actualizados} actualizados", request)
     db.commit()
-    return {"ok": True, "lote": lote, "nuevos": nuevos, "actualizados": actualizados, "omitidos": omitidos}
+    return {"ok": True, "lote": lote, "nuevos": nuevos, "actualizados": actualizados, "omitidos": omitidos,
+            "inscriptos": sum(len(x) for x in inscripciones.values())}
 
 
 @router.get("/lotes")
@@ -196,6 +236,8 @@ def lotes(db: Session = Depends(get_db)):
 @router.delete("/lotes/{lote}")
 def borrar_lote(lote: str, request: Request, db: Session = Depends(get_db), admin=Depends(requiere_admin)):
     n = db.query(CuponEnviado).filter(CuponEnviado.origen == "siro_pdf", CuponEnviado.lote == lote).delete(synchronize_session=False)
+    # si se subió mal, también se deshacen las inscripciones a exámenes de ese lote
+    db.query(CuponGenerado).filter(CuponGenerado.origen == "siro_pdf", CuponGenerado.lote == lote).delete(synchronize_session=False)
     auditar(db, "cupones_siro_borrados", admin["sub"], f"lote {lote}: {n} cupones", request)
     db.commit()
     return {"ok": True, "borrados": n}

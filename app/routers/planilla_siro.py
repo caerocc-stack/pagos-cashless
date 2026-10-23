@@ -220,8 +220,6 @@ def excel(data: Pedido, request: Request, db: Session = Depends(get_db), admin=D
     if not r["filas"]:
         raise HTTPException(400, "No hay alumnos para generar cupones con esos cursos")
     nombres = sorted({c for f in r["filas"] for c in f["cursos"]})
-    registrar_cupones(db, [(f["alumno_id"], cid, f["cliente"], imp) for f in r["filas"] for cid, imp in f["por_curso"]],
-                      data.vencimiento, "planilla", f"Planilla SIRO del {ahora_ar():%d/%m/%Y %H:%M}")
     auditar(db, "planilla_siro", admin["sub"],
             f"{len(r['filas'])} cupones, vence {data.vencimiento:%d/%m/%Y}, total ${r['total']:,.2f}: {', '.join(nombres)[:300]}", request)
     db.commit()
