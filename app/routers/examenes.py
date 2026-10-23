@@ -3,17 +3,23 @@ Cursos que se rinden por examen (RAAC 147, Pericia): instancias del año y alumn
 
 Cada pago de estos cursos es la inscripción a un examen. Va a la primera instancia desde el mes en que
 se pagó (fecha de pago), salvo que se la haya movido a mano a otra (pago.instancia_id).
-"""
-import re
-from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+Los inscriptos de una instancia son los alumnos a los que se les mandó cupón para ese examen: los que se
+eligieron al generar la planilla de SIRO (o los de una planilla ya subida a SIRO que se registró acá).
+El cupón va a la primera instancia desde el mes de su 1º vencimiento.
+"""
+import io
+import re
+from datetime import date, datetime
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.alumno import Alumno
-from app.models.curso import Curso, InstanciaExamen, ExamenInscripto
+from app.models.curso import Curso, InstanciaExamen, CuponGenerado
 from app.models.pago_cuota import PagoCuota
 from app.cuenta_alumno import MESES, instancia_de, separar_pagos_examen, fecha_imputacion
 from app.routers.cuotas import cursos_vigentes, extras_por_alumno, pagos_del_anio, planes_de
@@ -69,37 +75,50 @@ def detalle(curso_id: int, anio: int | None = None, db: Session = Depends(get_db
                               "instancia_id": inst.id if inst else None, "manual": bool(p.instancia_id),
                               "mes_pago": fecha_imputacion(p).month})
     filas.sort(key=lambda f: (f["apellido"], f["nombre"], f["fecha"]))
-    # inscriptos de cada instancia (cargados a mano o desde la planilla) y si pagaron esa instancia
-    insc_por_inst: dict[int, list] = {}
-    if instancias:
-        for x, a in (db.query(ExamenInscripto, Alumno).join(Alumno, Alumno.id == ExamenInscripto.alumno_id)
-                     .filter(ExamenInscripto.instancia_id.in_([i.id for i in instancias])).all()):
-            insc_por_inst.setdefault(x.instancia_id, []).append(a)
+    # inscriptos de cada instancia: a quiénes se les mandó cupón para ese examen
+    insc_por_inst: dict[int, dict] = {}
+    cupones_sin_instancia = 0
+    for c, a in (db.query(CuponGenerado, Alumno).join(Alumno, Alumno.id == CuponGenerado.alumno_id)
+                 .filter(CuponGenerado.curso_id == curso_id, CuponGenerado.vencimiento >= date(anio - 1, 12, 1),
+                         CuponGenerado.vencimiento <= date(anio, 12, 31))
+                 .order_by(CuponGenerado.vencimiento).all()):
+        inst = instancia_de_cupon(c.vencimiento, instancias)
+        if not inst:
+            cupones_sin_instancia += 1
+            continue
+        insc_por_inst.setdefault(inst.id, {})[a.id] = (a, c)  # si tiene dos cupones para la misma, vale el último
+    otros: dict[int, list] = {}  # pagos del alumno en el año (para ver si pagó en otra instancia)
+    for f in filas:
+        otros.setdefault(f["alumno_id"], []).append(f)
     salida = []
     for i in instancias:
         de_esta = [f for f in filas if f["instancia_id"] == i.id]
         pagaron = {f["alumno_id"] for f in de_esta}
-        inscriptos = sorted(insc_por_inst.get(i.id, []), key=lambda a: (a.apellido, a.nombre))
-        ids_insc = {a.id for a in inscriptos}
+        inscriptos = sorted(insc_por_inst.get(i.id, {}).values(), key=lambda x: (x[0].apellido, x[0].nombre))
+        ids_insc = {a.id for a, _ in inscriptos}
         for f in de_esta:
             f["inscripto"] = f["alumno_id"] in ids_insc if inscriptos else None
-        # otros pagos del alumno en el año (para ver si pagó en otra instancia)
-        otros = {}
-        for f in filas:
-            otros.setdefault(f["alumno_id"], []).append(f)
         salida.append({**_inst_dto(i), "cantidad": len(de_esta), "alumnos": len(pagaron),
                        "total": sum(f["importe"] for f in de_esta), "pagos": de_esta,
                        "inscriptos": [{"alumno_id": a.id, "apellido": a.apellido, "nombre": a.nombre, "dni": a.dni,
                                        "legajo": a.legajo, "curso": a.curso, "pago": a.id in pagaron,
+                                       "cupon_id": c.id, "vencimiento": str(c.vencimiento), "monto": float(c.monto or 0),
+                                       "origen": c.origen,
                                        "pago_fecha": next((f["fecha"] for f in de_esta if f["alumno_id"] == a.id), None),
                                        "otras_instancias": sorted({f["instancia_id"] for f in otros.get(a.id, []) if f["instancia_id"] != i.id and f["instancia_id"]})}
-                                      for a in inscriptos],
-                       "no_pagaron": sum(1 for a in inscriptos if a.id not in pagaron)})
+                                      for a, c in inscriptos],
+                       "no_pagaron": sum(1 for a, _ in inscriptos if a.id not in pagaron)})
     sin = [f for f in filas if f["instancia_id"] is None]
     return {"curso": {"id": curso.id, "nombre": curso.nombre, "cuota": float(curso.cuota or 0)}, "anio": anio,
             "instancias": salida, "sin_instancia": sin,
-            "meses_sin_instancia": sorted({f["mes_pago"] for f in sin}),
+            "meses_sin_instancia": sorted({f["mes_pago"] for f in sin}), "cupones_sin_instancia": cupones_sin_instancia,
             "total_pagos": len(filas), "total": sum(f["importe"] for f in filas)}
+
+
+def instancia_de_cupon(vencimiento: date, instancias: list):
+    """Primera instancia desde el mes del 1º vencimiento del cupón (el mismo criterio que los pagos)."""
+    return next((i for i in sorted(instancias, key=lambda i: (i.anio, i.mes))
+                 if (i.anio, i.mes) >= (vencimiento.year, vencimiento.month)), None)
 
 
 class InstanciaIn(BaseModel):
@@ -149,7 +168,6 @@ def borrar_instancia(inst_id: int, db: Session = Depends(get_db)):
     if not i:
         raise HTTPException(404, "Instancia no encontrada")
     db.query(PagoCuota).filter(PagoCuota.instancia_id == inst_id).update({PagoCuota.instancia_id: None})
-    db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id).delete()
     db.delete(i)
     db.commit()
     return {"ok": True, "mensaje": "Instancia eliminada: sus pagos vuelven a asignarse por la fecha de pago"}
@@ -171,47 +189,128 @@ def mover_pago(pago_id: int, data: MoverPago, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- inscriptos de cada instancia
+# ---------------------------------------------------------------- cupones ya enviados (inscriptos)
 
-class Inscriptos(BaseModel):
-    dnis: list[str] = []          # DNI (o legajo) de cada inscripto; se aceptan con puntos o espacios
-    reemplazar: bool = False      # True: la lista reemplaza a la anterior
+def _alumnos_del_curso(db: Session, curso: Curso) -> dict[int, Alumno]:
+    anio = curso.anio or ahora_ar().year
+    cfg = cursos_vigentes(db, anio)
+    if not any(c.id == curso.id for c in cfg):
+        cfg = cfg + [curso]
+    extras = extras_por_alumno(db, anio)
+    return {a.id: a for a in db.query(Alumno).all()
+            if any(pl.get("curso_id") == curso.id for pl in planes_de(a, cfg, extras.get(a.id, [])))}
 
 
-@router.post("/instancias/{inst_id}/inscriptos")
-def cargar_inscriptos(inst_id: int, data: Inscriptos, db: Session = Depends(get_db)):
-    """Inscribe alumnos a la instancia por DNI (o legajo). Devuelve los que no se encontraron en el padrón."""
-    i = db.get(InstanciaExamen, inst_id)
-    if not i:
-        raise HTTPException(404, "Instancia no encontrada")
-    claves = []
-    for d in data.dnis:
-        d = re.sub(r"[^0-9A-Za-z]", "", str(d or ""))
-        if d and d not in claves:
-            claves.append(d)
-    if data.reemplazar:
-        db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id).delete()
-    ya = {x.alumno_id for x in db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id)}
-    nuevos, no_encontrados = 0, []
-    for c in claves:
-        sin_ceros = c.lstrip("0")
-        a = (db.query(Alumno).filter(Alumno.dni.in_([c, sin_ceros])).first()
-             or db.query(Alumno).filter(Alumno.legajo.in_([c, c.upper(), "D" + sin_ceros])).first())
-        if not a:
-            no_encontrados.append(c)
+def _buscar(alumnos: dict[int, Alumno], cliente: str) -> Alumno | None:
+    c = re.sub(r"\D", "", cliente or "").lstrip("0")
+    if not c:
+        return None
+    return (next((a for a in alumnos.values() if re.sub(r"\D", "", a.dni or "").lstrip("0") == c), None)
+            or next((a for a in alumnos.values() if re.sub(r"\D", "", a.legajo or "").lstrip("0") == c), None))
+
+
+def _fecha(v) -> date | None:
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    m = re.match(r"^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s*$", str(v or ""))
+    if not m:
+        return None
+    d, mes, a = map(int, m.groups())
+    try:
+        return date(a + 2000 if a < 100 else a, mes, d)
+    except ValueError:
+        return None
+
+
+def leer_planilla_siro(contenido: bytes) -> list[tuple[str, date | None, Decimal | None]]:
+    """(Nro Cliente, 1º Vto, 1º Monto) de cada renglón de una planilla de carga de cupones de SIRO."""
+    from openpyxl import load_workbook
+    try:
+        ws = load_workbook(io.BytesIO(contenido), read_only=True, data_only=True).active
+    except Exception:
+        raise HTTPException(400, "No se pudo leer el archivo: tiene que ser la planilla Excel (.xlsx) que se subió a SIRO")
+    filas, cols = [], None
+    for r in ws.iter_rows(values_only=True):
+        textos = [str(x or "").strip().lower() for x in r]
+        if cols is None:
+            if any("cliente" in t for t in textos):
+                cols = {"cliente": next(k for k, t in enumerate(textos) if "cliente" in t),
+                        "vto": next((k for k, t in enumerate(textos) if "vto" in t or "venc" in t), None),
+                        "monto": next((k for k, t in enumerate(textos) if "monto" in t or "importe" in t), None)}
             continue
-        if a.id not in ya:
-            db.add(ExamenInscripto(instancia_id=inst_id, alumno_id=a.id))
-            ya.add(a.id)
-            nuevos += 1
-    db.commit()
-    return {"ok": True, "agregados": nuevos, "total": len(ya), "no_encontrados": no_encontrados}
+        cli = r[cols["cliente"]] if cols["cliente"] < len(r) else None
+        if cli is None or str(cli).strip() == "":
+            continue
+        cli = str(int(cli)) if isinstance(cli, float) else str(cli).strip()
+        vto = _fecha(r[cols["vto"]]) if cols["vto"] is not None and cols["vto"] < len(r) else None
+        monto = None
+        if cols["monto"] is not None and cols["monto"] < len(r) and r[cols["monto"]] not in (None, ""):
+            try:
+                monto = Decimal(str(r[cols["monto"]]).replace("$", "").strip())
+            except Exception:
+                monto = None
+        filas.append((cli, vto, monto))
+    if cols is None:
+        raise HTTPException(400, "No encontré la columna «Nro Cliente» en la planilla")
+    return filas
 
 
-@router.delete("/instancias/{inst_id}/inscriptos/{alumno_id}")
-def quitar_inscripto(inst_id: int, alumno_id: int, db: Session = Depends(get_db)):
-    n = db.query(ExamenInscripto).filter(ExamenInscripto.instancia_id == inst_id, ExamenInscripto.alumno_id == alumno_id).delete()
+def _registrar(db: Session, curso: Curso, filas: list[tuple], vencimiento: date | None, lote: str) -> dict:
+    from app.routers.planilla_siro import registrar_cupones
+    alumnos = _alumnos_del_curso(db, curso)
+    por_vto: dict[date, list] = {}
+    no_encontrados, sin_fecha = [], 0
+    for cli, vto, monto in filas:
+        vto = vto or vencimiento
+        if not vto:
+            sin_fecha += 1
+            continue
+        a = _buscar(alumnos, cli)
+        if not a:
+            no_encontrados.append(cli)
+            continue
+        por_vto.setdefault(vto, []).append((a.id, curso.id, re.sub(r"\D", "", cli), monto or curso.cuota or 0))
+    if sin_fecha and not por_vto:
+        raise HTTPException(400, "La planilla no trae el 1º vencimiento: poné la fecha de vencimiento de esos cupones")
+    nuevos = sum(registrar_cupones(db, cupones, vto, "importado", lote) for vto, cupones in por_vto.items())
     db.commit()
-    if not n:
-        raise HTTPException(404, "Ese alumno no está inscripto en la instancia")
+    return {"ok": True, "registrados": sum(len(x) for x in por_vto.values()), "nuevos": nuevos,
+            "vencimientos": sorted(str(v) for v in por_vto), "no_encontrados": no_encontrados}
+
+
+@router.post("/{curso_id}/cupones/planilla")
+async def registrar_planilla(curso_id: int, archivo: UploadFile = File(...), vencimiento: date | None = Form(None),
+                             db: Session = Depends(get_db)):
+    """Registra los cupones de una planilla que ya se subió a SIRO: esos alumnos quedan inscriptos al examen."""
+    curso = _curso_examen(db, curso_id)
+    contenido = await archivo.read()
+    if len(contenido) > 5_000_000:
+        raise HTTPException(413, "El archivo es demasiado grande")
+    return _registrar(db, curso, leer_planilla_siro(contenido), vencimiento,
+                      f"Planilla subida: {(archivo.filename or 'cupones.xlsx')[:90]}")
+
+
+class CuponesPegados(BaseModel):
+    vencimiento: date
+    clientes: list[str] = Field(min_length=1, max_length=2000)  # DNI (o legajo) de cada alumno que recibió cupón
+    monto: Decimal | None = Field(default=None, gt=0, le=10_000_000)
+
+
+@router.post("/{curso_id}/cupones")
+def registrar_lista(curso_id: int, data: CuponesPegados, db: Session = Depends(get_db)):
+    """Registra cupones ya enviados a partir de una lista de DNI (cuando no se tiene la planilla de SIRO)."""
+    curso = _curso_examen(db, curso_id)
+    return _registrar(db, curso, [(c, None, data.monto) for c in data.clientes], data.vencimiento,
+                      f"Lista cargada el {ahora_ar():%d/%m/%Y}")
+
+
+@router.delete("/cupones/{cupon_id}")
+def quitar_cupon(cupon_id: int, db: Session = Depends(get_db)):
+    c = db.get(CuponGenerado, cupon_id)
+    if not c:
+        raise HTTPException(404, "Cupón no encontrado")
+    db.delete(c)
+    db.commit()
     return {"ok": True}

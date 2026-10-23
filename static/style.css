@@ -1115,3 +1115,9 @@ td:has(> .td-acc) { width: 1%; }
 .ex-vista { margin: 0 0 0.75rem; }
 .ex-solo { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0 0 0.6rem; font-weight: 600; cursor: pointer; }
 .ex-solo input { width: auto; margin: 0; }
+
+/* Planilla SIRO: elegir alumnos de un curso (en los exámenes, los que rinden) */
+.ps-alu-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.8rem; margin: 0.4rem 0; font-size: 0.86rem; }
+.ps-alu-acc { display: inline-flex; gap: 0.3rem; flex-wrap: wrap; }
+.ps-alu-check { width: 1.6rem; }
+.ps-alu-check input { width: auto; margin: 0; }

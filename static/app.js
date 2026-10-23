@@ -5323,6 +5323,8 @@ function verAlumnosConEstado(filtro) {
 let psCursos = [];
 const psSel = new Set();          // cursos elegidos, en el orden en que se marcaron
 const psAbiertos = new Set();     // cursos desplegados en la lista
+const psFuera = new Set();        // "curso:alumno" que no reciben cupón (desmarcados en la lista)
+const psExIni = new Set();        // cursos por examen ya preparados (arrancan sin nadie marcado)
 const PS_AREAS = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Examenes': 'Exámenes' };
 const PS_ESTADOS = { becado: ['Becado', 'badge-beca'], pagado: ['Año pagado', 'badge-pagado'], sin_numero: ['Sin número', 'badge-sin'] };
 
@@ -5349,8 +5351,10 @@ const psCurso = id => psCursos.find(c => c.id === id);
 
 function psReciben(c) {
     const sinPagados = document.getElementById('ps-pagados').checked;
-    return c.alumnos.filter(a => a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados));
+    return c.alumnos.filter(a => (a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados)) && !psFuera.has(`${c.id}:${a.alumno_id}`));
 }
+
+const psPuede = (c, a) => a.estado === 'ok' || (a.estado === 'pagado' && !document.getElementById('ps-pagados').checked);
 
 function psConteos(c) {
     const n = { becado: 0, pagado: 0, sin_numero: 0 };
@@ -5388,7 +5392,62 @@ function psFilaCurso(c) {
 
 function psMarcar(id, on) {
     on ? psSel.add(id) : psSel.delete(id);
+    const c = psCurso(id);
+    if (on && c.por_examen && !psExIni.has(id)) {
+        // examen: el cupón va solo a los que rinden, y esos quedan inscriptos a la instancia
+        psExIni.add(id);
+        c.alumnos.forEach(a => psFuera.add(`${id}:${a.alumno_id}`));
+        psAbiertos.add(id);
+        toast(`${c.nombre}: marcá los alumnos que rinden este examen`);
+    }
     psRender();
+}
+
+function psAlumno(cid, aid, on) {
+    on ? psFuera.delete(`${cid}:${aid}`) : psFuera.add(`${cid}:${aid}`);
+    psRender();
+}
+
+function psTodos(cid, on) {
+    psCurso(cid).alumnos.forEach(a => on ? psFuera.delete(`${cid}:${a.alumno_id}`) : psFuera.add(`${cid}:${a.alumno_id}`));
+    psRender();
+}
+
+function psPegar(cid) {
+    const c = psCurso(cid);
+    document.getElementById('modal-content').innerHTML = `
+        <h2 style="margin-top:0">Alumnos que rinden · ${escapeHtml(c.nombre)}</h2>
+        <p class="muted" style="margin-top:-0.4rem">Pegá los DNI (uno por renglón; puede ser la columna de la planilla, con o sin nombres al lado).
+        Se marcan esos alumnos y se desmarcan los demás.</p>
+        <textarea id="ps-pegados" rows="10" style="width:100%" placeholder="31106035\n34128133 Ceballos Gisela\n..."></textarea>
+        <div class="form-actions"><button class="btn btn-primary" onclick="psMarcarPegados(${cid})">Marcar</button>
+            <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('ps-pegados').focus();
+}
+
+function psMarcarPegados(cid) {
+    const c = psCurso(cid);
+    const claves = new Set(numerosPegados(document.getElementById('ps-pegados').value).map(n => n.replace(/^0+/, '')));
+    if (!claves.size) return toast('No encontré ningún DNI en lo pegado', 'error');
+    let n = 0;
+    c.alumnos.forEach(a => {
+        const si = claves.has(String(a.cliente || '').replace(/^0+/, ''));
+        claves.delete(String(a.cliente || '').replace(/^0+/, ''));
+        si ? (psFuera.delete(`${cid}:${a.alumno_id}`), n++) : psFuera.add(`${cid}:${a.alumno_id}`);
+    });
+    cerrarModal();
+    psRender();
+    toast(`${n} alumno${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'}`);
+    if (claves.size) alert(`No están en ${c.nombre} (${claves.size}): ${[...claves].join(', ')}.\nRevisá que estén cargados en Alumnos con ese curso.`);
+}
+
+// de cada renglón pegado, el primer número de 7 u 8 cifras (DNI); si no hay, el primer legajo "D12345678"
+function numerosPegados(texto) {
+    return texto.split(/\n/).map(l => {
+        const m = l.replace(/\./g, '').match(/\b\d{7,8}\b/) || l.match(/\bD\d{6,9}\b/i);
+        return m ? m[0].replace(/^D/i, '') : null;
+    }).filter(Boolean);
 }
 
 function psMarcarArea(el) {
@@ -5445,7 +5504,9 @@ function psRender() {
         li.classList.toggle('activo', on);
         li.querySelector('.ps-sel').checked = on;
         const rec = psReciben(c).length, n = psConteos(c);
-        const extra = [n.becado && `${n.becado} becado${n.becado === 1 ? '' : 's'}`,
+        const desm = c.alumnos.filter(a => psPuede(c, a) && psFuera.has(`${c.id}:${a.alumno_id}`)).length;
+        const extra = [desm && (c.por_examen ? `${desm} no rinde${desm === 1 ? '' : 'n'}` : `${desm} desmarcado${desm === 1 ? '' : 's'}`),
+            n.becado && `${n.becado} becado${n.becado === 1 ? '' : 's'}`,
             n.pagado && `${n.pagado} con el año pagado`, n.sin_numero && `${n.sin_numero} sin número`].filter(Boolean);
         li.querySelector('.ps-sub').textContent = `${rec} cupón${rec === 1 ? '' : 'es'}` + (extra.length ? ' · ' + extra.join(' · ') : '');
         const abierto = psAbiertos.has(c.id) || !!li.dataset.q;
@@ -5501,10 +5562,18 @@ function psTablaAlumnos(c, q) {
     let lista = c.alumnos;
     if (q) lista = lista.filter(a => a.alumno.toLowerCase().includes(q) || (a.cliente || '').includes(q));
     if (!lista.length) return '<p class="muted" style="margin:0.4rem 0">No hay alumnos en este curso.</p>';
-    return `<table class="ps-mini"><tbody>${lista.map(a => {
-        const queda = a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados);
+    const marcados = psReciben(c).length;
+    const barra = `<div class="ps-alu-barra">${c.por_examen ? `<b>Marcá los que rinden</b> <span class="muted">(quedan inscriptos al examen) · ${marcados} marcado${marcados === 1 ? '' : 's'}</span>` : `<span class="muted">Desmarcá a quien no deba recibir cupón</span>`}
+        <span class="ps-alu-acc"><button type="button" class="btn btn-sm btn-ghost" onclick="psTodos(${c.id}, true)">Todos</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="psTodos(${c.id}, false)">Ninguno</button>
+        <button type="button" class="btn btn-sm" onclick="psPegar(${c.id})">Pegar DNI…</button></span></div>`;
+    return barra + `<table class="ps-mini"><tbody>${lista.map(a => {
+        const puede = a.estado === 'ok' || (a.estado === 'pagado' && !sinPagados);
+        const elegido = !psFuera.has(`${c.id}:${a.alumno_id}`);
+        const queda = puede && elegido;
         const [txt, cls] = PS_ESTADOS[a.estado] || [];
         return `<tr class="${queda ? '' : 'fuera'}">
+            <td class="ps-alu-check">${puede ? `<input type="checkbox" ${elegido ? 'checked' : ''} onchange="psAlumno(${c.id}, ${a.alumno_id}, this.checked)" aria-label="Cupón para ${escapeHtml(a.alumno)}">` : ''}</td>
             <td class="num">${a.cliente || '—'}</td>
             <td>${escapeHtml(a.alumno)}${a.etiqueta !== c.nombre ? ` <span class="muted">${escapeHtml(a.etiqueta)}</span>` : ''}</td>
             <td class="num">${queda ? fmtMoneda(a.personal || c.importeElegido, 0) : ''}</td>
@@ -5536,6 +5605,7 @@ function psPedido() {
         vencimiento: document.getElementById('ps-vto').value,
         cursos: [...psSel].map(id => ({ curso_id: id, importe: psCurso(id).importeElegido })),
         excluir_pagados: document.getElementById('ps-pagados').checked,
+        excluidos: [...psFuera].filter(k => psSel.has(+k.split(':')[0])),
     };
 }
 
@@ -5555,7 +5625,8 @@ async function psDescargar() {
         const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        toast('Planilla descargada. Subila en SIRO para generar los cupones.');
+        const ex = p.cursos.filter(x => psCurso(x.curso_id).por_examen).length;
+        toast('Planilla descargada. Subila en SIRO para generar los cupones.' + (ex ? ' Los alumnos del examen quedaron inscriptos.' : ''));
     } catch (e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; }
 }
@@ -6477,7 +6548,7 @@ function pintarExamenes() {
                 <input type="search" id="ex-buscar" placeholder="Buscar alumno, DNI o legajo…" oninput="pintarExamenes()" value="${escapeHtml((document.getElementById('ex-buscar') || {}).value || '')}">
                 ${inst ? `<button class="btn btn-sm" onclick="formInstancia(${inst.id})">Editar</button>
                 <button class="btn btn-sm btn-danger btn-ico" onclick="borrarInstancia(${inst.id})" title="Eliminar instancia" aria-label="Eliminar instancia"><svg class="ic"><use href="#i-trash"/></svg></button>` : ''}
-                ${inst ? `<button class="btn btn-sm" onclick="formInscriptos(${inst.id})">Cargar inscriptos</button>` : ''}
+                ${inst ? `<button class="btn btn-sm" onclick="formCuponesExamen(${inst.id})" title="Registrar los cupones de una planilla que ya se subió a SIRO">Registrar cupones enviados</button>` : ''}
                 ${verInsc ? `<button class="btn btn-sm btn-primary" onclick="pdfInscriptos()" ${inst.inscriptos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>PDF de inscriptos</button>`
                     : `<button class="btn btn-sm btn-primary" onclick="pdfExamen()" ${pagos.length ? '' : 'disabled'}><svg class="ic"><use href="#i-download"/></svg>Exportar PDF</button>`}
             </div>
@@ -6490,7 +6561,7 @@ function pintarExamenes() {
             <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Fecha de proceso</th><th>Fecha de pago</th><th>Medio</th><th class="num">Importe</th><th>Instancia</th></tr></thead>
             <tbody>${lista.map((p, n) => `<tr>
                 <td class="muted">${n + 1}</td>
-                <td><b>${escapeHtml(p.apellido)}</b>, ${escapeHtml(p.nombre)}${p.inscripto === false ? ' <span class="badge badge-revisar" title="Pagó esta instancia pero no está en la lista de inscriptos">no inscripto</span>' : ''}<br><small class="muted">${escapeHtml(p.curso || '')}</small></td>
+                <td><b>${escapeHtml(p.apellido)}</b>, ${escapeHtml(p.nombre)}${p.inscripto === false ? ' <span class="badge badge-revisar" title="Pagó esta instancia pero no se le mandó cupón para ella">sin cupón</span>' : ''}<br><small class="muted">${escapeHtml(p.curso || '')}</small></td>
                 <td>${escapeHtml(p.dni || '')}</td><td>${escapeHtml(p.legajo || '')}</td>
                 <td><b>${fmtFecha(p.fecha)}</b></td><td>${p.fecha_pago ? fmtFecha(p.fecha_pago) : '—'}</td>
                 <td>${escapeHtml(nombreCanal(p))}</td>
@@ -6706,42 +6777,60 @@ async function cambiarSectorGasto(id, valor) {
     } catch (err) { toast(err.message, 'error'); }
 }
 
-// ---- Inscriptos de una instancia de examen
-function formInscriptos(instId) {
+// ---- Inscriptos de una instancia de examen: los alumnos a los que se les mandó cupón para ese examen.
+// Se registran solos al generar la planilla de SIRO; acá se pueden registrar los de una planilla ya subida.
+function formCuponesExamen(instId) {
     const i = EXA.datos.instancias.find(x => x.id === instId);
+    const vto = `${i.anio}-${String(i.mes).padStart(2, '0')}-01`;
     document.getElementById('modal-content').innerHTML = `
-        <h2 style="margin-top:0">Inscriptos · ${escapeHtml(i.nombre)}</h2>
-        <p class="muted" style="margin-top:-0.4rem">Pegá los DNI de los inscriptos (uno por renglón; se puede copiar la columna de la planilla, con o sin
-        nombres al lado). Se buscan en el padrón por DNI o legajo.</p>
-        <textarea id="insc-dnis" rows="10" style="width:100%" placeholder="31106035\n34128133 Ceballos Gisela\n..."></textarea>
-        <label style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem"><input type="checkbox" id="insc-reemplazar" style="width:auto">
-            Reemplazar la lista actual (${i.inscriptos.length} inscripto${i.inscriptos.length === 1 ? '' : 's'})</label>
-        <div class="form-actions"><button class="btn btn-primary" onclick="guardarInscriptos(${instId})">Cargar</button>
+        <h2 style="margin-top:0">Cupones enviados · ${escapeHtml(i.nombre)}</h2>
+        <p class="muted" style="margin-top:-0.4rem">Los inscriptos son los alumnos a los que se les mandó cupón. Al generar la planilla en
+        <b>Cupones SIRO</b> eligiendo a los que rinden quedan registrados solos; acá se registran los de una planilla que ya se subió a SIRO.
+        El cupón va a la primera instancia desde el mes de su vencimiento.</p>
+        <label for="cx-archivo">Planilla subida a SIRO (.xlsx)</label>
+        <input type="file" id="cx-archivo" accept=".xlsx">
+        <p class="muted" style="margin:0.6rem 0 0.3rem">… o pegá los DNI de los alumnos que recibieron cupón (uno por renglón):</p>
+        <textarea id="cx-dnis" rows="7" style="width:100%" placeholder="31106035\n34128133 Ceballos Gisela\n..."></textarea>
+        <div class="form-grid" style="margin-top:0.5rem">
+            <div><label for="cx-vto">1º vencimiento <span class="muted">(si la planilla no lo trae)</span></label><input type="date" id="cx-vto" value="${vto}"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary" id="cx-ok" onclick="guardarCuponesExamen()">Registrar</button>
             <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
     document.getElementById('modal-overlay').style.display = 'flex';
 }
 
-async function guardarInscriptos(instId) {
-    // de cada renglón, el primer número de 7 u 8 cifras (DNI); si no hay, el primer "D12345678"/legajo
-    const dnis = document.getElementById('insc-dnis').value.split(/\n/).map(l => {
-        const m = l.replace(/\./g, '').match(/\b\d{7,8}\b/) || l.match(/\bD\d{6,9}\b/i);
-        return m ? m[0] : null;
-    }).filter(Boolean);
-    if (!dnis.length) return toast('No encontré ningún DNI en lo pegado', 'error');
+async function guardarCuponesExamen() {
+    const archivo = document.getElementById('cx-archivo').files[0];
+    const dnis = numerosPegados(document.getElementById('cx-dnis').value);
+    const vto = document.getElementById('cx-vto').value;
+    if (!archivo && !dnis.length) return toast('Elegí la planilla o pegá los DNI', 'error');
+    if (!archivo && !vto) return toast('Poné el 1º vencimiento de los cupones', 'error');
+    const btn = document.getElementById('cx-ok');
+    btn.disabled = true;
     try {
-        const r = await api(`/api/examenes/instancias/${instId}/inscriptos`, { method: 'POST',
-            body: JSON.stringify({ dnis, reemplazar: document.getElementById('insc-reemplazar').checked }) });
+        let r;
+        const cid = EXA.datos.curso.id;
+        if (archivo) {
+            const fd = new FormData();
+            fd.append('archivo', archivo);
+            if (vto) fd.append('vencimiento', vto);
+            const res = await fetch(`/api/examenes/${cid}/cupones/planilla`, { method: 'POST', credentials: 'same-origin', body: fd });
+            r = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(r.detail || 'No se pudo registrar la planilla');
+        } else {
+            r = await api(`/api/examenes/${cid}/cupones`, { method: 'POST', body: JSON.stringify({ vencimiento: vto, clientes: dnis }) });
+        }
         cerrarModal();
-        toast(`${r.agregados} inscripto${r.agregados === 1 ? '' : 's'} agregado${r.agregados === 1 ? '' : 's'} · ${r.total} en total`);
-        if (r.no_encontrados.length) alert(`No están en el padrón (${r.no_encontrados.length}): ${r.no_encontrados.join(', ')}.\nCargalos en Alumnos y volvé a pegar sus DNI.`);
+        toast(`${r.registrados} cupón${r.registrados === 1 ? '' : 'es'} registrado${r.registrados === 1 ? '' : 's'} (${r.nuevos} nuevo${r.nuevos === 1 ? '' : 's'})`);
+        if (r.no_encontrados.length) alert(`No son alumnos de ${EXA.datos.curso.nombre} (${r.no_encontrados.length}): ${r.no_encontrados.join(', ')}.\nCargalos en Alumnos con ese curso y volvé a registrar.`);
         EXA.vista = 'inscriptos';
         cargarExamenes();
-    } catch (e) { toast(e.message, 'error'); }
+    } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
 
-async function quitarInscripto(instId, alumnoId) {
-    if (!confirm('¿Quitar a este alumno de los inscriptos de la instancia?')) return;
-    try { await api(`/api/examenes/instancias/${instId}/inscriptos/${alumnoId}`, { method: 'DELETE' }); cargarExamenes(); }
+async function quitarCuponExamen(cuponId) {
+    if (!confirm('¿Quitar este cupón? El alumno deja de figurar como inscripto en la instancia.')) return;
+    try { await api(`/api/examenes/cupones/${cuponId}`, { method: 'DELETE' }); cargarExamenes(); }
     catch (e) { toast(e.message, 'error'); }
 }
 
@@ -6753,15 +6842,17 @@ function htmlInscriptos(inst) {
     const nombreInst = id => (d.instancias.find(x => x.id === id) || {}).nombre || '';
     return `<label class="ex-solo"><input type="checkbox" ${soloNo ? 'checked' : ''} onchange="EXA.soloNoPagaron=this.checked;pintarExamenes()"> Solo los que no pagaron (${inst.no_pagaron})</label>
         <div class="tabla-wrap"><table>
-        <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Alumno</th><th>DNI</th><th>Legajo</th><th>Cupón (vto)</th><th>Estado</th><th></th></tr></thead>
         <tbody>${lista.map((a, n) => `<tr>
             <td class="muted">${n + 1}</td>
             <td><b>${escapeHtml(a.apellido)}</b>, ${escapeHtml(a.nombre)}<br><small class="muted">${escapeHtml(a.curso || '')}</small></td>
             <td>${escapeHtml(a.dni || '')}</td><td>${escapeHtml(a.legajo || '')}</td>
+            <td>${fmtFecha(a.vencimiento)}<br><small class="muted">${fmtMoneda(a.monto, 0)}${a.origen === 'importado' ? ' · registrado' : ''}</small></td>
             <td>${a.pago ? `<span class="conc-ok">✓ Pagó</span> <small class="muted">proceso ${fmtFecha(a.pago_fecha)}</small>`
                 : `<span class="conc-pend">● No pagó</span>${a.otras_instancias.length ? `<br><small class="muted">pagó en ${a.otras_instancias.map(nombreInst).join(', ').toLowerCase()}</small>` : ''}`}</td>
-            <td><button class="btn btn-sm btn-ghost btn-ico" onclick="quitarInscripto(${inst.id}, ${a.alumno_id})" title="Quitar de los inscriptos" aria-label="Quitar de los inscriptos"><svg class="ic"><use href="#i-x"/></svg></button></td>
-        </tr>`).join('') || `<tr><td colspan="6" class="muted">${inst.inscriptos.length ? 'Nadie coincide con el filtro.' : 'Todavía no hay inscriptos cargados: usá «Cargar inscriptos».'}</td></tr>`}</tbody>
+            <td><button class="btn btn-sm btn-ghost btn-ico" onclick="quitarCuponExamen(${a.cupon_id})" title="Quitar el cupón (no se le mandó)" aria-label="Quitar el cupón"><svg class="ic"><use href="#i-x"/></svg></button></td>
+        </tr>`).join('') || `<tr><td colspan="7" class="muted">${inst.inscriptos.length ? 'Nadie coincide con el filtro.'
+            : 'Todavía no se mandaron cupones para esta instancia. Se registran al generar la planilla en <b>Cupones SIRO</b> marcando a los que rinden, o con «Registrar cupones enviados».'}</td></tr>`}</tbody>
         </table></div>`;
 }
 
@@ -6783,14 +6874,14 @@ async function pdfInscriptos() {
     doc.text('Asociación de Padres y Alumnos del I.N.A.C.', 36, 21);
     doc.setFontSize(8.5); doc.text(`Generado el ${fmtFecha(hoyISO())}`, W - 14, 21, { align: 'right' });
     doc.setTextColor(30, 41, 59); doc.setFontSize(10);
-    doc.text(`${inst.inscriptos.length} inscriptos · pagaron ${inst.inscriptos.length - inst.no_pagaron} · no pagaron ${inst.no_pagaron}${EXA.soloNoPagaron ? ' (listado: solo los que no pagaron)' : ''}`, 14, 40);
+    doc.text(`${inst.inscriptos.length} con cupón enviado · pagaron ${inst.inscriptos.length - inst.no_pagaron} · no pagaron ${inst.no_pagaron}${EXA.soloNoPagaron ? ' (listado: solo los que no pagaron)' : ''}`, 14, 40);
     doc.autoTable({
         startY: 45, margin: { left: 14, right: 14 },
-        head: [['#', 'Apellido y nombre', 'DNI', 'Legajo', 'Estado', 'Fecha de proceso']],
-        body: lista.map((a, n) => [n + 1, `${a.apellido}, ${a.nombre}`, a.dni || '', a.legajo || '', a.pago ? 'Pagó' : 'No pagó', a.pago ? fmtFecha(a.pago_fecha) : '—']),
+        head: [['#', 'Apellido y nombre', 'DNI', 'Legajo', 'Vto. cupón', 'Estado', 'Fecha de proceso']],
+        body: lista.map((a, n) => [n + 1, `${a.apellido}, ${a.nombre}`, a.dni || '', a.legajo || '', fmtFecha(a.vencimiento), a.pago ? 'Pagó' : 'No pagó', a.pago ? fmtFecha(a.pago_fecha) : '—']),
         styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [21, 35, 59] }, alternateRowStyles: { fillColor: [244, 246, 250] },
         columnStyles: { 0: { cellWidth: 9, halign: 'right' } },
-        didParseCell: c => { if (c.section === 'body' && c.column.index === 4) c.cell.styles.textColor = c.cell.raw === 'Pagó' ? [21, 128, 61] : [180, 83, 9]; },
+        didParseCell: c => { if (c.section === 'body' && c.column.index === 5) c.cell.styles.textColor = c.cell.raw === 'Pagó' ? [21, 128, 61] : [180, 83, 9]; },
     });
     doc.save(`Inscriptos ${curso} - ${inst.nombre}.pdf`);
 }

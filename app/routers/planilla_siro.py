@@ -45,6 +45,8 @@ class Pedido(BaseModel):
     cursos: list[CursoPlanilla] = Field(min_length=1, max_length=50)
     anio: int | None = None
     excluir_pagados: bool = True
+    # alumnos que no reciben cupón ("curso_id:alumno_id"), p. ej. en un examen solo se manda a los que rinden
+    excluidos: list[str] = Field(default=[], max_length=5000)
 
 
 def usa_dni(area: str | None) -> bool:
@@ -116,7 +118,7 @@ def cursos_para_planilla(anio: int | None = None, db: Session = Depends(get_db),
     por_curso: dict[int, list] = {}
     for e in entradas(db, anio):
         por_curso.setdefault(e.pop("curso_id"), []).append(e)
-    return [{"id": c.id, "nombre": c.nombre, "area": c.area, "importe": float(c.cuota or 0),
+    return [{"id": c.id, "nombre": c.nombre, "area": c.area, "importe": float(c.cuota or 0), "por_examen": bool(c.por_examen),
              "cliente": "DNI" if usa_dni(c.area) else "Legajo", "alumnos": por_curso.get(c.id, [])}
             for c in _ordenar_cursos(cursos_vigentes(db, anio))]
 
@@ -131,9 +133,13 @@ def armar_filas(db: Session, data: Pedido) -> dict:
         pedidos[x.curso_id] = Decimal(str(x.importe)) if x.importe else Decimal(cursos[x.curso_id].cuota or 0)
 
     filas: dict[str, dict] = {}
-    omitidos = {"becados": 0, "pagados": 0}
+    omitidos = {"becados": 0, "pagados": 0, "elegidos": 0}
     sin_numero = []
+    excluidos = set(data.excluidos)
     for e in entradas(db, anio, set(pedidos)):
+        if f"{e['curso_id']}:{e['alumno_id']}" in excluidos:
+            omitidos["elegidos"] += 1
+            continue
         if e["estado"] == "becado":
             omitidos["becados"] += 1
             continue
@@ -148,10 +154,11 @@ def armar_filas(db: Session, data: Pedido) -> dict:
         if f:  # mismo número de cliente en dos cursos elegidos: un solo cupón con la suma
             f["importe"] += importe
             f["cursos"].append(e["etiqueta"])
+            f["por_curso"].append((e["curso_id"], importe))
         else:
             filas[e["cliente"]] = {"cliente": e["cliente"], "tipo": e["tipo"], "alumno_id": e["alumno_id"],
                                    "alumno": e["alumno"], "cursos": [e["etiqueta"]], "importe": importe,
-                                   "personalizado": bool(e["personal"])}
+                                   "personalizado": bool(e["personal"]), "por_curso": [(e["curso_id"], importe)]}
     lista = sorted(filas.values(), key=lambda f: (f["cursos"][0], f["alumno"]))
     return {"filas": lista, "omitidos": omitidos, "sin_numero": sin_numero, "anio": anio,
             "total": sum((f["importe"] for f in lista), Decimal(0))}
@@ -161,7 +168,26 @@ def armar_filas(db: Session, data: Pedido) -> dict:
 def vista(data: Pedido, db: Session = Depends(get_db), _=Depends(requiere_admin)):
     r = armar_filas(db, data)
     return {**r, "total": float(r["total"]),
-            "filas": [{**f, "importe": float(f["importe"]), "cursos": " + ".join(f["cursos"])} for f in r["filas"]]}
+            "filas": [{**{k: v for k, v in f.items() if k != "por_curso"}, "importe": float(f["importe"]),
+                       "cursos": " + ".join(f["cursos"])} for f in r["filas"]]}
+
+
+def registrar_cupones(db: Session, cupones: list[tuple], vencimiento: date, origen: str, lote: str) -> int:
+    """Guarda (alumno, curso, cliente, monto) como cupón generado con ese vencimiento; si ya estaba, lo actualiza."""
+    from app.models.curso import CuponGenerado
+    ya = {(c.alumno_id, c.curso_id): c for c in db.query(CuponGenerado).filter(CuponGenerado.vencimiento == vencimiento)}
+    nuevos = 0
+    for alumno_id, curso_id, cliente, monto in cupones:
+        c = ya.get((alumno_id, curso_id))
+        if c:
+            c.monto, c.cliente, c.lote, c.origen = Decimal(str(monto)), cliente, lote[:120], origen
+        else:
+            c = CuponGenerado(alumno_id=alumno_id, curso_id=curso_id, cliente=cliente, vencimiento=vencimiento,
+                              monto=Decimal(str(monto)), origen=origen, lote=lote[:120])
+            db.add(c)
+            ya[(alumno_id, curso_id)] = c
+            nuevos += 1
+    return nuevos
 
 
 def generar_excel(filas: list[dict], vencimiento: date) -> bytes:
@@ -194,6 +220,8 @@ def excel(data: Pedido, request: Request, db: Session = Depends(get_db), admin=D
     if not r["filas"]:
         raise HTTPException(400, "No hay alumnos para generar cupones con esos cursos")
     nombres = sorted({c for f in r["filas"] for c in f["cursos"]})
+    registrar_cupones(db, [(f["alumno_id"], cid, f["cliente"], imp) for f in r["filas"] for cid, imp in f["por_curso"]],
+                      data.vencimiento, "planilla", f"Planilla SIRO del {ahora_ar():%d/%m/%Y %H:%M}")
     auditar(db, "planilla_siro", admin["sub"],
             f"{len(r['filas'])} cupones, vence {data.vencimiento:%d/%m/%Y}, total ${r['total']:,.2f}: {', '.join(nombres)[:300]}", request)
     db.commit()

@@ -65,12 +65,18 @@ class InstanciaExamen(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
 
 
-class ExamenInscripto(Base):
-    """Alumno inscripto a una instancia de examen (haya pagado o no)."""
-    __tablename__ = "examen_inscriptos"
-    __table_args__ = (UniqueConstraint("instancia_id", "alumno_id", name="uq_examen_inscripto"),)
+class CuponGenerado(Base):
+    """Cupón que se le generó a un alumno para un curso en la planilla de SIRO (o que se registró después
+    subiendo esa planilla). En los cursos por examen, los que recibieron cupón para una instancia son sus inscriptos."""
+    __tablename__ = "cupones_generados"
+    __table_args__ = (UniqueConstraint("alumno_id", "curso_id", "vencimiento", name="uq_cupon_generado"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    instancia_id: Mapped[int] = mapped_column(ForeignKey("examen_instancias.id", ondelete="CASCADE"), nullable=False, index=True)
-    alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id", ondelete="CASCADE"), nullable=False)
+    alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id", ondelete="CASCADE"), nullable=False, index=True)
+    curso_id: Mapped[int] = mapped_column(ForeignKey("cursos.id"), nullable=False, index=True)
+    cliente: Mapped[str | None] = mapped_column(String(20))           # Nro Cliente de SIRO (DNI o legajo)
+    vencimiento: Mapped[date] = mapped_column(Date, nullable=False)   # 1º vencimiento
+    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    origen: Mapped[str] = mapped_column(String(20), default="planilla")  # planilla (generada acá) / importado
+    lote: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
