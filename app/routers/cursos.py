@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -30,10 +31,14 @@ def curso_de_alumno(alumno: Alumno, cursos: list[Curso]) -> Curso | None:
     for c in cursos:
         if c.patron and txt.startswith(c.patron.upper()):
             return c
-    for c in cursos:
-        if not c.patron and c.area and alumno.area and c.area.lower() == alumno.area.lower():
-            return c
-    return None
+    del_area = [c for c in cursos if not c.patron and c.area and alumno.area and c.area.lower() == alumno.area.lower()]
+    if len(del_area) > 1:
+        # varios cursos sin patrón en el área (RAAC 147 y PERICIA en Exámenes): el que se llama como el curso del alumno
+        nombre = lambda c: re.sub(r"\s*\(.*\)$", "", c.nombre or "").strip().upper()  # noqa: E731
+        por_nombre = [c for c in del_area if nombre(c) and txt.startswith(nombre(c))]
+        if por_nombre:
+            return max(por_nombre, key=lambda c: len(nombre(c)))
+    return del_area[0] if del_area else None
 
 
 @router.get("/", response_model=list[CursoResponse])
