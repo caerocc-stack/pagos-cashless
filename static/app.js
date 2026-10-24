@@ -6676,7 +6676,7 @@ async function cargarCuentaSector() {
     try {
         if (!CS.sectores.length) {
             CS.sectores = await api('/api/sectores/');
-            selS.innerHTML = CS.sectores.map(s => `<option value="${escapeHtml(s.sector)}" ${s.sector === 'Exámenes' ? 'selected' : ''}>${escapeHtml(s.sector)}</option>`).join('');
+            selS.innerHTML = CS.sectores.map(s => `<option value="${escapeHtml(s.sector)}" ${s.sector === 'RAAC 147' ? 'selected' : ''}>${escapeHtml(s.sector)}</option>`).join('');
             const hoy = hoyISO();
             document.getElementById('cs-desde').value = hoy.slice(0, 4) + '-01-01';
             document.getElementById('cs-hasta').value = hoy;

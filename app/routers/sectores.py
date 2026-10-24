@@ -27,7 +27,22 @@ router = APIRouter(prefix="/api/sectores", tags=["Sectores"])
 
 # sector -> área de los cursos (Curso.area) cuyas cuotas son ingresos del sector
 SECTOR_AREA = {"Ciclo Básico": "Ciclo Basico", "Aviónica": "Avionica", "Mecánica": "Mecanica",
-               "Aeronavegantes": "Aeronavegantes", "Exámenes": "Examenes"}
+               "Aeronavegantes": "Aeronavegantes"}
+# cada examen es su propio sector: los cursos del área Exámenes con ese nombre
+SECTOR_EXAMEN = {"RAAC 147": "RAAC 147", "Pericia": "PERICIA"}
+
+
+def _nombre(c) -> str:
+    return re.sub(r"\s*\(.*\)$", "", c.nombre or "").strip().upper()  # "RAAC 147 (Examen)" -> "RAAC 147"
+
+
+def cursos_del_sector(sector: str, cursos: list) -> list:
+    """Cursos cuyas cuotas son ingresos del sector."""
+    if sector in SECTOR_EXAMEN:
+        return [c for c in cursos if (c.area or "").lower() in ("examenes", "exámenes")
+                and _nombre(c).startswith(SECTOR_EXAMEN[sector])]
+    area = SECTOR_AREA.get(sector)
+    return [c for c in cursos if area and c.area == area]
 
 
 def curso_de_pago(planes: list, p) -> int | None:
@@ -58,7 +73,7 @@ def sectores(db: Session = Depends(get_db)):
     """Sectores con los cursos que les aportan ingresos."""
     cursos = db.query(Curso).filter(Curso.activo.is_(True)).order_by(Curso.area, Curso.nombre).all()
     return [{"sector": s, "cursos": [{"id": c.id, "nombre": c.nombre, "por_examen": bool(c.por_examen)}
-                                     for c in cursos if SECTOR_AREA.get(s) and c.area == SECTOR_AREA[s]]}
+                                     for c in cursos_del_sector(s, cursos)]}
             for s in SECTORES]
 
 
@@ -73,10 +88,10 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
     desde = desde or date(hasta.year, 1, 1)
     if desde > hasta:
         raise HTTPException(400, "La fecha 'desde' es posterior a 'hasta'.")
-    del_sector = [c for c in db.query(Curso).all() if SECTOR_AREA.get(sector) and c.area == SECTOR_AREA[sector]]
+    del_sector = cursos_del_sector(sector, db.query(Curso).all())
     elegidos = {int(x) for x in (cursos or "").split(",") if x.strip().isdigit()} or {c.id for c in del_sector}
     elegidos &= {c.id for c in del_sector}
-    nombres = {c.id: re.sub(r"\s*\(.*\)$", "", c.nombre) for c in del_sector}  # "RAAC 147 (Examen)" -> "RAAC 147"
+    nombres = {c.id: re.sub(r"\s*\(.*\)$", "", c.nombre) for c in del_sector}
 
     # ---- ingresos
     grupos: dict = {}

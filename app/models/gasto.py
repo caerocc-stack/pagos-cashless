@@ -16,7 +16,7 @@ CATEGORIAS = [
 
 # Sector / área del colegio al que se destinó el gasto (para la cuenta corriente de cada sector).
 # "General" = abarca más de un área (ej. pintar toda la escuela).
-SECTORES = ["Dirección", "Administración", "Ciclo Básico", "Aviónica", "Mecánica", "Aeronavegantes", "Exámenes", "General"]
+SECTORES = ["Dirección", "Administración", "Ciclo Básico", "Aviónica", "Mecánica", "Aeronavegantes", "RAAC 147", "Pericia", "General"]
 
 # Formas de pago
 FORMAS_PAGO = ["Efectivo", "Transferencia", "Débito", "Tarjeta", "Cheque", "Otro"]
