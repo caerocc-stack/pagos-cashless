@@ -451,18 +451,21 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
         if mes:  # la foto al cierre del mes elegido solo considera lo pagado hasta ese mes
             ps = [p for p in ps if _mes_cobro(p, anio) <= mes]
         info = estado_cuenta(a, planes, ps, anio, hoy=hoy, mes_corte=mes)
+        # lo cobrado de cada curso sale del mismo reparto que el estado de cuenta del alumno (si cursa dos
+        # cursos, cada pago va al suyo); lo del mes elegido = lo cobrado hasta el mes menos lo cobrado hasta el anterior
+        previo = {}
+        if mes:
+            antes = estado_cuenta(a, planes, [p for p in ps if _mes_cobro(p, anio) < mes], anio, hoy=hoy, mes_corte=mes)
+            previo = {x["clave"]: x.get("cobrado", 0.0) for x in antes["cursos"]}
         becado = info["estado"] in ("Becado", "Exento") or (a.condicion or "").lower() in ("becado", "exento")
         for i, c in enumerate(info["cursos"]):
             # Todo "a la fecha": lo esperado son las cuotas ya vencidas (al corte), no el total del año
-            plan_de_pago = lambda p: next((x["clave"] for x in info["cursos"] if x.get("curso_id") and x["curso_id"] == p.curso_id),
-                                          info["cursos"][0]["clave"])
-            hasta = mes or 12
-            cobrado = sum(float(p.importe) for p in ps if _mes_cobro(p, anio) <= hasta and plan_de_pago(p) == c["clave"])
-            cobrado_mes = sum(float(p.importe) for p in ps if mes and _mes_cobro(p, anio) == mes and plan_de_pago(p) == c["clave"])
+            cobrado = c.get("cobrado", 0.0)
+            cobrado_mes = cobrado - previo.get(c["clave"], 0.0) if mes else 0.0
             esperado = 0.0 if becado else c.get("esperado", 0.0)
             deuda_vencida = 0.0 if becado else c.get("deuda", 0.0)
             etq = c.get("etiqueta") or a.curso or "—"
-            ar = (a.area if c.get("principal") or len(info["cursos"]) == 1 else c.get("area")) or c.get("area") or "Sin área"
+            ar = c.get("area") or a.area or "Sin área"  # el área del curso (ORR A es de Aeronavegantes aunque el alumno figure en Exámenes)
             m = re.match(r"\s*(\d+)\s*°", etq)
             niv = f"{m.group(1)}°" if m else "—"
             estado = "Becado" if becado else c["estado"]
@@ -516,13 +519,17 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
                                 "deuda_vencida": 0.0, "con_deuda_anterior": 0, "deuda_anterior": 0.0, "becados": 0,
                                 "al_dia": 0, "pagado": 0, "al_dia_debe_anterior": 0, "moroso": 0, "sin_pagos": 0}
 
-    # Cobranza por mes y área (fecha de proceso; el área es la del curso al que se imputó)
-    alumnos_area = dict(db.query(Alumno.id, Alumno.area).all())
+    # Cobranza por mes y área (fecha de proceso; el área es la del curso al que corresponde el pago)
+    from app.routers.sectores import curso_de_pago
+    alumnos = {x.id: x for x in db.query(Alumno).filter(Alumno.id.in_(list(pagos) or [0])).all()}
     matriz: dict = {m: {} for m in range(1, 13)}
     for aid, ps in pagos.items():
+        a = alumnos.get(aid)
+        planes = planes_de(a, cursos_cfg, extras.get(aid, [])) if a else []
         for p in ps:
             mes_p = _mes_cobro(p, anio)
-            ar = (por_id_curso[p.curso_id].area if p.curso_id in por_id_curso else None) or alumnos_area.get(aid) or "Sin área"
+            cid = p.curso_id if p.curso_id in por_id_curso else curso_de_pago(planes, p)
+            ar = (por_id_curso[cid].area if cid in por_id_curso else None) or (a.area if a else None) or "Sin área"
             matriz[mes_p][ar] = matriz[mes_p].get(ar, 0.0) + float(p.importe)
     areas_m = sorted({ar for v in matriz.values() for ar in v}, key=lambda x: (ORDEN_AREAS.index(x) if x in ORDEN_AREAS else 99, x))
     mensual = [{"mes": m, "valores": {ar: matriz[m].get(ar, 0.0) for ar in areas_m}, "total": sum(matriz[m].values())} for m in range(1, 13)]
