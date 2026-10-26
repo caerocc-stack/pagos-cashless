@@ -137,7 +137,7 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
     pct = COMISION_EXAMEN if sector in SECTOR_EXAMEN else Decimal("0")
     comisiones = [{"tipo": "egreso", "comision": True, "fecha": g["fecha"],
                    "concepto": f"Comisión y gastos bancarios {pct:g} % · {g['concepto'].removeprefix('Examen ')}",
-                   "detalle": "Sin factura", "razon_social": "Comisión y gastos bancarios",
+                   "detalle": "", "razon_social": "",
                    "importe": (g["total"] * pct / 100).quantize(Decimal("0.01")), "pagado": True}
                   for g in ingresos] if pct else []
     total_com = sum((c["importe"] for c in comisiones), Decimal("0"))
