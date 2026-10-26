@@ -6667,8 +6667,8 @@ async function pdfExamen() {
 // =========================================================
 // --- CUENTA CORRIENTE POR SECTOR (Gastos → "Cuenta por sector") ---
 // =========================================================
-// Ingresos: cuotas cobradas de los cursos del sector (Exámenes: RAAC 147, Pericia, ORR…). Egresos: facturas con ese
-// sector. El saldo es lo disponible para seguir comprando para el sector.
+// Ingresos: cuotas cobradas de los cursos del sector. Egresos: facturas con ese sector y, en los exámenes, la comisión
+// de APAI (un % de lo recaudado, sin factura). El saldo es lo disponible para seguir comprando para el sector.
 let CS = { sectores: [], datos: null };
 
 async function cargarCuentaSector() {
@@ -6702,13 +6702,15 @@ function pintarCuentaSector() {
     document.getElementById('cs-resumen').innerHTML = `
         <div class="gasto-kpi"><div class="gasto-kpi-label">Ingresos por cuotas</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(d.ingresos)}</div>
             <div class="gasto-kpi-sub">${d.cursos.filter(c => c.incluido).map(c => escapeHtml(c.nombre.replace(/\s*\(.*\)$/, ''))).join(', ') || 'sin cursos'}</div></div>
+        ${d.comision_pct ? `<div class="gasto-kpi"><div class="gasto-kpi-label">Comisión APAI (${d.comision_pct} %)</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.comision)}</div>
+            <div class="gasto-kpi-sub">gastos bancarios y administrativos</div></div>` : ''}
         <div class="gasto-kpi"><div class="gasto-kpi-label">Gastos del sector</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.egresos)}</div>
             <div class="gasto-kpi-sub">${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'}${d.egresos_sin_pagar ? ' · ' + fmtMoneda(d.egresos_sin_pagar) + ' sin pagar' : ''}</div></div>
         <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Saldo disponible</div><div class="gasto-kpi-valor" style="color:var(--${d.saldo >= 0 ? 'success' : 'danger'})">${fmtMoneda(d.saldo)}</div>
             <div class="gasto-kpi-sub">del ${fmtFecha(d.desde)} al ${fmtFecha(d.hasta)}</div></div>`;
     document.getElementById('cs-movs').innerHTML = d.movimientos.map(m => `<tr class="cs-${m.tipo}">
         <td>${fmtFecha(m.fecha)}</td>
-        <td><b>${escapeHtml(m.concepto)}</b><br><small class="muted">${escapeHtml(m.detalle || '')}${m.tipo === 'egreso' ? (m.pagado ? ` · pagada${m.fecha_pago ? ' ' + fmtFecha(m.fecha_pago) : ''}` : ' · <span class="conc-pend">sin pagar</span>') : ''}</small></td>
+        <td><b>${escapeHtml(m.concepto)}</b><br><small class="muted">${escapeHtml(m.detalle || '')}${m.tipo === 'egreso' && !m.comision ? (m.pagado ? ` · pagada${m.fecha_pago ? ' ' + fmtFecha(m.fecha_pago) : ''}` : ' · <span class="conc-pend">sin pagar</span>') : ''}</small></td>
         <td>${m.tipo === 'egreso' ? escapeHtml(m.razon_social || '') : '<span class="muted">Cuotas de alumnos</span>'}</td>
         <td class="num cs-in">${m.tipo === 'ingreso' ? fmtMoneda(m.importe) : ''}</td>
         <td class="num cs-out">${m.tipo === 'egreso' ? fmtMoneda(m.importe) : ''}</td>
@@ -6737,11 +6739,12 @@ async function pdfCuentaSector() {
     doc.autoTable({
         startY: 37, margin: { left: 14, right: 14 }, theme: 'plain',
         body: [['Ingresos por cuotas' + (cursos.length ? ` (${cursos.join(', ')})` : ''), fmtMoneda(d.ingresos)],
+               ...(d.comision_pct ? [[`Comisión APAI ${d.comision_pct} % (gastos bancarios y administrativos)`, '- ' + fmtMoneda(d.comision)]] : []),
                [`Gastos del sector (${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'})`, '- ' + fmtMoneda(d.egresos)],
                ['Saldo disponible', fmtMoneda(d.saldo)]],
         styles: { fontSize: 10.5, cellPadding: 2.2, textColor: [30, 41, 59] },
         columnStyles: { 1: { halign: 'right', fontStyle: 'bold', cellWidth: 45 } },
-        didParseCell: c => { if (c.row.index === 2) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fontSize = 12; c.cell.styles.fillColor = [236, 241, 248];
+        didParseCell: c => { if (c.row.index === (d.comision_pct ? 3 : 2)) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fontSize = 12; c.cell.styles.fillColor = [236, 241, 248];
             if (c.column.index === 1) c.cell.styles.textColor = d.saldo >= 0 ? [21, 128, 61] : [185, 28, 28]; } },
     });
     if (d.egresos_sin_pagar) {
@@ -6756,7 +6759,7 @@ async function pdfCuentaSector() {
             m.concepto + (m.detalle ? '\n' + m.detalle : '') + (m.tipo === 'egreso' && !m.pagado ? ' · sin pagar' : ''),
             m.tipo === 'egreso' ? (m.razon_social || '') : 'Cuotas de alumnos',
             m.tipo === 'ingreso' ? fmtMoneda(m.importe) : '', m.tipo === 'egreso' ? fmtMoneda(m.importe) : '', fmtMoneda(m.saldo)]),
-        foot: [['', 'Totales', '', fmtMoneda(d.ingresos), fmtMoneda(d.egresos), fmtMoneda(d.saldo)]],
+        foot: [['', 'Totales', '', fmtMoneda(d.ingresos), fmtMoneda(d.egresos + (d.comision || 0)), fmtMoneda(d.saldo)]],
         styles: { fontSize: 8.5, cellPadding: 1.8, valign: 'middle' }, headStyles: { fillColor: [21, 35, 59] },
         footStyles: { fillColor: [236, 241, 248], textColor: [30, 41, 59], fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [247, 249, 252] },

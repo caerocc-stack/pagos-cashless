@@ -6,6 +6,8 @@ facturas destinadas a ese sector (gasto.sector).
   de los cursos del alumno con el mismo criterio que su estado de cuenta (exámenes, imputación a mano,
   importe de la cuota). Los cursos por examen se agrupan por instancia; el resto, por mes.
 - Egresos: facturas con ese sector (por fecha de factura), pagadas o no.
+- En los exámenes (RAAC 147, Pericia), además, la comisión de APAI por gastos bancarios y administrativos:
+  un porcentaje de lo recaudado, sin factura, descontado junto a cada ingreso.
 """
 import re
 from datetime import date
@@ -30,6 +32,7 @@ SECTOR_AREA = {"Ciclo Básico": "Ciclo Basico", "Aviónica": "Avionica", "Mecán
                "Aeronavegantes": "Aeronavegantes"}
 # cada examen es su propio sector: los cursos del área Exámenes con ese nombre
 SECTOR_EXAMEN = {"RAAC 147": "RAAC 147", "Pericia": "PERICIA"}
+COMISION_EXAMEN = Decimal("10")  # % de lo recaudado en cada examen que APAI retiene por gastos bancarios y administrativos
 
 
 def _nombre(c) -> str:
@@ -130,6 +133,15 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
             g["desde"] = min(g["desde"], p.fecha)
     ingresos = sorted(grupos.values(), key=lambda g: (g["fecha"], g["concepto"]))
 
+    # ---- comisión de APAI en los exámenes (sin factura): un renglón por cada ingreso
+    pct = COMISION_EXAMEN if sector in SECTOR_EXAMEN else Decimal("0")
+    comisiones = [{"tipo": "egreso", "comision": True, "fecha": g["fecha"],
+                   "concepto": f"Comisión APAI {pct:g} % · {g['concepto'].removeprefix('Examen ')}",
+                   "detalle": "Gastos bancarios y administrativos · sin factura", "razon_social": "APAI",
+                   "importe": (g["total"] * pct / 100).quantize(Decimal("0.01")), "pagado": True}
+                  for g in ingresos] if pct else []
+    total_com = sum((c["importe"] for c in comisiones), Decimal("0"))
+
     # ---- egresos
     gastos = (db.query(Gasto).filter(Gasto.sector == sector, Gasto.fecha >= desde, Gasto.fecha <= hasta)
               .order_by(Gasto.fecha, Gasto.id).all())
@@ -143,7 +155,8 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
               "razon_social": x.razon_social, "importe": Decimal(str(x.importe)), "gasto_id": x.id,
               "pagado": bool(x.forma_pago) or Decimal(str(x.importe)) < 0, "forma_pago": x.forma_pago,
               "fecha_pago": str(x.fecha_pago) if x.fecha_pago else None, "categoria": x.categoria} for x in gastos]
-    movs.sort(key=lambda m: (m["fecha"], 0 if m["tipo"] == "ingreso" else 1))
+    movs += comisiones
+    movs.sort(key=lambda m: (m["fecha"], 0 if m["tipo"] == "ingreso" else 1 if m.get("comision") else 2))
     saldo = Decimal("0")
     for m in movs:
         saldo += m["importe"] if m["tipo"] == "ingreso" else -m["importe"]
@@ -156,7 +169,8 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
     return {
         "sector": sector, "desde": str(desde), "hasta": str(hasta),
         "cursos": [{"id": c.id, "nombre": c.nombre, "incluido": c.id in elegidos, "por_examen": bool(c.por_examen)} for c in del_sector],
-        "ingresos": _fmt(total_in), "egresos": _fmt(total_eg), "saldo": _fmt(total_in - total_eg),
+        "ingresos": _fmt(total_in), "egresos": _fmt(total_eg), "saldo": _fmt(total_in - total_com - total_eg),
+        "comision": _fmt(total_com), "comision_pct": float(pct),
         "egresos_sin_pagar": _fmt(pendiente), "cantidad_facturas": len(gastos),
         "pagos_sin_alumno": sin_alumno, "movimientos": movs,
     }
