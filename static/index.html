@@ -1184,23 +1184,22 @@
         <section id="sec-conciliacion" class="section">
             <div class="section-titulo">Conciliación bancaria</div>
 
-            <div class="conc-importar">
-                <div class="conc-importar-txt">
-                    <strong>Importar extracto de cuenta</strong>
-                    <span>Subí el <b>PDF del extracto de Banco Roela</b> (también acepta el .xls). El sistema controla que los saldos
-                    cierren, toma los <b>pagos</b> (transferencias, DEBIN y débitos directos; los haberes y pagos automáticos no se concilian) y los cruza solo con tus facturas por
-                    <b>CUIT + importe</b>. Las comisiones e impuestos del banco se agrupan en un único gasto mensual.</span>
-                </div>
-                <div class="conc-importar-acc">
-                    <input type="file" id="conc-archivo" accept=".pdf,.xls" style="display:none" onchange="importarExtracto(this)">
-                    <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir extracto</button>
-                    <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas"><svg class="ic"><use href="#i-refresh"/></svg>Reintentar cruce</button>
-                    <button class="btn btn-outline" onclick="abrirEncargados()" title="Personas que compran para APAI y a las que se les transfiere (reintegro o adelanto)"><svg class="ic"><use href="#i-users"/></svg>Encargados de compras</button>
-                </div>
+            <div class="conc-barra">
+                <input type="file" id="conc-archivo" accept=".pdf,.xls" style="display:none" onchange="importarExtracto(this)">
+                <button class="btn btn-primary btn-3d" onclick="document.getElementById('conc-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir extracto</button>
+                <button class="btn btn-outline" onclick="reconciliarAuto()" title="Reintenta cruzar los pendientes con las facturas cargadas"><svg class="ic"><use href="#i-refresh"/></svg>Reintentar cruce</button>
+                <button class="btn btn-outline" onclick="abrirEncargados()" title="Personas que compran para APAI y a las que se les transfiere (reintegro o adelanto)"><svg class="ic"><use href="#i-users"/></svg>Encargados de compras</button>
+                <details class="conc-ayuda">
+                    <summary>¿Cómo funciona?</summary>
+                    <p>Subí el <b>PDF del extracto de Banco Roela</b> (también acepta el .xls). El sistema controla que los saldos cierren, toma los
+                    <b>pagos</b> (transferencias, DEBIN y débitos directos; los haberes y pagos automáticos no se concilian) y los cruza solo con las
+                    facturas por <b>CUIT + importe</b>. Subir un extracto que se superpone con otro no repite movimientos. Las comisiones e impuestos
+                    del banco se agrupan en un único gasto mensual.</p>
+                </details>
             </div>
 
-            <div id="conc-extracto"></div>
-            <div class="gasto-resumen" id="conc-resumen"></div>
+            <div id="conc-extracto" class="conc-plegables"></div>
+            <div class="conc-kpis" id="conc-resumen"></div>
 
             <div class="toolbar">
                 <input type="text" id="buscar-conc" placeholder="Buscar por CUIT, razón social o descripción...">

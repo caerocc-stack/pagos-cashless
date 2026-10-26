@@ -401,7 +401,8 @@ def _dto_extracto(e: ExtractoBancario) -> dict:
 
 @router.get("/extractos")
 def extractos(db: Session = Depends(get_db)):
-    return [_dto_extracto(e) for e in db.query(ExtractoBancario).order_by(ExtractoBancario.desde.desc()).all()]
+    return [_dto_extracto(e) for e in db.query(ExtractoBancario).order_by(
+        ExtractoBancario.hasta.desc().nullslast(), ExtractoBancario.desde.desc().nullslast(), ExtractoBancario.created_at.desc()).all()]
 
 
 @router.post("/extractos/{ext_id}/registrar-comisiones")

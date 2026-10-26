@@ -2767,23 +2767,33 @@ async function cargarConciliacion() {
     }
 }
 
+// Contadores compactos: cada uno filtra la lista de movimientos (el activo queda marcado)
 async function cargarResumenConc() {
     try {
         const r = await api('/api/conciliacion/resumen');
-        document.getElementById('conc-resumen').innerHTML = `
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Movimientos del banco</div>
-                <div class="gasto-kpi-valor">${r.total}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_total)}</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Conciliados</div>
-                <div class="gasto-kpi-valor" style="color:var(--green)">${r.conciliados}</div>
-                <div class="gasto-kpi-sub">cruzados con factura</div></div>
-            <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Pendientes</div>
-                <div class="gasto-kpi-valor">${r.pendientes}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_pendiente)} sin factura</div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Sin factura</div>
-                <div class="gasto-kpi-valor">${r.sin_factura || 0}</div>
-                <div class="gasto-kpi-sub">${fmtMoneda(r.monto_sin_factura || 0)} · sueldos, cargas sociales, AFIP, devueltas</div></div>`;
+        const f = document.getElementById('conc-f-estado').value;
+        const kpi = (estado, etiqueta, valor, sub, cls = '') => `<button type="button" class="conc-kpi ${cls} ${f === estado ? 'activo' : ''}"
+            onclick="concFiltrar('${estado}')" aria-pressed="${f === estado}"><span>${etiqueta}</span><b>${valor}</b><small>${sub}</small></button>`;
+        document.getElementById('conc-resumen').innerHTML =
+            kpi('pendiente', 'Pendientes', r.pendientes, fmtMoneda(r.monto_pendiente), 'conc-kpi-pend') +
+            kpi('conciliado', 'Conciliados', r.conciliados, 'con su factura', 'conc-kpi-ok') +
+            kpi('sin_factura', 'Sin factura', r.sin_factura || 0, fmtMoneda(r.monto_sin_factura || 0)) +
+            kpi('', 'Todos', r.total, fmtMoneda(r.monto_total));
     } catch (err) { /* sin datos */ }
+}
+
+function concFiltrar(estado) {
+    document.getElementById('conc-f-estado').value = estado;
+    cargarConciliacion();
+}
+
+// Paneles plegables (último extracto, extractos importados): se recuerda si se dejaron abiertos
+function plegableAbierto(id) {
+    try { return localStorage.getItem('plegable-' + id) === '1'; } catch { return false; }
+}
+
+function recordarPlegable(el) {
+    try { localStorage.setItem('plegable-' + el.id, el.open ? '1' : '0'); } catch { /* sin almacenamiento */ }
 }
 
 function filtrarConciliacion() {
@@ -2816,14 +2826,17 @@ async function cargarPanelExtracto() {
             <tr><td>${nombre}</td><td class="num">${e.resumen[k].cantidad}</td>
                 <td class="num" style="color:var(--${color});font-weight:600">${fmtMoneda(e.resumen[k].total)}</td></tr>`).join('');
         const comis = e.resumen.comision;
-        cont.innerHTML = `<div class="card extracto-card">
-            <div class="extracto-head">
-                <div><div class="page-miga">${escapeHtml(e.banco)} · último extracto importado</div>
-                    <h3 style="margin:0.15rem 0 0">Del ${fmtFecha(e.desde)} al ${fmtFecha(e.hasta)}</h3>
-                    <small class="muted">${escapeHtml(e.archivo || '')} · ${e.movimientos} movimientos leídos</small></div>
-                ${e.cierra ? '<span class="badge badge-activa">✓ Los saldos cierran</span>'
-                           : '<span class="badge badge-inactiva">⚠ Los saldos no cierran: revisá el archivo</span>'}
-            </div>
+        const chev = '<svg class="ic plegable-chev"><use href="#i-chevron"/></svg>';
+        cont.innerHTML = `<details class="plegable" id="pl-extracto" ${plegableAbierto('pl-extracto') ? 'open' : ''} ontoggle="recordarPlegable(this)">
+            <summary>
+                <span class="plegable-tit">Último extracto</span>
+                <span class="plegable-sub"><b>Del ${fmtFecha(e.desde)} al ${fmtFecha(e.hasta)}</b> · ${escapeHtml(e.banco)} · ${e.movimientos} movimientos${e.creado ? ' · subido el ' + fmtFechaHora(e.creado) : ''}</span>
+                ${e.cierra ? '<span class="badge badge-activa">✓ Saldos cierran</span>' : '<span class="badge badge-inactiva">⚠ Los saldos no cierran</span>'}
+                ${comis && !e.comisiones_gasto_id ? '<span class="badge badge-revisar">Comisiones sin registrar</span>' : ''}
+                <span class="plegable-ver">Ver detalle</span>${chev}
+            </summary>
+            <div class="plegable-cuerpo">
+            <p class="muted" style="margin:0 0 0.8rem">${escapeHtml(e.archivo || '')}</p>
             <div class="extracto-cuerpo">
                 <div class="extracto-saldos">
                     <div><span class="muted">Saldo inicial</span><b>${fmtMoneda(e.saldo_inicial)}</b></div>
@@ -2838,7 +2851,8 @@ async function cargarPanelExtracto() {
                     : `<span class="muted">${comis.cantidad} débitos de comisiones, IVA e impuesto al cheque por <b>${fmtMoneda(Math.abs(comis.total))}</b>.</span>
                        <button class="btn btn-sm btn-primary" onclick="registrarComisiones(${e.id})">Registrarlos como un gasto bancario</button>`}
             </div>` : ''}
-        </div>`;
+            </div>
+        </details>`;
         cont.innerHTML += htmlListaExtractos(lista);
     } catch (err) { cont.innerHTML = ''; }
 }
@@ -2846,14 +2860,20 @@ async function cargarPanelExtracto() {
 // Lista de extractos importados con opción de eliminarlos (p. ej. los subidos de prueba)
 function htmlListaExtractos(lista) {
     const esAdmin = usuarioActual.rol === 'admin';
-    return `<div class="card extractos-lista">
-        <div class="extractos-lista-head"><h3 style="margin:0">Extractos importados (${lista.length})</h3><span style="flex:1"></span>
-            ${esAdmin ? `<button class="btn btn-sm btn-danger" onclick="eliminarTodosExtractos()"><svg class="ic"><use href="#i-trash"/></svg>Eliminar todos los extractos</button>` : ''}</div>
+    const desde = lista.map(e => e.desde).filter(Boolean).sort()[0];
+    return `<details class="plegable" id="pl-extractos" ${plegableAbierto('pl-extractos') ? 'open' : ''} ontoggle="recordarPlegable(this)">
+        <summary>
+            <span class="plegable-tit">Extractos importados</span>
+            <span class="plegable-sub">${lista.length} archivo${lista.length === 1 ? '' : 's'}${desde ? ` · desde el ${fmtFecha(desde)}` : ''}</span>
+            <span class="plegable-ver">Ver lista</span><svg class="ic plegable-chev"><use href="#i-chevron"/></svg>
+        </summary>
+        <div class="plegable-cuerpo">
+        ${esAdmin ? `<div class="extractos-lista-head"><span style="flex:1"></span><button class="btn btn-sm btn-ghost btn-peligro" onclick="eliminarTodosExtractos()"><svg class="ic"><use href="#i-trash"/></svg>Eliminar todos</button></div>` : ''}
         <div class="tabla-wrap"><table><thead><tr><th>Período</th><th>Archivo</th><th class="num">Movimientos</th><th>Importado</th><th></th></tr></thead><tbody>
         ${lista.map(e => `<tr><td><b>${fmtFecha(e.desde)} al ${fmtFecha(e.hasta)}</b></td><td>${escapeHtml(e.archivo || '')}</td>
             <td class="num">${e.movimientos}</td><td>${e.creado ? fmtFechaHora(e.creado) : ''}</td>
             <td>${esAdmin ? `<button class="btn btn-sm btn-ghost" onclick="eliminarExtracto(${e.id}, '${escapeHtml((e.archivo || '').replace(/'/g, ''))}')">Eliminar</button>` : ''}</td></tr>`).join('')}
-        </tbody></table></div></div>`;
+        </tbody></table></div></div></details>`;
 }
 
 const AVISO_BORRAR_EXTRACTO = 'Se borran los movimientos del banco. Las facturas que estaban conciliadas con ellos vuelven a quedar pendientes, y los gastos que se crearon desde el extracto (comisiones bancarias y pagos sin factura) se borran. No se puede deshacer.';
@@ -2959,10 +2979,14 @@ function renderConciliacion(lista) {
             acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
-            acciones = `<div class="td-acc"><button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura que corresponde a este pago">Vincular</button>
-                <button class="btn btn-sm" onclick="crearGastoDesdePago(${m.id})" title="Para pagos sin factura de proveedor">Crear gasto</button>
-                ${Number(m.importe) < 0 ? `<button class="btn btn-sm" onclick="abrirRendicion(${m.id})" title="La transferencia fue a una persona que compró para APAI (reintegro o adelanto)">Encargado</button>` : ''}
-                ${btnSueldo}</div>`;
+            // a la vista solo Vincular; lo demás en un menú para que la fila quede baja
+            acciones = `<div class="td-acc conc-acc"><button class="btn btn-sm btn-primary" onclick="abrirCandidatos(${m.id})" title="Elegir la factura (o las facturas) de este pago">Vincular</button>
+                <details class="mas-acc"><summary class="btn btn-sm" aria-label="Más acciones">Más<svg class="ic"><use href="#i-chevron"/></svg></summary>
+                    <div class="mas-menu" role="menu">
+                        <button role="menuitem" onclick="crearGastoDesdePago(${m.id})"><b>Crear gasto</b><small>Pago sin factura de proveedor</small></button>
+                        ${Number(m.importe) < 0 ? `<button role="menuitem" onclick="abrirRendicion(${m.id})"><b>Encargado</b><small>Se le transfirió a quien compró</small></button>` : ''}
+                        <button role="menuitem" onclick="abrirSinFactura(${m.id})"><b>Sin factura</b><small>Sueldo, cargas sociales o devuelta</small></button>
+                    </div></details></div>`;
         }
         return `<tr>
             <td>${fecha}</td>
@@ -6960,3 +6984,10 @@ async function pdfInscriptos() {
     });
     doc.save(`Inscriptos ${curso} - ${inst.nombre}.pdf`);
 }
+
+// Menú "Más" de la conciliación: uno abierto a la vez, y se cierra al tocar fuera o al elegir
+document.addEventListener('click', ev => {
+    document.querySelectorAll('details.mas-acc[open]').forEach(d => {
+        if (!d.contains(ev.target) || ev.target.closest('.mas-menu button')) d.open = false;
+    });
+});
