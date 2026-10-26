@@ -6702,8 +6702,8 @@ function pintarCuentaSector() {
     document.getElementById('cs-resumen').innerHTML = `
         <div class="gasto-kpi"><div class="gasto-kpi-label">Ingresos por cuotas</div><div class="gasto-kpi-valor" style="color:var(--success)">${fmtMoneda(d.ingresos)}</div>
             <div class="gasto-kpi-sub">${d.cursos.filter(c => c.incluido).map(c => escapeHtml(c.nombre.replace(/\s*\(.*\)$/, ''))).join(', ') || 'sin cursos'}</div></div>
-        ${d.comision_pct ? `<div class="gasto-kpi"><div class="gasto-kpi-label">Comisión APAI (${d.comision_pct} %)</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.comision)}</div>
-            <div class="gasto-kpi-sub">gastos bancarios y administrativos</div></div>` : ''}
+        ${d.comision_pct ? `<div class="gasto-kpi"><div class="gasto-kpi-label">Comisión y gastos bancarios</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.comision)}</div>
+            <div class="gasto-kpi-sub">${d.comision_pct} % de lo recaudado</div></div>` : ''}
         <div class="gasto-kpi"><div class="gasto-kpi-label">Gastos del sector</div><div class="gasto-kpi-valor" style="color:var(--danger)">${fmtMoneda(d.egresos)}</div>
             <div class="gasto-kpi-sub">${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'}${d.egresos_sin_pagar ? ' · ' + fmtMoneda(d.egresos_sin_pagar) + ' sin pagar' : ''}</div></div>
         <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Saldo disponible</div><div class="gasto-kpi-valor" style="color:var(--${d.saldo >= 0 ? 'success' : 'danger'})">${fmtMoneda(d.saldo)}</div>
@@ -6739,7 +6739,7 @@ async function pdfCuentaSector() {
     doc.autoTable({
         startY: 37, margin: { left: 14, right: 14 }, theme: 'plain',
         body: [['Ingresos por cuotas' + (cursos.length ? ` (${cursos.join(', ')})` : ''), fmtMoneda(d.ingresos)],
-               ...(d.comision_pct ? [[`Comisión APAI ${d.comision_pct} % (gastos bancarios y administrativos)`, '- ' + fmtMoneda(d.comision)]] : []),
+               ...(d.comision_pct ? [[`Comisión y gastos bancarios (${d.comision_pct} % de lo recaudado)`, '- ' + fmtMoneda(d.comision)]] : []),
                [`Gastos del sector (${d.cantidad_facturas} factura${d.cantidad_facturas === 1 ? '' : 's'})`, '- ' + fmtMoneda(d.egresos)],
                ['Saldo disponible', fmtMoneda(d.saldo)]],
         styles: { fontSize: 10.5, cellPadding: 2.2, textColor: [30, 41, 59] },

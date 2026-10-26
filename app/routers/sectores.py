@@ -6,7 +6,7 @@ facturas destinadas a ese sector (gasto.sector).
   de los cursos del alumno con el mismo criterio que su estado de cuenta (exámenes, imputación a mano,
   importe de la cuota). Los cursos por examen se agrupan por instancia; el resto, por mes.
 - Egresos: facturas con ese sector (por fecha de factura), pagadas o no.
-- En los exámenes (RAAC 147, Pericia), además, la comisión de APAI por gastos bancarios y administrativos:
+- En los exámenes (RAAC 147, Pericia), además, la comisión y gastos bancarios:
   un porcentaje de lo recaudado, sin factura, descontado junto a cada ingreso.
 """
 import re
@@ -133,11 +133,11 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
             g["desde"] = min(g["desde"], p.fecha)
     ingresos = sorted(grupos.values(), key=lambda g: (g["fecha"], g["concepto"]))
 
-    # ---- comisión de APAI en los exámenes (sin factura): un renglón por cada ingreso
+    # ---- comisión y gastos bancarios en los exámenes (sin factura): un renglón por cada ingreso
     pct = COMISION_EXAMEN if sector in SECTOR_EXAMEN else Decimal("0")
     comisiones = [{"tipo": "egreso", "comision": True, "fecha": g["fecha"],
-                   "concepto": f"Comisión APAI {pct:g} % · {g['concepto'].removeprefix('Examen ')}",
-                   "detalle": "Gastos bancarios y administrativos · sin factura", "razon_social": "APAI",
+                   "concepto": f"Comisión y gastos bancarios {pct:g} % · {g['concepto'].removeprefix('Examen ')}",
+                   "detalle": "Sin factura", "razon_social": "Comisión y gastos bancarios",
                    "importe": (g["total"] * pct / 100).quantize(Decimal("0.01")), "pagado": True}
                   for g in ingresos] if pct else []
     total_com = sum((c["importe"] for c in comisiones), Decimal("0"))
