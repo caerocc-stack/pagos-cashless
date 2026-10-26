@@ -297,6 +297,10 @@ def estadisticas(desde: str | None = None, hasta: str | None = None, categoria: 
     }
 
 
+def _fmt_pesos(n) -> str:
+    return f"${Decimal(str(n)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 @router.get("/por-proveedor/{proveedor_id}")
 def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: str | None = None,
                           db: Session = Depends(get_db)):
@@ -312,11 +316,26 @@ def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: st
     for x in gastos:
         k = f"{x.fecha.year}-{x.fecha.month:02d}"
         meses[k] = meses.get(k, 0) + float(x.importe)
-    # pagos del banco por un importe distinto al de la factura (con el motivo anotado al conciliar)
-    movs = {m.gasto_id: m for m in db.query(MovimientoBanco).filter(
-        MovimientoBanco.gasto_id.in_([x.id for x in gastos] or [0]), MovimientoBanco.nota_conciliacion.isnot(None))}
-    diferencia = sum((abs(Decimal(str(m.importe))) - abs(Decimal(str(x.importe))) for x in gastos
-                      for m in [movs.get(x.id)] if m), Decimal("0"))
+    # pagos del banco por un importe distinto al de la factura (con el motivo anotado al conciliar); si se pagaron
+    # varias facturas juntas, o una factura en varios pagos, la diferencia es la del grupo (se cuenta una vez)
+    from app.routers.conciliacion import grupo_de
+    info_pago, diferencia, vistos = {}, Decimal("0"), set()
+    for x in gastos:
+        movs_g, facts_g = grupo_de(db, g=x)
+        if not movs_g:
+            continue
+        pagado_g = sum((abs(Decimal(str(m.importe))) for m in movs_g), Decimal("0"))
+        facturado_g = sum((abs(Decimal(str(f.importe))) for f in facts_g), Decimal("0"))
+        nota = next((m.nota_conciliacion for m in movs_g if m.nota_conciliacion), None)
+        clave = (tuple(sorted(m.id for m in movs_g)), tuple(sorted(f.id for f in facts_g)))
+        if nota and clave not in vistos:
+            vistos.add(clave)
+            diferencia += pagado_g - facturado_g
+        if nota or len(movs_g) > 1 or len(facts_g) > 1:
+            info_pago[x.id] = {"pagado": pagado_g, "nota": nota,
+                               "junto": (f"pagada junto con {len(facts_g) - 1} factura{'s' if len(facts_g) > 2 else ''} más "
+                                         f"(transferencia de {_fmt_pesos(pagado_g)} por {_fmt_pesos(facturado_g)})") if len(facts_g) > 1
+                               else (f"pagada en {len(movs_g)} transferencias" if len(movs_g) > 1 else None)}
     return {
         "proveedor": {"id": p.id, "razon_social": p.razon_social, "cuit": p.cuit, "rubro": p.rubro,
                       "contacto": p.contacto, "telefono": p.telefono, "email": p.email, "cbu": p.cbu},
@@ -330,8 +349,9 @@ def facturas_de_proveedor(proveedor_id: int, desde: str | None = None, hasta: st
             "categoria": x.categoria, "destino": x.destino, "importe": float(x.importe),
             "forma_pago": x.forma_pago, "fecha_pago": str(x.fecha_pago) if x.fecha_pago else None,
             "conciliado": bool(x.conciliado), "adjunto_url": x.adjunto_url,
-            "pagado_banco": float(abs(movs[x.id].importe)) if x.id in movs else None,
-            "nota_diferencia": movs[x.id].nota_conciliacion if x.id in movs else None,
+            "pagado_banco": float(info_pago[x.id]["pagado"]) if x.id in info_pago else None,
+            "nota_diferencia": info_pago[x.id]["nota"] if x.id in info_pago else None,
+            "pago_conjunto": info_pago[x.id]["junto"] if x.id in info_pago else None,
         } for x in gastos],
     }
 
@@ -567,16 +587,15 @@ class VinculoBanco(BaseModel):
 @router.post("/{gasto_id}/pago/banco/{banco_id}")
 def pago_banco(gasto_id: int, banco_id: int, data: VinculoBanco | None = None, db: Session = Depends(get_db)):
     """Vincula el gasto a un movimiento del banco (= conciliar). Forma de pago: Transferencia o Débito."""
-    from app.routers.conciliacion import registrar_diferencia, _vincular
+    from app.routers.conciliacion import vincular_grupo
     g = db.get(Gasto, gasto_id)
     b = db.get(MovimientoBanco, banco_id)
     if not g or not b:
         raise HTTPException(404, "Gasto o movimiento no encontrado")
     if b.gasto_id and b.gasto_id != g.id:
         raise HTTPException(409, "Ese movimiento del banco ya está conciliado con otra factura.")
-    registrar_diferencia(b, g, data.nota if data else None)
-    _vincular(b, g, manual=True)
     g.caja_mov_id = None
+    vincular_grupo(db, [b], [g], data.nota if data else None)
     db.commit()
     return {"ok": True, "mensaje": "Pago vinculado con el movimiento del banco"}
 
@@ -635,12 +654,9 @@ def desvincular_pago(gasto_id: int, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gasto no encontrado")
     # Liberar movimiento de banco que apunte a este gasto
-    from app.routers.conciliacion import quitar_diferencia
-    for b in db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).all():
-        b.gasto_id = None
-        b.conciliado = False
-        b.conciliado_manual = False
-        quitar_diferencia(b, g)
+    from app.routers.conciliacion import grupo_de, desvincular_grupo
+    if grupo_de(db, g=g)[0]:  # conciliada con uno o varios pagos del banco (con otras facturas o sola)
+        desvincular_grupo(db, g=g)
     if g.banco_mov_id:  # pagada vía un encargado: la transferencia vuelve a tener saldo a rendir
         from app import rendiciones
         rendiciones.desvincular(db, g)
@@ -665,6 +681,9 @@ def borrar_gasto(db: Session, g: Gasto) -> bool:
             db.delete(c)
             caja_borrada = True
     # Liberar lo que apunta a este gasto (si no, la base rechaza el borrado)
+    from app.routers.conciliacion import grupo_de, desvincular_grupo
+    if grupo_de(db, g=g)[0]:
+        desvincular_grupo(db, g=g)
     if g.banco_mov_id:
         from app import rendiciones
         rendiciones.desvincular(db, g)

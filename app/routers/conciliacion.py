@@ -6,7 +6,7 @@ from datetime import date
 
 import xlrd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, extract
 
@@ -141,6 +141,107 @@ def _vincular(mov: MovimientoBanco, g: Gasto, manual: bool):
     g.conciliado = True
     g.forma_pago = "Débito" if mov.concepto == "146" else "Transferencia"
     g.fecha_pago = mov.fecha
+
+
+# ---- Vínculos de más de una pieza
+# - Un pago del banco por varias facturas: el movimiento apunta a la primera (gasto_id) y las demás al
+#   movimiento (Gasto.banco_mov_id), como en las rendiciones de un encargado.
+# - Varios pagos del banco por una factura: cada movimiento apunta a la factura (gasto_id).
+# La diferencia de importe se mira sobre el total del grupo (lo transferido contra lo facturado).
+
+def facturas_del_mov(db: Session, mov: MovimientoBanco) -> list[Gasto]:
+    if not mov.gasto_id:
+        return []
+    principal = db.get(Gasto, mov.gasto_id)
+    otras = db.query(Gasto).filter(Gasto.banco_mov_id == mov.id, Gasto.id != mov.gasto_id).order_by(Gasto.fecha, Gasto.id).all()
+    return ([principal] if principal else []) + otras
+
+
+def grupo_de(db: Session, mov: MovimientoBanco | None = None, g: Gasto | None = None) -> tuple[list, list]:
+    """(movimientos, facturas) conciliados juntos con este movimiento o esta factura."""
+    if g is not None and mov is None:
+        if g.banco_mov_id:
+            m = db.get(MovimientoBanco, g.banco_mov_id)
+            if m and m.gasto_id:
+                mov = m
+        if mov is None:
+            movs = db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == g.id).order_by(MovimientoBanco.fecha, MovimientoBanco.id).all()
+            if len(movs) != 1:
+                return movs, ([g] if movs else [])
+            mov = movs[0]  # un solo pago: puede incluir otras facturas además de esta
+    if mov is None or not mov.gasto_id:
+        return ([], [])
+    facturas = facturas_del_mov(db, mov)
+    if len(facturas) > 1:
+        return [mov], facturas
+    movs = db.query(MovimientoBanco).filter(MovimientoBanco.gasto_id == mov.gasto_id).order_by(MovimientoBanco.fecha, MovimientoBanco.id).all()
+    return movs, facturas
+
+
+def desvincular_grupo(db: Session, mov: MovimientoBanco | None = None, g: Gasto | None = None):
+    """Deshace la conciliación de todo el grupo: los pagos vuelven a pendientes y las facturas a sin pagar."""
+    movs, facturas = grupo_de(db, mov, g)
+    for m in movs:
+        m.gasto_id = None
+        m.conciliado = m.conciliado_manual = False
+        m.nota_conciliacion = None
+    for f in facturas:
+        quitar_diferencia(None, f)
+        f.conciliado = False
+        f.forma_pago = f.fecha_pago = None
+        if f.banco_mov_id and any(f.banco_mov_id == m.id for m in movs):
+            f.banco_mov_id = None
+    db.flush()
+    return movs, facturas
+
+
+def vincular_grupo(db: Session, movs: list[MovimientoBanco], facturas: list[Gasto], nota: str | None, manual: bool = True):
+    """Concilia uno o varios pagos con una o varias facturas (no las dos cosas a la vez)."""
+    if not movs or not facturas:
+        raise HTTPException(400, "Elegí al menos un pago y una factura.")
+    if len(movs) > 1 and len(facturas) > 1:
+        raise HTTPException(400, "Se puede vincular un pago con varias facturas, o varios pagos con una factura, pero no las dos cosas juntas.")
+    for m in movs:
+        _no_es_sin_factura(m)
+        if not m.gasto_id and rendiciones.facturas_de(db, m):
+            raise HTTPException(409, "Ese pago es la rendición de un encargado: quitá sus facturas desde «Rendir facturas».")
+    ids_movs = {m.id for m in movs}
+    for f in facturas:
+        if f.caja_mov_id:
+            raise HTTPException(409, f"La factura de {f.razon_social or 'el proveedor'} ya está pagada en efectivo.")
+        otro_mov = f.banco_mov_id and f.banco_mov_id not in ids_movs
+        otros_pagos = db.query(MovimientoBanco.id).filter(MovimientoBanco.gasto_id == f.id, MovimientoBanco.id.notin_(ids_movs)).first()
+        if otro_mov or otros_pagos:
+            raise HTTPException(409, f"La factura de {f.razon_social or 'el proveedor'} por {_fmt(Decimal(str(f.importe)))} ya está "
+                                     "conciliada con otro pago del banco. Deshacé esa conciliación primero.")
+    for m in movs:  # lo que tuvieran antes estos pagos se deshace
+        if m.gasto_id:
+            desvincular_grupo(db, mov=m)
+    pagado = sum((abs(Decimal(str(m.importe))) for m in movs), Decimal(0))
+    facturado = sum((abs(Decimal(str(f.importe))) for f in facturas), Decimal(0))
+    dif = pagado - facturado
+    texto = None
+    if abs(dif) > TOLERANCIA:
+        nota = (nota or "").strip()
+        if not nota:
+            raise HTTPException(400, f"El banco muestra {_fmt(pagado)} y {'las facturas suman' if len(facturas) > 1 else 'la factura es de'} "
+                                     f"{_fmt(facturado)} (diferencia {_fmt(abs(dif))}). Anotá el motivo para vincularlas.")
+        texto = f"se pagó {_fmt(abs(dif))} {'de más' if dif > 0 else 'de menos'} — {nota}"
+    forma = "Débito" if movs[0].concepto == "146" else "Transferencia"
+    for m in movs:
+        m.gasto_id = facturas[0].id
+        m.conciliado = True
+        m.conciliado_manual = manual
+        m.nota_conciliacion = texto[:300] if texto else None
+    for f in facturas:
+        quitar_diferencia(None, f)
+        f.conciliado = True
+        f.forma_pago = forma
+        f.fecha_pago = max(m.fecha for m in movs)
+        f.banco_mov_id = movs[0].id if len(facturas) > 1 and f is not facturas[0] else (f.banco_mov_id if f.banco_mov_id in ids_movs else None)
+        if texto:
+            f.notas = " · ".join(x for x in (f.notas, MARCA_DIF + texto) if x)[:400]
+    db.flush()
 
 
 _PALABRAS_VACIAS = {"S.A.", "S.R.L.", "SRL", "SA", "SAS", "S.A.S.", "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y",
@@ -343,6 +444,10 @@ def _borrar_movimientos(db: Session, movs: list, extractos: list) -> dict:
                 borrar_gasto(db, g)
                 borrados += 1
     for mov in movs:
+        movs_g, facts_g = grupo_de(db, mov=mov)
+        if len(movs_g) > 1 or len(facts_g) > 1:  # conciliado junto con otras facturas u otros pagos
+            desvincular_grupo(db, mov=mov)
+            liberadas += len(facts_g)
         for gr in rendiciones.facturas_de(db, mov):  # rendidas por un encargado con esta transferencia
             rendiciones.desvincular(db, gr)
             liberadas += 1
@@ -440,6 +545,14 @@ def listar(estado: str | None = None, q: str | None = None,
         d = BancoMovResponse.model_validate(m).model_dump()
         es_rendicion = not m.gasto_id and not m.sin_factura and (m.encargado_id or _solo_digitos(m.cuit) in encargados)
         d["rendicion"] = rendiciones.resumen(db, m) if es_rendicion else None
+        if m.gasto_id:
+            movs_g, facts_g = grupo_de(db, mov=m)
+            if len(movs_g) > 1 or len(facts_g) > 1:
+                d["grupo"] = {"facturas": [{"id": g.id, "razon_social": g.razon_social, "concepto": g.concepto, "fecha": str(g.fecha),
+                                            "importe": float(g.importe), "numero": g.numero} for g in facts_g],
+                              "pagos": [{"id": x.id, "fecha": str(x.fecha), "importe": float(abs(x.importe))} for x in movs_g],
+                              "facturado": float(sum(abs(Decimal(str(g.importe))) for g in facts_g)),
+                              "pagado": float(sum(abs(Decimal(str(x.importe))) for x in movs_g))}
         salida.append(d)
     return salida
 
@@ -611,10 +724,8 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
     objetivo = abs(Decimal(str(mov.importe)))
     cuit = _solo_digitos(mov.cuit)
     libres = _facturas_libres(db)
-    if mov.gasto_id:
-        actual = db.get(Gasto, mov.gasto_id)
-        if actual:
-            libres.append(actual)
+    actuales = facturas_del_mov(db, mov)
+    libres += [g for g in actuales if g not in libres]
     nombre_banco = _nombre_mov(mov)
     eq = cuits_equivalentes(db)
     salida = []
@@ -633,7 +744,16 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
         })
     # primero las que coinciden en más cosas (CUIT, razón social, importe), después por diferencia de importe
     salida.sort(key=lambda x: (-(x["coincide_cuit"] + x["coincide_nombre"] + x["coincide_monto"]), not x["coincide_monto"], x["diferencia"]))
-    return {"facturas": salida, "proveedor": _nombre_proveedor(db, mov.cuit)}
+    # otros pagos pendientes al mismo destinatario (para juntar varios pagos de una factura)
+    otros = []
+    for m in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False, MovimientoBanco.sin_factura.is_(None),  # noqa: E712
+                                              MovimientoBanco.id != mov.id, MovimientoBanco.importe < 0).all():
+        if (cuit and mismo_cuit(mov.cuit, m.cuit, eq)) or (not cuit and nombre_banco and nombre_banco & _nombre_mov(m)):
+            otros.append({"id": m.id, "fecha": str(m.fecha), "importe": float(abs(m.importe)), "descripcion": m.descripcion,
+                          "razon_social": m.razon_social})
+    otros.sort(key=lambda x: x["fecha"])
+    return {"facturas": salida, "proveedor": _nombre_proveedor(db, mov.cuit), "otros_pagos": otros,
+            "vinculadas": [g.id for g in actuales]}
 
 
 class Vinculo(BaseModel):
@@ -646,18 +766,29 @@ def match_manual(mov_id: int, gasto_id: int, data: Vinculo | None = None, db: Se
     g = db.get(Gasto, gasto_id)
     if not mov or not g:
         raise HTTPException(404, "Movimiento o factura no encontrados")
-    _no_es_sin_factura(mov)
-    if mov.gasto_id and mov.gasto_id != gasto_id:
-        anterior = db.get(Gasto, mov.gasto_id)
-        if anterior:
-            anterior.conciliado = False
-            anterior.forma_pago = None
-            anterior.fecha_pago = None
-            quitar_diferencia(None, anterior)
-    registrar_diferencia(mov, g, data.nota if data else None)
-    _vincular(mov, g, manual=True)
+    vincular_grupo(db, [mov], [g], data.nota if data else None)
     db.commit()
     return {"ok": True, "mensaje": "Movimiento conciliado con la factura"}
+
+
+class VinculoGrupo(BaseModel):
+    facturas: list[int] = Field(min_length=1, max_length=50)
+    movimientos: list[int] = Field(default=[], max_length=50)  # otros pagos del banco por la misma factura
+    nota: str | None = None
+
+
+@router.post("/{mov_id}/match-grupo")
+def match_grupo(mov_id: int, data: VinculoGrupo, db: Session = Depends(get_db)):
+    """Concilia este pago con varias facturas, o este pago y otros con una factura."""
+    ids = [mov_id] + [i for i in data.movimientos if i != mov_id]
+    movs = [db.get(MovimientoBanco, i) for i in ids]
+    facturas = [db.get(Gasto, i) for i in dict.fromkeys(data.facturas)]
+    if not all(movs) or not all(facturas):
+        raise HTTPException(404, "Movimiento o factura no encontrados")
+    vincular_grupo(db, movs, facturas, data.nota)
+    db.commit()
+    n = f"{len(movs)} pagos con la factura" if len(movs) > 1 else (f"el pago con {len(facturas)} facturas" if len(facturas) > 1 else "el pago con la factura")
+    return {"ok": True, "mensaje": f"Se concilió {n}"}
 
 
 class GastoDesdePago(BaseModel):
@@ -697,17 +828,11 @@ def unmatch(mov_id: int, db: Session = Depends(get_db)):
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")
-    g = db.get(Gasto, mov.gasto_id) if mov.gasto_id else None
-    if g:
-        g.conciliado = False
-        g.forma_pago = None
-        g.fecha_pago = None
-    quitar_diferencia(mov, g)
-    mov.gasto_id = None
-    mov.conciliado = False
-    mov.conciliado_manual = False
+    movs, facturas = desvincular_grupo(db, mov=mov)
+    mov.conciliado = mov.conciliado_manual = False
     db.commit()
-    return {"ok": True, "mensaje": "Conciliación deshecha"}
+    extra = f" ({len(movs)} pagos y {len(facturas)} factura{'s' if len(facturas) != 1 else ''})" if len(movs) + len(facturas) > 2 else ""
+    return {"ok": True, "mensaje": "Conciliación deshecha" + extra}
 
 
 @router.delete("/{mov_id}")
@@ -716,9 +841,7 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")
     if mov.gasto_id:
-        g = db.get(Gasto, mov.gasto_id)
-        if g:
-            g.conciliado = False
+        desvincular_grupo(db, mov=mov)
     for gr in rendiciones.facturas_de(db, mov):
         rendiciones.desvincular(db, gr)
     db.flush()

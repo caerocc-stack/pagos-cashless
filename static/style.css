@@ -1123,3 +1123,10 @@ td:has(> .td-acc) { width: 1%; }
 .ps-alu-check input { width: auto; margin: 0; }
 
 .cs-examen { margin-top: 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--primary); }
+
+/* Conciliación: un pago con varias facturas, o una factura en varios pagos */
+.conc-grupo { margin-top: 0.2rem; font-size: 0.8rem; color: var(--text-muted); line-height: 1.45; }
+.vinc-otros { margin-top: 0.8rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.88rem; }
+.vinc-otro { display: flex; gap: 0.45rem; align-items: center; margin: 0.35rem 0 0; font-weight: 400; cursor: pointer; }
+.vinc-otro input, .vinc-f { width: auto; margin: 0; }
+.vinc-resumen { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 0.8rem; font-size: 0.92rem; }

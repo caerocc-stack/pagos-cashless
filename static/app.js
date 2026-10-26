@@ -2941,9 +2941,21 @@ function renderConciliacion(lista) {
             const g = m.gasto;
             const fg = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
             const badge = m.conciliado_manual ? 'manual' : 'auto';
-            estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')}
+            const gr = m.grupo;
+            if (gr && gr.facturas.length > 1) {
+                estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')} · <b>${gr.facturas.length} facturas</b>
+                    <div class="conc-grupo">${gr.facturas.map(f => `${fmtFecha(f.fecha)} · ${escapeHtml(f.concepto || f.numero || 'Factura')} · ${fmtMoneda(f.importe)}`).join('<br>')}</div>
+                    ${m.nota_conciliacion ? `<div class="conc-dif">Facturas ${fmtMoneda(gr.facturado)}: ${escapeHtml(m.nota_conciliacion)}</div>` : ''}`;
+            } else if (gr && gr.pagos.length > 1) {
+                estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')}
+                    <span style="color:var(--text-muted)">· ${escapeHtml(g.concepto || '')} · ${fg}</span>
+                    <div class="conc-grupo">Factura de ${fmtMoneda(gr.facturado)} pagada en ${gr.pagos.length} transferencias: ${gr.pagos.map(x => `${fmtFecha(x.fecha)} ${fmtMoneda(x.importe)}`).join(' + ')}</div>
+                    ${m.nota_conciliacion ? `<div class="conc-dif">${escapeHtml(m.nota_conciliacion)}</div>` : ''}`;
+            } else {
+                estado = `<span class="conc-ok">✓ ${badge}</span> ${escapeHtml(g.razon_social || '')}
                 <span style="color:var(--text-muted)">· ${escapeHtml(g.concepto || '')} · ${fg}</span>
                 ${m.nota_conciliacion ? `<div class="conc-dif">Factura ${fmtMoneda(g.importe)}: ${escapeHtml(m.nota_conciliacion)}</div>` : ''}`;
+            }
             acciones = `<button class="btn btn-sm" onclick="desconciliar(${m.id})">Deshacer</button>`;
         } else {
             estado = '<span class="conc-pend">● pendiente</span>';
@@ -3040,40 +3052,96 @@ async function reconciliarAuto() {
     }
 }
 
+// Vincular: un pago con una o varias facturas (ej. dos facturas pagadas en una transferencia), o una factura
+// pagada en varias transferencias (se suman otros pagos pendientes al mismo destinatario).
+let VINC = null;
+
 async function abrirCandidatos(movId) {
     const mov = concCache.find(m => m.id === movId);
     try {
         const resp = await api(`/api/conciliacion/${movId}/candidatos`);
-        const cands = resp.facturas || [];
-        const filas = cands.map(c => {
-            const f = c.fecha ? c.fecha.split('-').reverse().join('/') : '';
+        VINC = { movId, mov, cands: resp.facturas || [], otros: resp.otros_pagos || [],
+                 facturas: new Set(resp.vinculadas || []), pagos: new Set() };
+        const filas = VINC.cands.map(c => {
             const tags = [c.coincide_cuit ? '<span class="conc-tag-ok">CUIT ✓</span>' : '',
                 c.coincide_nombre ? '<span class="conc-tag-ok">Razón social ✓</span>' : '',
                 c.coincide_monto ? '<span class="conc-tag-ok">Importe ✓</span>' : `<span class="conc-tag-dif">Dif. ${fmtMoneda(c.diferencia)}</span>`].join(' ');
             return `<tr>
-                <td>${f}</td>
-                <td>${escapeHtml(c.razon_social || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(c.concepto || '')}</small></td>
+                <td><input type="checkbox" class="vinc-f" value="${c.id}" ${VINC.facturas.has(c.id) ? 'checked' : ''} onchange="vincMarcar('facturas', ${c.id}, this.checked)" aria-label="Elegir factura"></td>
+                <td>${fmtFecha(c.fecha)}</td>
+                <td>${escapeHtml(c.razon_social || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(c.concepto || '')}${c.numero ? ' · ' + escapeHtml(c.numero) : ''}</small></td>
                 <td>${escapeHtml(c.cuit || '-')}</td>
                 <td style="text-align:right">${fmtMoneda(c.importe)}</td>
                 <td>${tags}</td>
-                <td><button class="btn btn-sm btn-primary" onclick="matchManual(${movId},${c.id},${c.coincide_monto ? 0 : c.importe})">Vincular</button></td>
             </tr>`;
         }).join('') ||
             `<tr><td colspan="6">No hay facturas libres con ese CUIT ni ese importe.
                 ${resp.proveedor ? `El proveedor <b>${escapeHtml(resp.proveedor)}</b> está cargado: falta su factura en Gastos.` : 'Cargá la factura en Gastos'}
                 o usá <b>Crear gasto</b> si es un pago sin factura.</td></tr>`;
-        const html = `
-            <h2 style="margin-top:0">Vincular movimiento con una factura</h2>
+        const otros = VINC.otros.map(o => `<label class="vinc-otro"><input type="checkbox" class="vinc-p" value="${o.id}" onchange="vincMarcar('pagos', ${o.id}, this.checked)">
+            ${fmtFecha(o.fecha)} · ${escapeHtml(o.razon_social || o.descripcion || '')} · <b>${fmtMoneda(o.importe)}</b></label>`).join('');
+        document.getElementById('modal-content').innerHTML = `
+            <h2 style="margin-top:0">Vincular el pago con sus facturas</h2>
             <p style="color:var(--text-muted);margin-top:-0.4rem">
-                ${mov ? `${escapeHtml(mov.razon_social || mov.descripcion || '')} · CUIT ${escapeHtml(mov.cuit || '-')} · ${fmtMoneda(Math.abs(mov.importe))}` : ''}
+                ${mov ? `${fmtFecha(mov.fecha)} · ${escapeHtml(mov.razon_social || mov.descripcion || '')} · CUIT ${escapeHtml(mov.cuit || '-')} · <b>${fmtMoneda(Math.abs(mov.importe))}</b>` : ''}
             </p>
-            <div style="max-height:50vh;overflow:auto">
-            <table><thead><tr><th>Fecha</th><th>Factura</th><th>CUIT</th><th style="text-align:right">Importe</th><th>Coincide</th><th></th></tr></thead>
+            <p class="muted" style="margin:0 0 0.5rem">Marcá una factura, o varias si el proveedor hizo dos facturas y se le transfirió el total junto.</p>
+            <div style="max-height:42vh;overflow:auto">
+            <table><thead><tr><th></th><th>Fecha</th><th>Factura</th><th>CUIT</th><th style="text-align:right">Importe</th><th>Coincide</th></tr></thead>
             <tbody>${filas}</tbody></table>
             </div>
-            <div style="margin-top:1rem;text-align:right"><button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
-        document.getElementById('modal-content').innerHTML = html;
+            ${otros ? `<div class="vinc-otros"><b>¿La factura se pagó en varias transferencias?</b> <span class="muted">Sumá los otros pagos al mismo destinatario (con una sola factura marcada):</span>
+                <div>${otros}</div></div>` : ''}
+            <div class="vinc-resumen" id="vinc-resumen"></div>
+            <div class="form-actions"><button class="btn btn-primary" id="vinc-ok" onclick="vincGuardar()">Vincular</button>
+                <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
         document.getElementById('modal-overlay').style.display = 'flex';
+        vincResumen();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+function vincMarcar(tipo, id, on) {
+    on ? VINC[tipo].add(id) : VINC[tipo].delete(id);
+    vincResumen();
+}
+
+function vincTotales() {
+    const facturado = VINC.cands.filter(c => VINC.facturas.has(c.id)).reduce((s, c) => s + Math.abs(c.importe), 0);
+    const pagado = Math.abs(VINC.mov ? VINC.mov.importe : 0) + VINC.otros.filter(o => VINC.pagos.has(o.id)).reduce((s, o) => s + o.importe, 0);
+    return { facturado, pagado, dif: pagado - facturado };
+}
+
+function vincResumen() {
+    const nf = VINC.facturas.size, np = VINC.pagos.size + 1;
+    const { facturado, pagado, dif } = vincTotales();
+    const ambos = nf > 1 && np > 1;
+    // con varias facturas no se pueden sumar pagos (y al revés)
+    document.querySelectorAll('.vinc-p').forEach(x => { x.disabled = nf > 1 && !x.checked; });
+    document.querySelectorAll('.vinc-f').forEach(x => { x.disabled = np > 1 && nf >= 1 && !x.checked; });
+    document.getElementById('vinc-resumen').innerHTML = !nf ? '<span class="muted">Elegí la factura (o las facturas) de este pago.</span>' : `
+        <span>${np > 1 ? `${np} pagos` : 'Pago'}: <b>${fmtMoneda(pagado)}</b></span>
+        <span>${nf > 1 ? `${nf} facturas` : 'Factura'}: <b>${fmtMoneda(facturado)}</b></span>
+        <span class="${Math.abs(dif) <= 1 ? 'conc-ok' : 'conc-pend'}">${Math.abs(dif) <= 1 ? '✓ Coinciden' : `Diferencia ${fmtMoneda(Math.abs(dif))} ${dif > 0 ? 'de más' : 'de menos'}`}</span>
+        ${ambos ? '<span class="conc-pend">Elegí varias facturas o varios pagos, no las dos cosas.</span>' : ''}`;
+    document.getElementById('vinc-ok').disabled = !nf || ambos;
+}
+
+async function vincGuardar() {
+    const { facturado, pagado, dif } = vincTotales();
+    let nota = null;
+    if (Math.abs(dif) > 1) {
+        nota = motivoDiferencia(pagado, facturado);
+        if (nota === null) return;
+        if (!nota) { toast('Anotá el motivo de la diferencia', 'error'); return; }
+    }
+    try {
+        const r = await api(`/api/conciliacion/${VINC.movId}/match-grupo`, { method: 'POST',
+            body: JSON.stringify({ facturas: [...VINC.facturas], movimientos: [...VINC.pagos], nota }) });
+        toast(r.mensaje || 'Movimiento conciliado');
+        cerrarModal();
+        cargarConciliacion();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -3082,7 +3150,7 @@ async function abrirCandidatos(movId) {
 // Importes distintos (ej. nota de crédito, interés, redondeo): se pide el motivo y queda anotado
 function motivoDiferencia(pagado, facturado) {
     const dif = Math.abs(pagado) - Math.abs(facturado);
-    const nota = prompt(`El banco muestra ${fmtMoneda(Math.abs(pagado))} y la factura es de ${fmtMoneda(Math.abs(facturado))}: `
+    const nota = prompt(`El banco muestra ${fmtMoneda(Math.abs(pagado))} y lo facturado es ${fmtMoneda(Math.abs(facturado))}: `
         + `se pagó ${fmtMoneda(Math.abs(dif))} ${dif > 0 ? 'de más' : 'de menos'}.\n\n¿Por qué? Queda anotado en la factura y en la conciliación.`,
         dif < 0 ? 'Nota de crédito por la diferencia' : 'Intereses o recargo por pago fuera de término');
     return nota === null ? null : nota.trim();
@@ -4631,6 +4699,7 @@ async function verFacturasProveedor(pid, usarPeriodo = false) {
             <td class="num" style="${f.importe < 0 ? 'color:var(--danger)' : ''}">${fmtMoneda(f.importe)}</td>
             <td>${f.forma_pago ? `<span class="pago-ok">${escapeHtml(f.forma_pago)} · ${fmtFecha(f.fecha_pago)}</span>${f.conciliado ? ' <span class="conc-tag-ok">banco ✓</span>' : ''}`
                                : (f.importe > 0 ? '<span class="conc-pend">Pendiente</span>' : '—')}
+                ${f.pago_conjunto ? `<div class="conc-grupo">${escapeHtml(f.pago_conjunto)}</div>` : ''}
                 ${f.nota_diferencia ? `<div class="conc-dif">En el banco: ${fmtMoneda(f.pagado_banco)}<br>${escapeHtml(f.nota_diferencia)}</div>` : ''}</td>
             <td>${f.adjunto_url ? `<a class="btn btn-sm" href="${escapeHtml(f.adjunto_url)}" target="_blank" rel="noopener">Ver</a>` : ''}</td>
         </tr>`).join('') || '<tr><td colspan="6">Sin facturas en el período.</td></tr>';
