@@ -36,6 +36,13 @@ def _hash_mov(fecha, comprobante, concepto, importe, desc) -> str:
     return hashlib.sha1(base.encode("utf-8")).hexdigest()[:40]
 
 
+def _clave_mov(fecha, comprobante, importe, descripcion) -> tuple:
+    """Identidad de un movimiento del banco, igual venga del PDF o del Excel del extracto."""
+    comp = _solo_digitos(comprobante).lstrip("0")
+    extra = "" if comp else " ".join(str(descripcion or "").split()).upper()  # sin comprobante: la descripción
+    return (str(fecha), comp, f"{Decimal(str(importe or 0)):.2f}", extra)
+
+
 def _parsear_extracto_xls(contenido: bytes):
     """Lee el .xls del extracto y devuelve solo los egresos conciliables (190 / F30)."""
     try:
@@ -225,9 +232,21 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
     else:
         movimientos = _parsear_extracto_xls(contenido)
 
+    # Ya importado = mismo día, comprobante e importe (el PDF y el Excel del banco arman distinto el resto del
+    # renglón, y los extractos se superponen). Si el mismo renglón aparece n veces, se cuentan las n.
+    fechas = {m["fecha"] for m in movimientos if m.get("fecha")}
+    en_base: dict = {}
+    if fechas:
+        for f, comp, imp, desc in db.query(MovimientoBanco.fecha, MovimientoBanco.comprobante, MovimientoBanco.importe,
+                                           MovimientoBanco.descripcion).filter(MovimientoBanco.fecha.in_(fechas)):
+            k = _clave_mov(f, comp, imp, desc)
+            en_base[k] = en_base.get(k, 0) + 1
+    vistos: dict = {}
     nuevos, duplicados, nuevos_objs = 0, 0, []
     for m in movimientos:
-        if db.query(MovimientoBanco.id).filter(MovimientoBanco.hash == m["hash"]).first():
+        k = _clave_mov(m.get("fecha"), m.get("comprobante"), m.get("importe"), m.get("descripcion"))
+        vistos[k] = vistos.get(k, 0) + 1
+        if vistos[k] <= en_base.get(k, 0) or db.query(MovimientoBanco.id).filter(MovimientoBanco.hash == m["hash"]).first():
             duplicados += 1
             continue
         datos_mov = {k: m.get(k) for k in ("fecha", "cuenta", "comprobante", "concepto", "categoria",
