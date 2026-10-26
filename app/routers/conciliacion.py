@@ -356,6 +356,8 @@ async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db
         obj = MovimientoBanco(origen=archivo.filename, extracto_id=extracto.id if extracto else None, **datos_mov)
         if extracto_roela.es_afip(obj.descripcion, obj.cuit):
             obj.sin_factura = "afip"  # impuestos / planes de AFIP: no llevan factura, no quedan pendientes
+        elif _seguro_conocido(db, obj):
+            obj.sin_factura = "seguro"  # la póliza de cada mes, como las anteriores de esa aseguradora
         db.add(obj)
         nuevos_objs.append(obj)
         nuevos += 1
@@ -854,8 +856,17 @@ def eliminar(mov_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------- egresos que no llevan factura (sueldos, AFIP)
 
 # devuelta: transferencia hecha por error y reintegrada a la cuenta (se anota de dónde volvió la plata)
-MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "cargas_sociales": "cargas sociales", "afip": "AFIP",
+# seguro: débito de la aseguradora por la póliza (ej. Mercantil Andina)
+MOTIVOS_SIN_FACTURA = {"sueldo": "sueldo", "cargas_sociales": "cargas sociales", "seguro": "seguro", "afip": "AFIP",
                        "devuelta": "transferencia devuelta"}
+
+
+def _seguro_conocido(db: Session, mov: MovimientoBanco) -> bool:
+    """Débito directo de una aseguradora que ya se marcó antes como seguro (mismo destinatario)."""
+    if mov.concepto != "146" or not mov.razon_social:
+        return False
+    return db.query(MovimientoBanco.id).filter(MovimientoBanco.sin_factura == "seguro", MovimientoBanco.concepto == "146",
+                                               MovimientoBanco.razon_social == mov.razon_social).first() is not None
 
 
 def _no_es_sin_factura(mov: MovimientoBanco):
@@ -865,13 +876,13 @@ def _no_es_sin_factura(mov: MovimientoBanco):
 
 
 class SinFactura(BaseModel):
-    motivo: str | None = None  # "sueldo", "cargas_sociales", "afip", "devuelta" o None (vuelve a pendiente)
+    motivo: str | None = None  # "sueldo", "cargas_sociales", "seguro", "afip", "devuelta" o None (vuelve a pendiente)
     nota: str | None = None
 
 
 @router.post("/{mov_id}/sin-factura")
 def marcar_sin_factura(mov_id: int, data: SinFactura, request: Request, db: Session = Depends(get_db)):
-    """Saca el movimiento de los pendientes: sueldo, cargas sociales, AFIP o devuelta; no es un gasto con factura."""
+    """Saca el movimiento de los pendientes: sueldo, cargas sociales, seguro, AFIP o devuelta; no es un gasto con factura."""
     mov = db.get(MovimientoBanco, mov_id)
     if not mov:
         raise HTTPException(404, "Movimiento no encontrado")

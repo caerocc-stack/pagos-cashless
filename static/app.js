@@ -2947,9 +2947,9 @@ function renderConciliacion(lista) {
         const fecha = fmtFecha(m.fecha);
         const tipo = TIPOS_BANCO[m.concepto] || m.concepto || '—';
         let estado, acciones;
-        const btnSueldo = `<button class="btn btn-sm" onclick="abrirSinFactura(${m.id})" title="Sueldo, cargas sociales o transferencia devuelta: no lleva factura y sale de los pendientes">Sin factura</button>`;
+        const btnSueldo = `<button class="btn btn-sm" onclick="abrirSinFactura(${m.id})" title="Sueldo, cargas sociales, seguro o transferencia devuelta: no lleva factura y sale de los pendientes">Sin factura</button>`;
         if (m.sin_factura) {
-            const SF = { sueldo: ['Sueldo', 'no lleva factura'], afip: ['AFIP', 'impuestos, no lleva factura'], devuelta: ['Devuelta', 'se reintegró a la cuenta'], cargas_sociales: ['Cargas sociales', 'no lleva factura'] };
+            const SF = { sueldo: ['Sueldo', 'no lleva factura'], afip: ['AFIP', 'impuestos, no lleva factura'], devuelta: ['Devuelta', 'se reintegró a la cuenta'], cargas_sociales: ['Cargas sociales', 'no lleva factura'], seguro: ['Seguro', 'póliza, no lleva factura'] };
             const [et, det] = SF[m.sin_factura] || [m.sin_factura, 'no lleva factura'];
             estado = `<span class="conc-sf">${et}</span> <span style="color:var(--text-muted)">· ${escapeHtml(m.sin_factura_nota || det)}</span>`;
             acciones = `<button class="btn btn-sm" onclick="marcarSinFactura(${m.id}, null)" title="Volver a dejarlo pendiente de conciliar">Deshacer</button>`;
@@ -2985,7 +2985,7 @@ function renderConciliacion(lista) {
                     <div class="mas-menu" role="menu">
                         <button role="menuitem" onclick="crearGastoDesdePago(${m.id})"><b>Crear gasto</b><small>Pago sin factura de proveedor</small></button>
                         ${Number(m.importe) < 0 ? `<button role="menuitem" onclick="abrirRendicion(${m.id})"><b>Encargado</b><small>Se le transfirió a quien compró</small></button>` : ''}
-                        <button role="menuitem" onclick="abrirSinFactura(${m.id})"><b>Sin factura</b><small>Sueldo, cargas sociales o devuelta</small></button>
+                        <button role="menuitem" onclick="abrirSinFactura(${m.id})"><b>Sin factura</b><small>Sueldo, cargas sociales, seguro o devuelta</small></button>
                     </div></details></div>`;
         }
         return `<tr>
@@ -3036,7 +3036,7 @@ async function importarExtracto(input) {
     }
 }
 
-// Egresos que no llevan factura: sueldo (transferencia o DEBIN a un CUIT), cargas sociales, o devuelta (con nota)
+// Egresos que no llevan factura: sueldo (transferencia o DEBIN a un CUIT), cargas sociales, seguro, o devuelta (con nota)
 function abrirSinFactura(movId) {
     const m = (concCache || []).find(x => x.id === movId) || {};
     const puedeSueldo = ['190', '190100', 'F30', 'F30100'].includes(m.concepto) && (m.cuit || '').replace(/\D/g, '').length === 11;
@@ -3047,6 +3047,7 @@ function abrirSinFactura(movId) {
         <div class="sf-opciones">
             ${puedeSueldo ? `<button class="btn" onclick="marcarSinFactura(${movId}, 'sueldo')"><b>Sueldo</b><small>Transferencia a un empleado</small></button>` : ''}
             <button class="btn" onclick="marcarSinFactura(${movId}, 'cargas_sociales')"><b>Cargas sociales</b><small>Aportes, contribuciones, ART, sindicato</small></button>
+            <button class="btn" onclick="marcarSinFactura(${movId}, 'seguro')"><b>Seguro</b><small>Póliza de la aseguradora (ej. Mercantil Andina)</small></button>
             <button class="btn" onclick="marcarSinFactura(${movId}, 'devuelta')"><b>Devuelta</b><small>Se transfirió por error y la reintegraron</small></button>
         </div>
         <label for="sf-nota" style="margin-top:0.9rem">Nota <span class="muted">(obligatoria si fue devuelta: cuándo y de quién volvió la plata)</span></label>
@@ -3061,7 +3062,7 @@ async function marcarSinFactura(movId, motivo) {
     try {
         await api(`/api/conciliacion/${movId}/sin-factura`, { method: 'POST', body: JSON.stringify({ motivo, nota }) });
         if (motivo) cerrarModal();
-        toast(motivo ? 'Marcado: ' + ({ sueldo: 'sueldo', cargas_sociales: 'cargas sociales', devuelta: 'devuelta' }[motivo] || motivo) : 'Volvió a quedar pendiente de conciliar');
+        toast(motivo ? 'Marcado: ' + ({ sueldo: 'sueldo', cargas_sociales: 'cargas sociales', seguro: 'seguro', devuelta: 'devuelta' }[motivo] || motivo) : 'Volvió a quedar pendiente de conciliar');
         cargarConciliacion();
     } catch (e) { toast(e.message, 'error'); }
 }
