@@ -549,15 +549,14 @@ def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
     objetivo = abs(Decimal(str(g.importe)))
     cuit = _norm_cuit(g.cuit)
 
-    from app.routers.conciliacion import _palabras, _nombre_mov, TOLERANCIA, cuits_equivalentes, mismo_cuit
+    from app.routers.conciliacion import mismo_nombre, _nombre_mov, TOLERANCIA, cuits_equivalentes, mismo_cuit
     eq = cuits_equivalentes(db)
-    nombre = _palabras(g.razon_social)
     bancos = []
     for b in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False,  # noqa: E712
                                               MovimientoBanco.sin_factura.is_(None)).all():
         coincide_monto = abs(abs(Decimal(str(b.importe))) - objetivo) <= TOLERANCIA
         coincide_cuit = mismo_cuit(b.cuit, cuit, eq)
-        coincide_nombre = bool(nombre & _nombre_mov(b))  # débitos directos sin CUIT, DEBIN a otra cuenta
+        coincide_nombre = mismo_nombre(g.razon_social, _nombre_mov(b))  # débitos directos sin CUIT, DEBIN a otra cuenta
         if coincide_monto or coincide_cuit or coincide_nombre:
             bancos.append({
                 "id": b.id, "fecha": str(b.fecha), "descripcion": b.descripcion,

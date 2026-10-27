@@ -250,8 +250,16 @@ _PALABRAS_VACIAS = {"S.A.", "S.R.L.", "SRL", "SA", "SAS", "S.A.S.", "DE", "DEL",
                     "TRANSF", "INTERB", "DISTINTO", "TITULAR", "DEBIN", "INMEDIATO", "CUOTAS", "PAGO", "HABER"}
 
 
-def _palabras(texto: str | None) -> set[str]:
-    return {p for p in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]{4,}", (texto or "").upper()) if p not in _PALABRAS_VACIAS}
+def _lista_palabras(texto: str | None) -> list[str]:
+    return [p for p in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]{4,}", (texto or "").upper()) if p not in _PALABRAS_VACIAS]
+
+
+def mismo_nombre(a: str | None, b: str | None) -> bool:
+    """Misma razón social: comparten el apellido o el nombre de la empresa (la primera palabra de alguno)
+    o al menos dos palabras. Un nombre de pila suelto (MULLER ROBERTO DANIEL / DIGAMGI DANIEL) no alcanza."""
+    la, lb = _lista_palabras(a), _lista_palabras(b)
+    comunes = set(la) & set(lb)
+    return len(comunes) >= 2 or bool(comunes & {la[0] if la else None, lb[0] if lb else None})
 
 
 def cuits_equivalentes(db: Session) -> dict[str, set[str]]:
@@ -269,9 +277,9 @@ def mismo_cuit(cuit_mov: str | None, cuit_factura: str | None, eq: dict | None =
     return bool(a) and bool(b) and (a == b or b in (eq or {}).get(a, ()))
 
 
-def _nombre_mov(mov: MovimientoBanco) -> set[str]:
-    """Palabras del destinatario según el banco (con CUIT, la razón social; sin CUIT, también la descripción)."""
-    return _palabras(mov.razon_social if mov.cuit else f"{mov.razon_social or ''} {mov.descripcion or ''}")
+def _nombre_mov(mov: MovimientoBanco) -> str:
+    """Destinatario según el banco (con CUIT, la razón social; sin CUIT, también la descripción)."""
+    return mov.razon_social if mov.cuit else f"{mov.razon_social or ''} {mov.descripcion or ''}"
 
 
 def _intentar_match(mov: MovimientoBanco, libres: list[Gasto], eq: dict | None = None) -> bool:
@@ -284,7 +292,7 @@ def _intentar_match(mov: MovimientoBanco, libres: list[Gasto], eq: dict | None =
     cand = [g for g in mismo_monto if mismo_cuit(mov.cuit, g.cuit, eq)]
     if not cand:  # 2º intento: razón social + importe
         nombre_banco = _nombre_mov(mov)
-        cand = [g for g in mismo_monto if nombre_banco & _palabras(g.razon_social)] if nombre_banco else []
+        cand = [g for g in mismo_monto if mismo_nombre(nombre_banco, g.razon_social)]
     if len(cand) == 1:
         _vincular(mov, cand[0], manual=False)
         libres.remove(cand[0])
@@ -734,15 +742,15 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
     salida = []
     for g in libres:
         coincide_cuit = mismo_cuit(mov.cuit, g.cuit, eq)
-        mismo_nombre = bool(nombre_banco & _palabras(g.razon_social))
+        coincide_nombre = mismo_nombre(nombre_banco, g.razon_social)
         dif = abs(abs(Decimal(str(g.importe))) - objetivo)
         mismo_monto = dif <= TOLERANCIA
-        if not (coincide_cuit or mismo_nombre or mismo_monto):
+        if not (coincide_cuit or coincide_nombre or mismo_monto):
             continue
         salida.append({
             "id": g.id, "fecha": str(g.fecha), "razon_social": g.razon_social, "cuit": g.cuit,
             "importe": float(g.importe), "concepto": g.concepto, "numero": g.numero,
-            "coincide_cuit": coincide_cuit, "coincide_nombre": mismo_nombre, "coincide_monto": mismo_monto,
+            "coincide_cuit": coincide_cuit, "coincide_nombre": coincide_nombre, "coincide_monto": mismo_monto,
             "diferencia": float(dif),
         })
     # primero las que coinciden en más cosas (CUIT, razón social, importe), después por diferencia de importe
@@ -751,7 +759,7 @@ def candidatos(mov_id: int, db: Session = Depends(get_db)):
     otros = []
     for m in db.query(MovimientoBanco).filter(MovimientoBanco.conciliado == False, MovimientoBanco.sin_factura.is_(None),  # noqa: E712
                                               MovimientoBanco.id != mov.id, MovimientoBanco.importe < 0).all():
-        if (cuit and mismo_cuit(mov.cuit, m.cuit, eq)) or (not cuit and nombre_banco and nombre_banco & _nombre_mov(m)):
+        if (cuit and mismo_cuit(mov.cuit, m.cuit, eq)) or (not cuit and mismo_nombre(nombre_banco, _nombre_mov(m))):
             otros.append({"id": m.id, "fecha": str(m.fecha), "importe": float(abs(m.importe)), "descripcion": m.descripcion,
                           "razon_social": m.razon_social})
     otros.sort(key=lambda x: x["fecha"])
