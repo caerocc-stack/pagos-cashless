@@ -5339,9 +5339,12 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
           + (anios.length === 1 ? `${enLista(inst.map(i => i[0]))} de ${anios[0]}` : enLista(inst.map(i => `${i[0]} de ${i[1]}`)));
     const por = c.examen ? `por el examen ${curso}, ${instancias}` : `por la carrera de ${curso}, ciclo lectivo ${ld.anio}`;
     const dni = String(ld.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    // El legajo solo si es uno real (5 dígitos): a los de exámenes sin legajo se les puso "D" + DNI
+    const digLegajo = String(ld.legajo || '').replace(/\D/g, '');
+    const legajo = /^\d{5}$/.test(digLegajo) && digLegajo !== String(ld.dni).replace(/\D/g, '') ? `, legajo ${ld.legajo}` : '';
     doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(12.5);
     const opc = { lineHeightFactor: 1.7 }, alto = n => n * 12.5 * 1.7 * 0.3528;
-    const p1 = doc.splitTextToSize(`La Asociación de Padres y Alumnos del I.N.A.C. certifica que ${nombre}, DNI ${dni}, legajo ${ld.legajo}, no registra deuda con esta Asociación ${por}.`, W - 50);
+    const p1 = doc.splitTextToSize(`La Asociación de Padres y Alumnos del I.N.A.C. certifica que ${nombre}, DNI ${dni}${legajo}, no registra deuda con esta Asociación ${por}.`, W - 50);
     const p2 = doc.splitTextToSize('A pedido de la persona interesada, se extiende la presente constancia para ser presentada ante quien corresponda.', W - 50);
     let y = 86;
     doc.text(p1, 25, y, opc); y += alto(p1.length) + 6;
