@@ -2755,9 +2755,12 @@ let concCache = [];
 
 async function cargarConciliacion() {
     try {
+        await cargarMesesConc();
         const estado = document.getElementById('conc-f-estado').value;
+        const periodo = document.getElementById('conc-f-mes').value;
         const p = new URLSearchParams();
         if (estado) p.set('estado', estado);
+        if (periodo) p.set('periodo', periodo);
         concCache = await api('/api/conciliacion/?' + p.toString());
         filtrarConciliacion();
         cargarResumenConc();
@@ -2770,7 +2773,8 @@ async function cargarConciliacion() {
 // Contadores compactos: cada uno filtra la lista de movimientos (el activo queda marcado)
 async function cargarResumenConc() {
     try {
-        const r = await api('/api/conciliacion/resumen');
+        const periodo = document.getElementById('conc-f-mes').value;
+        const r = await api('/api/conciliacion/resumen' + (periodo ? '?periodo=' + periodo : ''));
         const f = document.getElementById('conc-f-estado').value;
         const kpi = (estado, etiqueta, valor, sub, cls = '') => `<button type="button" class="conc-kpi ${cls} ${f === estado ? 'activo' : ''}"
             onclick="concFiltrar('${estado}')" aria-pressed="${f === estado}"><span>${etiqueta}</span><b>${valor}</b><small>${sub}</small></button>`;
@@ -2780,6 +2784,28 @@ async function cargarResumenConc() {
             kpi('sin_factura', 'Sin factura', r.sin_factura || 0, fmtMoneda(r.monto_sin_factura || 0)) +
             kpi('', 'Todos', r.total, fmtMoneda(r.monto_total));
     } catch (err) { /* sin datos */ }
+}
+
+// Filtro por mes: solo los meses con movimientos (con cuántos quedan pendientes); se recuerda el elegido
+const MESES_NOMBRE = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+async function cargarMesesConc() {
+    const sel = document.getElementById('conc-f-mes');
+    let elegido = sel.value;
+    if (!sel.dataset.listo) { try { elegido = localStorage.getItem('conc-mes') || ''; } catch { /* sin almacenamiento */ } }
+    try {
+        const lista = await api('/api/conciliacion/meses');
+        sel.innerHTML = '<option value="">Todos los meses</option>' + lista.map(m => {
+            const [a, n] = m.periodo.split('-');
+            return `<option value="${m.periodo}">${MESES_NOMBRE[+n - 1]} ${a} · ${m.cantidad}${m.pendientes ? ` (${m.pendientes} pend.)` : ''}</option>`;
+        }).join('');
+        sel.value = lista.some(m => m.periodo === elegido) ? elegido : '';
+        sel.dataset.listo = '1';
+    } catch { /* sin datos */ }
+}
+
+function concElegirMes(periodo) {
+    try { localStorage.setItem('conc-mes', periodo); } catch { /* sin almacenamiento */ }
+    cargarConciliacion();
 }
 
 function concFiltrar(estado) {

@@ -1203,6 +1203,9 @@
 
             <div class="toolbar">
                 <input type="text" id="buscar-conc" placeholder="Buscar por CUIT, razón social o descripción...">
+                <select id="conc-f-mes" onchange="concElegirMes(this.value)" aria-label="Mes">
+                    <option value="">Todos los meses</option>
+                </select>
                 <select id="conc-f-estado" onchange="cargarConciliacion()">
                     <option value="">Todos</option>
                     <option value="pendiente">Solo pendientes</option>

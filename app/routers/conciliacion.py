@@ -8,7 +8,7 @@ import xlrd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, func, extract
+from sqlalchemy import or_, func, extract, case
 
 from app.database import get_db
 from app.models.banco import MovimientoBanco, ExtractoBancario, EncargadoCompra, CONCEPTOS_CONCILIABLES
@@ -514,27 +514,44 @@ def eliminar_todos_los_extractos(request: Request, db: Session = Depends(get_db)
 
 # ---------------------------------------------------------------- listado y acciones
 
+def _del_periodo(periodo: str | None) -> tuple:
+    """Filtro por mes ("2026-06"); vacío = todos los movimientos."""
+    if not periodo:
+        return ()
+    try:
+        anio, mes = (int(x) for x in periodo.split("-"))
+    except ValueError:
+        raise HTTPException(400, "Mes inválido (formato AAAA-MM).")
+    return (extract("year", MovimientoBanco.fecha) == anio, extract("month", MovimientoBanco.fecha) == mes)
+
+
+@router.get("/meses")
+def meses(db: Session = Depends(get_db)):
+    """Meses con movimientos del banco (para el filtro), del más reciente al más viejo."""
+    anio, mes = extract("year", MovimientoBanco.fecha), extract("month", MovimientoBanco.fecha)
+    pend = case(((MovimientoBanco.conciliado == False) & MovimientoBanco.sin_factura.is_(None), 1), else_=0)  # noqa: E712
+    filas = db.query(anio, mes, func.count(MovimientoBanco.id), func.sum(pend)).group_by(anio, mes).order_by(anio.desc(), mes.desc()).all()
+    return [{"periodo": f"{int(a)}-{int(m):02d}", "cantidad": n, "pendientes": int(p or 0)} for a, m, n, p in filas]
+
+
 @router.get("/resumen")
-def resumen(db: Session = Depends(get_db)):
-    total = db.query(func.count(MovimientoBanco.id)).scalar() or 0
-    conc = db.query(func.count(MovimientoBanco.id)).filter(MovimientoBanco.conciliado == True).scalar() or 0  # noqa: E712
+def resumen(periodo: str | None = None, db: Session = Depends(get_db)):
+    per = _del_periodo(periodo)
+    contar = lambda *f: db.query(func.count(MovimientoBanco.id)).filter(*per, *f).scalar() or 0  # noqa: E731
     monto = func.coalesce(func.sum(func.abs(MovimientoBanco.importe)), 0)
-    monto_total = db.query(monto).scalar() or 0
+    sumar = lambda *f: float(db.query(monto).filter(*per, *f).scalar() or 0)  # noqa: E731
     pend = (MovimientoBanco.conciliado == False, MovimientoBanco.sin_factura.is_(None))  # noqa: E712
-    n_pend = db.query(func.count(MovimientoBanco.id)).filter(*pend).scalar() or 0
-    monto_pend = db.query(monto).filter(*pend).scalar() or 0
     sf = (MovimientoBanco.sin_factura.isnot(None),)
-    return {"total": total, "conciliados": conc, "pendientes": n_pend,
-            "monto_total": float(monto_total), "monto_pendiente": float(monto_pend),
-            "sin_factura": db.query(func.count(MovimientoBanco.id)).filter(*sf).scalar() or 0,
-            "monto_sin_factura": float(db.query(monto).filter(*sf).scalar() or 0)}
+    return {"total": contar(), "conciliados": contar(MovimientoBanco.conciliado == True),  # noqa: E712
+            "pendientes": contar(*pend), "monto_total": sumar(), "monto_pendiente": sumar(*pend),
+            "sin_factura": contar(*sf), "monto_sin_factura": sumar(*sf)}
 
 
 @router.get("/")
 def listar(estado: str | None = None, q: str | None = None,
-           mes: int | None = None, anio: int | None = None,
+           mes: int | None = None, anio: int | None = None, periodo: str | None = None,
            db: Session = Depends(get_db)):
-    query = db.query(MovimientoBanco).options(joinedload(MovimientoBanco.gasto))
+    query = db.query(MovimientoBanco).options(joinedload(MovimientoBanco.gasto)).filter(*_del_periodo(periodo))
     if estado == "conciliado":
         query = query.filter(MovimientoBanco.conciliado == True)  # noqa: E712
     elif estado == "pendiente":
