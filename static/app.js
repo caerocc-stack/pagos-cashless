@@ -5288,7 +5288,7 @@ async function cargarCursosAlumno(id) {
             const c = ld && ld.cursos.find(x => x.curso_id === m.curso_id);
             if (!c) return '';
             return c.habilitado
-                ? `<button class="btn btn-sm btn-outline" onclick="pdfLibreDeuda(${id}, ${c.curso_id})" title="Constancia de libre deuda de ${escapeHtml(c.etiqueta || c.nombre)}"><svg class="ic"><use href="#i-download"/></svg>Libre deuda</button>`
+                ? `<button class="btn btn-sm btn-outline" onclick="pdfLibreDeuda(${id}, ${c.curso_id})" title="Constancia de libre deuda de ${escapeHtml(c.nombre_completo || c.nombre)}"><svg class="ic"><use href="#i-download"/></svg>Libre deuda</button>`
                 : `<span class="muted" style="font-size:.78rem" title="No se puede extender el libre deuda de este curso">Libre deuda: ${escapeHtml(c.motivo)}</span>`;
         };
         cont.innerHTML = `<h4 style="margin:0.8rem 0 0">Cursos ${anio}</h4>
@@ -5329,7 +5329,7 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(W / 2 - 30, 66, W / 2 + 30, 66);
     // Texto
     const nombre = `${ld.apellido}, ${ld.nombre}`.toUpperCase();
-    const curso = c.etiqueta || c.nombre;
+    const curso = c.nombre_completo || c.etiqueta || c.nombre;
     const de = c.examen
         ? `inscripto/a en el examen de ${curso}${c.instancias.length ? ' (' + c.instancias.join(', ') + ')' : ` año ${ld.anio}`}`
         : `de la carrera de ${curso}, año ${ld.anio}`;
@@ -5344,7 +5344,7 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.setFontSize(10); doc.setTextColor(91, 107, 128);
     doc.text('Firma y sello', W / 2, 201, { align: 'center' });
     doc.text('Asociación de Padres y Alumnos del I.N.A.C.', W / 2, 206, { align: 'center' });
-    doc.save(`Libre deuda ${ld.apellido} ${ld.nombre} ${curso}.pdf`);
+    doc.save(`Libre deuda ${ld.apellido} ${ld.nombre} ${c.etiqueta || c.nombre}.pdf`);
 }
 
 async function agregarCursoAlumno(id) {

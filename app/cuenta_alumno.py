@@ -394,6 +394,20 @@ def _pago_dto(p, destino: list, anio: int | None = None) -> dict:
 
 # ---------------------------------------------------------------- libre deuda por curso
 AREAS_LIBRE_DEUDA = {"Aeronavegantes", "Examenes"}
+# Nombre completo de cada curso para las constancias (por el comienzo de su nombre corto)
+NOMBRES_COMPLETOS = [
+    ("TCP", "Tripulante de Cabina de Pasajeros (TCP)"),
+    ("RAAC 147", "Apéndice 2 - RAAC 147"),
+    ("ORR", "Operador Radiotelefonista Restringido (ORR)"),
+    ("PCA-HVI", "Piloto Comercial de Avión con Habilitación de Vuelo por Instrumentos (PCA-HVI)"),
+    ("DESP AER", "Despachante de Aeronaves"),
+    ("MMH", "Mecánico de Mantenimiento de Helicópteros (MMH)"),
+]
+
+
+def nombre_completo(nombre: str) -> str:
+    corto = re.sub(r"\s*\(.*\)$", "", nombre or "").strip()
+    return next((completo for prefijo, completo in NOMBRES_COMPLETOS if corto.upper().startswith(prefijo)), corto)
 
 
 def libre_deuda_cursos(info: dict) -> list[dict]:
@@ -407,7 +421,7 @@ def libre_deuda_cursos(info: dict) -> list[dict]:
         if c.get("area") not in AREAS_LIBRE_DEUDA and not c.get("por_examen"):
             continue
         fila = {"curso_id": c.get("curso_id"), "nombre": re.sub(r"\s*\(.*\)$", "", c["nombre"]), "etiqueta": c.get("etiqueta"),
-                "area": c.get("area"), "examen": bool(c.get("por_examen")), "instancias": [], "habilitado": False, "motivo": ""}
+                "nombre_completo": nombre_completo(c["nombre"]), "area": c.get("area"), "examen": bool(c.get("por_examen")), "instancias": [], "habilitado": False, "motivo": ""}
         if becado:
             fila["motivo"] = info["estado"]
         elif c.get("por_examen"):
