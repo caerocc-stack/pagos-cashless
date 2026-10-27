@@ -5328,17 +5328,26 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.text('LIBRE DEUDA', W / 2, 62, { align: 'center' });
     doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(W / 2 - 30, 66, W / 2 + 30, 66);
     // Texto
-    const nombre = `${ld.apellido}, ${ld.nombre}`.toUpperCase();
+    // Redacción neutra (sin "el/la alumno/a"): la Asociación certifica, el alumno con nombre y apellido
+    const nombre = `${ld.nombre} ${ld.apellido}`.toUpperCase();
     const curso = c.nombre_completo || c.etiqueta || c.nombre;
-    const de = c.examen
-        ? `inscripto/a en el examen de ${curso}${c.instancias.length ? ' (' + c.instancias.join(', ') + ')' : ` año ${ld.anio}`}`
-        : `de la carrera de ${curso}, año ${ld.anio}`;
+    const enLista = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : xs.join('');
+    // "junio 2026", "octubre 2026" → "las instancias de junio y octubre de 2026"
+    const inst = c.instancias.map(i => i.split(' ')), anios = [...new Set(inst.map(i => i[1]))];
+    const instancias = !inst.length ? `del ciclo lectivo ${ld.anio}`
+        : (inst.length > 1 ? 'en las instancias de ' : 'en la instancia de ')
+          + (anios.length === 1 ? `${enLista(inst.map(i => i[0]))} de ${anios[0]}` : enLista(inst.map(i => `${i[0]} de ${i[1]}`)));
+    const por = c.examen ? `por el examen ${curso}, ${instancias}` : `por la carrera de ${curso}, ciclo lectivo ${ld.anio}`;
+    const dni = String(ld.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(12.5);
-    const texto = `Se certifica que el/la alumno/a ${nombre}, DNI ${String(ld.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}, legajo ${ld.legajo}, ${de}, no registra deuda con esta Asociación por dicho ${c.examen ? 'examen' : 'curso'}.`;
-    doc.text(doc.splitTextToSize(texto, W - 50), 25, 86, { lineHeightFactor: 1.7 });
-    doc.text('Se extiende la presente a pedido del/de la interesado/a, para ser presentada ante quien corresponda.', 25, 120, { maxWidth: W - 50, lineHeightFactor: 1.7 });
+    const opc = { lineHeightFactor: 1.7 }, alto = n => n * 12.5 * 1.7 * 0.3528;
+    const p1 = doc.splitTextToSize(`La Asociación de Padres y Alumnos del I.N.A.C. certifica que ${nombre}, DNI ${dni}, legajo ${ld.legajo}, no registra deuda con esta Asociación ${por}.`, W - 50);
+    const p2 = doc.splitTextToSize('A pedido de la persona interesada, se extiende la presente constancia para ser presentada ante quien corresponda.', W - 50);
+    let y = 86;
+    doc.text(p1, 25, y, opc); y += alto(p1.length) + 6;
+    doc.text(p2, 25, y, opc); y += alto(p2.length) + 10;
     const f = new Date();
-    doc.text(`Morón, ${f.getDate()} de ${MESES_ES[f.getMonth()].toLowerCase()} de ${f.getFullYear()}.-`, W - 25, 145, { align: 'right' });
+    doc.text(`Morón, ${f.getDate()} de ${MESES_ES[f.getMonth()].toLowerCase()} de ${f.getFullYear()}.`, W - 25, y, { align: 'right' });
     // Firma
     doc.setDrawColor(120, 130, 145); doc.setLineWidth(0.3); doc.line(W / 2 - 35, 195, W / 2 + 35, 195);
     doc.setFontSize(10); doc.setTextColor(91, 107, 128);
