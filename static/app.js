@@ -3455,7 +3455,7 @@ async function exportarDesglosePDF() {
     const rgb = hex => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const W = doc.internal.pageSize.getWidth();
     const logo = await _imagenLogo();
 
     // Encabezado
@@ -5313,7 +5313,7 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const W = doc.internal.pageSize.getWidth();
     const apai = sistemaCfg.apai || {};
     const logo = await _imagenLogo();
     doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
@@ -5344,8 +5344,6 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.setFontSize(10); doc.setTextColor(91, 107, 128);
     doc.text('Firma y sello', W / 2, 201, { align: 'center' });
     doc.text('Asociación de Padres y Alumnos del I.N.A.C.', W / 2, 206, { align: 'center' });
-    doc.setFontSize(8); doc.setTextColor(120, 130, 145);
-    doc.text(`Generado el ${fmtFecha(hoyISO())} con APAI Pay`, W / 2, H - 10, { align: 'center' });
     doc.save(`Libre deuda ${ld.apellido} ${ld.nombre} ${curso}.pdf`);
 }
 
@@ -6045,7 +6043,7 @@ async function pdfPresupuesto(pedidos) {
     const refs = pedidos.map(p => p.numero).join(', ');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const W = doc.internal.pageSize.getWidth();
     const logo = await _imagenLogo();
 
     doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
