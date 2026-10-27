@@ -3411,6 +3411,10 @@ function exportarEstadisticasPDF() {
 }
 
 // ---------------------------------------------------------------- PDF para compartir: recaudación por área
+// En todas las tablas de los PDF: una fila nunca se parte entre dos hojas (pasa entera a la siguiente)
+// y los totales del pie van solo al final.
+if (window.jspdf && window.jspdf.jsPDF.autoTableSetDefaults) window.jspdf.jsPDF.autoTableSetDefaults({ rowPageBreak: 'avoid', showFoot: 'lastPage' });
+
 // Logo para los PDF, achicado a 256 px (el original pesa 750 KB y hacía PDF de 8 a 30 MB)
 let _logoPDF = null;
 async function _imagenLogo() {
