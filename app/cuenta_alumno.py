@@ -390,3 +390,35 @@ def _pago_dto(p, destino: list, anio: int | None = None) -> dict:
     return {"id": p.id, "fecha": str(p.fecha), "fecha_pago": str(p.fecha_pago) if p.fecha_pago else None,
             "importe": float(p.importe), "canal": p.canal, "via": p.via, "curso_id": getattr(p, "curso_id", None),
             "imputado_a": ", ".join(x["concepto"] for x in lineas) or None, "detalle": lineas}
+
+
+# ---------------------------------------------------------------- libre deuda por curso
+AREAS_LIBRE_DEUDA = {"Aeronavegantes", "Examenes"}
+
+
+def libre_deuda_cursos(info: dict) -> list[dict]:
+    """Cursos de aeronavegantes y de exámenes del estado de cuenta `info`, con si se les puede extender el libre
+    deuda. Cada curso se mira por separado: un curso está libre de deuda si se pagó completo (matrícula y todas sus
+    cuotas, aunque todavía no hayan vencido), así el que terminó un curso y está cursando otro tiene el del
+    terminado. En los cursos por examen alcanza con una instancia pagada por el importe del examen."""
+    becado = info.get("estado") in ("Becado", "Exento")
+    salida = []
+    for c in info.get("cursos", []):
+        if c.get("area") not in AREAS_LIBRE_DEUDA and not c.get("por_examen"):
+            continue
+        fila = {"curso_id": c.get("curso_id"), "nombre": re.sub(r"\s*\(.*\)$", "", c["nombre"]), "etiqueta": c.get("etiqueta"),
+                "area": c.get("area"), "examen": bool(c.get("por_examen")), "instancias": [], "habilitado": False, "motivo": ""}
+        if becado:
+            fila["motivo"] = info["estado"]
+        elif c.get("por_examen"):
+            pagos = [it for it in c.get("items", []) if it.get("examen") and it["pagado"] >= c.get("cuota", 0) > 0]
+            fila["instancias"] = [it["concepto"].split(" · ", 1)[-1] for it in pagos if it.get("instancia_id")]
+            fila["habilitado"] = bool(pagos)
+            fila["motivo"] = "" if pagos else "Sin examen pagado"
+        else:
+            falta = max(c.get("esperado_anual", 0) - c.get("cobrado", 0), 0)
+            fila["habilitado"] = bool(c.get("completo"))
+            if not fila["habilitado"]:
+                fila["motivo"] = f"Falta pagar ${falta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        salida.append(fila)
+    return salida

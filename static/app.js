@@ -5278,19 +5278,75 @@ async function cargarCursosAlumno(id) {
     if (!cont) return;
     try {
         const anio = new Date().getFullYear();
-        const [mios, todos] = await Promise.all([api(`/api/alumnos/${id}/cursos`), api(`/api/cursos/?anio=${anio}`)]);
+        const [mios, todos, ld] = await Promise.all([api(`/api/alumnos/${id}/cursos`), api(`/api/cursos/?anio=${anio}`),
+            api(`/api/cuotas/libre-deuda/${id}`).catch(() => null)]);
         const esAdmin = usuarioActual.rol === 'admin';
         const libres = todos.filter(c => c.activo && !mios.some(m => m.curso_id === c.id));
+        libreDeudaCache[id] = ld;
+        // Libre deuda: un botón por curso de aeronavegantes o exámenes, solo si ese curso está pagado
+        const botonLD = m => {
+            const c = ld && ld.cursos.find(x => x.curso_id === m.curso_id);
+            if (!c) return '';
+            return c.habilitado
+                ? `<button class="btn btn-sm btn-outline" onclick="pdfLibreDeuda(${id}, ${c.curso_id})" title="Constancia de libre deuda de ${escapeHtml(c.etiqueta || c.nombre)}"><svg class="ic"><use href="#i-download"/></svg>Libre deuda</button>`
+                : `<span class="muted" style="font-size:.78rem" title="No se puede extender el libre deuda de este curso">Libre deuda: ${escapeHtml(c.motivo)}</span>`;
+        };
         cont.innerHTML = `<h4 style="margin:0.8rem 0 0">Cursos ${anio}</h4>
             <ul class="ac-lista">${mios.map(m => `<li><span><b>${escapeHtml(m.nombre)}</b>${m.principal && mios.length > 1 ? ' <span class="badge">principal</span>' : ''}
                 <span class="muted"> · cuota ${fmtMoneda(m.cuota)} × ${m.n_cuotas}${m.matricula ? ' + matrícula ' + fmtMoneda(m.matricula) : ''} · desde ${MESES_ES[m.mes_inicio - 1]}</span></span>
-                ${esAdmin && m.id && mios.length > 1 ? `<button class="btn btn-sm btn-ghost" onclick="quitarCursoAlumno(${id}, ${m.id})">Quitar</button>` : ''}</li>`).join('')
+                <span style="display:flex;gap:.4rem;align-items:center">${botonLD(m)}
+                ${esAdmin && m.id && mios.length > 1 ? `<button class="btn btn-sm btn-ghost" onclick="quitarCursoAlumno(${id}, ${m.id})">Quitar</button>` : ''}</span></li>`).join('')
                 || '<li class="muted">No se encontró su curso en la configuración de cursos.</li>'}</ul>
             ${esAdmin && libres.length ? `<div class="ac-form">
                 <label>Sumar otro curso <select id="ac-curso-${id}">${libres.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)} (${fmtMoneda(c.cuota)} × ${c.n_cuotas})</option>`).join('')}</select></label>
                 <label>desde <select id="ac-mes-${id}">${MESES_ES.map((m, i) => `<option value="${i + 1}" ${i + 1 === new Date().getMonth() + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
                 <button class="btn btn-sm btn-outline" onclick="agregarCursoAlumno(${id})">Agregar curso</button></div>` : ''}`;
     } catch (e) { cont.innerHTML = ''; }
+}
+
+// Constancia de libre deuda de un curso (con el branding de los PDF del sistema)
+const libreDeudaCache = {};
+async function pdfLibreDeuda(alumnoId, cursoId) {
+    const ld = libreDeudaCache[alumnoId];
+    const c = ld && ld.cursos.find(x => x.curso_id === cursoId && x.habilitado);
+    if (!c) return toast('Ese curso no está pagado: no se puede extender el libre deuda', 'error');
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const apai = sistemaCfg.apai || {};
+    const logo = await _imagenLogo();
+    doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
+    doc.setFillColor(160, 30, 34); doc.rect(0, 30, W, 1.4, 'F');
+    if (logo) { doc.setFillColor(255, 255, 255); doc.circle(21, 15, 9.5, 'F'); doc.addImage(logo, 'PNG', 12.5, 6.5, 17, 17); }
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+    doc.text('Asociación de Padres y Alumnos del I.N.A.C.', 36, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(200, 214, 234);
+    doc.text([apai.cuit ? 'CUIT ' + apai.cuit : '', apai.domicilio || ''].filter(Boolean).join(' · '), 36, 21);
+    // Título
+    doc.setTextColor(21, 35, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
+    doc.text('LIBRE DEUDA', W / 2, 62, { align: 'center' });
+    doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(W / 2 - 30, 66, W / 2 + 30, 66);
+    // Texto
+    const nombre = `${ld.apellido}, ${ld.nombre}`.toUpperCase();
+    const curso = c.etiqueta || c.nombre;
+    const de = c.examen
+        ? `inscripto/a en el examen de ${curso}${c.instancias.length ? ' (' + c.instancias.join(', ') + ')' : ` año ${ld.anio}`}`
+        : `de la carrera de ${curso}, año ${ld.anio}`;
+    doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(12.5);
+    const texto = `Se certifica que el/la alumno/a ${nombre}, DNI ${String(ld.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}, legajo ${ld.legajo}, ${de}, no registra deuda con esta Asociación por dicho ${c.examen ? 'examen' : 'curso'}.`;
+    doc.text(doc.splitTextToSize(texto, W - 50), 25, 86, { lineHeightFactor: 1.7 });
+    doc.text('Se extiende la presente a pedido del/de la interesado/a, para ser presentada ante quien corresponda.', 25, 120, { maxWidth: W - 50, lineHeightFactor: 1.7 });
+    const f = new Date();
+    doc.text(`Morón, ${f.getDate()} de ${MESES_ES[f.getMonth()].toLowerCase()} de ${f.getFullYear()}.-`, W - 25, 145, { align: 'right' });
+    // Firma
+    doc.setDrawColor(120, 130, 145); doc.setLineWidth(0.3); doc.line(W / 2 - 35, 195, W / 2 + 35, 195);
+    doc.setFontSize(10); doc.setTextColor(91, 107, 128);
+    doc.text('Firma y sello', W / 2, 201, { align: 'center' });
+    doc.text('Asociación de Padres y Alumnos del I.N.A.C.', W / 2, 206, { align: 'center' });
+    doc.setFontSize(8); doc.setTextColor(120, 130, 145);
+    doc.text(`Generado el ${fmtFecha(hoyISO())} con APAI Pay`, W / 2, H - 10, { align: 'center' });
+    doc.save(`Libre deuda ${ld.apellido} ${ld.nombre} ${curso}.pdf`);
 }
 
 async function agregarCursoAlumno(id) {

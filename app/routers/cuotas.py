@@ -17,7 +17,7 @@ from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
-from app.cuenta_alumno import estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior
+from app.cuenta_alumno import estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior, libre_deuda_cursos
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -425,6 +425,17 @@ def estado_alumno(alumno_id: int, anio: int | None = None, db: Session = Depends
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
     return detalle_alumno(db, a, anio)
+
+
+@router.get("/libre-deuda/{alumno_id}")
+def libre_deuda(alumno_id: int, anio: int | None = None, db: Session = Depends(get_db)):
+    """Cursos de aeronavegantes y exámenes del alumno y si se puede extender el libre deuda de cada uno."""
+    a = db.get(Alumno, alumno_id)
+    if not a:
+        raise HTTPException(404, "Alumno no encontrado")
+    info = detalle_alumno(db, a, anio)
+    return {"alumno_id": a.id, "apellido": a.apellido, "nombre": a.nombre, "dni": a.dni, "legajo": a.legajo,
+            "anio": info["anio"], "cursos": libre_deuda_cursos(info)}
 
 
 @router.get("/estadisticas")
