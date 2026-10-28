@@ -219,6 +219,17 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         mat = next((it for it in candidatos if it["es_matricula"] and resto > 0 and it["importe"] - it["pagado"] == resto), None)
         if mat:
             resto = aplicar(mat, resto, destino, p)
+        # 0b) antes de que empiecen las cuotas (enero y febrero) solo se paga la matrícula y la deuda del año anterior:
+        # $80.000 = matrícula $50.000 + $30.000 de deuda; $30.000 solos = deuda del año anterior
+        primer_mes = min((it["mes"] for it in candidatos if not it["es_matricula"]), default=13)
+        if resto > 0 and f.year == anio and f.month < primer_mes and ant_saldo > 0 and not forzado:
+            mat = next((it for it in candidatos if it["es_matricula"] and it["importe"] > it["pagado"]), None)
+            if mat and resto >= mat["importe"] - mat["pagado"]:
+                resto = aplicar(mat, resto, destino, p)
+            usa = min(resto, ant_saldo)
+            ant_saldo -= usa
+            resto -= usa
+            destino.append({"concepto": f"Deuda {anio - 1}", "importe": usa, "tipo": "deuda_anterior"})
         if resto > 0 and f.year == anio:  # 1) la cuota del mes en que pagó (si hay de varios cursos, la del importe pagado)
             propias = [it for it in candidatos if it["clave"] == f"cuota-{f.month}" and it["importe"] > it["pagado"]]
             if propias:
@@ -249,12 +260,17 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         if resto > 0:
             sobrantes.append((p, resto, destino, candidatos))
 
-    # 5) El saldo a favor se arrastra al final: a la última cuota que falte pagar (no a la del mes siguiente)
+    # 5) Saldo a favor (si había deuda del año anterior ya fue a esa deuda en el paso 3): queda a cuenta de la cuota
+    # del mes en curso. Cuando entra el pago de ese mes lo completa, y el saldo pasa a la cuota siguiente.
+    mes_en_curso = hoy.month if hoy.year == anio else (12 if hoy.year > anio else 1)
     for p, resto, destino, candidatos in sobrantes:
-        for it in reversed(candidatos):
+        cuotas = [it for it in candidatos if not it["es_matricula"]]
+        orden = ([it for it in cuotas if it["mes"] >= mes_en_curso]
+                 + [it for it in reversed(cuotas) if it["mes"] < mes_en_curso])  # si ya pagó hasta diciembre, lo último impago
+        for it in orden:
             if resto <= 0:
                 break
-            if not it["es_matricula"] and it["importe"] > it["pagado"]:
+            if it["importe"] > it["pagado"]:
                 resto = aplicar(it, resto, destino, p)
                 destino[-1]["saldo_favor"] = True
         if resto > 0:
