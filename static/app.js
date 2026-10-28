@@ -557,6 +557,7 @@ async function verAlumno(id) {
             <p><strong>Cuota:</strong> ${a.cuota_excluir ? '<span style="color:var(--danger)">excluido (no recibe cupón)</span>' : (a.cuota_personalizada ? 'monto personalizado $' + Number(a.cuota_personalizada).toLocaleString('es-AR') : 'normal')}</p>
             <p style="font-size:1.5rem;margin:1rem 0" class="saldo-positivo modulo-tarjeta"><strong>Saldo: $${Number(a.saldo).toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></p>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+                ${cuenta ? `<button class="btn btn-primary btn-sm" onclick="pdfEstadoCuenta(${a.id})">📄 Estado de cuenta (PDF)</button>` : ''}
                 <button class="btn btn-red btn-sm" onclick="generarPDFAlumno(${a.id})">📄 PDF para padres</button>
                 <button class="btn btn-success btn-sm" onclick="compartirWhatsAppAlumno(${a.id})">Compartir WhatsApp</button>
                 <button class="btn btn-outline btn-sm" onclick="compartirEmailAlumno(${a.id})">Enviar por Email</button>
@@ -5304,15 +5305,8 @@ async function cargarCursosAlumno(id) {
     } catch (e) { cont.innerHTML = ''; }
 }
 
-// Constancia de libre deuda de un curso (con el branding de los PDF del sistema)
-const libreDeudaCache = {};
-async function pdfLibreDeuda(alumnoId, cursoId) {
-    const ld = libreDeudaCache[alumnoId];
-    const c = ld && ld.cursos.find(x => x.curso_id === cursoId && x.habilitado);
-    if (!c) return toast('Ese curso no está pagado: no se puede extender el libre deuda', 'error');
-    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+// Banda azul con el logo, el nombre de la Asociación, CUIT y domicilio (constancias y estado de cuenta)
+async function _membreteAPAI(doc) {
     const W = doc.internal.pageSize.getWidth();
     const apai = sistemaCfg.apai || {};
     const logo = await _imagenLogo();
@@ -5323,6 +5317,167 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.text('Asociación de Padres y Alumnos del I.N.A.C.', 36, 14);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(200, 214, 234);
     doc.text([apai.cuit ? 'CUIT ' + apai.cuit : '', apai.domicilio || ''].filter(Boolean).join(' · '), 36, 21);
+}
+
+// Estado de cuenta de las cuotas para enviar a la familia: datos del alumno, resumen de deuda
+// (año en curso y años anteriores), cada cuota con su estado y los pagos con su fecha
+async function pdfEstadoCuenta(id) {
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    let a, e;
+    try { [a, e] = await Promise.all([api(`/api/alumnos/${id}`), api(`/api/cuotas/estado/${id}`)]); }
+    catch (err) { return toast(err.message, 'error'); }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth(), M = 14;
+    const NAVY = [21, 35, 59], ROJO = [185, 28, 28], VERDE = [21, 128, 61], GRIS = [91, 107, 128];
+    const plata = v => fmtMoneda(v || 0);
+    await _membreteAPAI(doc);
+
+    // Título y fecha de emisión
+    doc.setTextColor(...NAVY); doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+    doc.text(`ESTADO DE CUENTA ${e.anio}`, M, 44);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...GRIS);
+    doc.text(`Emitido el ${fmtFecha(hoyISO())}`, W - M, 44, { align: 'right' });
+    doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(M, 47, M + 40, 47);
+
+    // Datos del alumno
+    const digLegajo = String(a.legajo || '').replace(/\D/g, '');
+    const legajo = /^\d{5}$/.test(digLegajo) && digLegajo !== String(a.dni || '').replace(/\D/g, '') ? a.legajo : '';
+    const cp = e.curso_param;
+    const plan = cp ? `${plata(e.cuota || cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matrícula ' + plata(cp.matricula) : ''}` : '';
+    const datos = [
+        ['Alumno', `${a.apellido}, ${a.nombre}`],
+        ['DNI', String(a.dni || '').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (legajo ? `      Legajo: ${legajo}` : '')],
+        ['Curso', [a.curso, (e.cursos_nombres || []).join(' + ')].filter(Boolean).join(' · ')],
+    ];
+    if (plan) datos.push(['Cuota', plan]);
+    datos.push(['Condición', e.condicion && e.condicion !== 'Regular' ? `${e.condicion} · ${e.estado}` : e.estado]);
+    const altoDatos = 7 + datos.length * 5.5;
+    doc.setFillColor(244, 247, 251); doc.setDrawColor(226, 232, 240); doc.roundedRect(M, 52, W - 2 * M, altoDatos, 2, 2, 'FD');
+    datos.forEach(([k, v], i) => {
+        const y = 58 + i * 5.5;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...GRIS); doc.text(k, M + 5, y);
+        doc.setFont('helvetica', k === 'Alumno' ? 'bold' : 'normal'); doc.setTextColor(30, 41, 59); doc.text(String(v || '-'), M + 30, y);
+    });
+
+    // Resumen: pagado, deuda del año en curso, deuda de años anteriores
+    let y = 52 + altoDatos + 6;
+    const deudaAnio = Math.max((e.deuda_total || 0) - (e.deuda_anterior || 0), 0);
+    const meses = e.meses_adeudados || [];
+    const enLista = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : xs.join('');
+    const cajas = [
+        ['PAGADO EN ' + e.anio, plata(e.pagado), VERDE, e.cuotas_pagas ? `${e.cuotas_pagas} cuota${e.cuotas_pagas > 1 ? 's' : ''} paga${e.cuotas_pagas > 1 ? 's' : ''}` : ''],
+        ['DEUDA ' + e.anio, deudaAnio > 0 ? plata(deudaAnio) : 'Al día', deudaAnio > 0 ? ROJO : VERDE,
+            deudaAnio > 0 ? [e.cuotas_adeudadas ? `${e.cuotas_adeudadas} cuota${e.cuotas_adeudadas > 1 ? 's' : ''}: ${enLista(meses)}` : '',
+                e.matricula_adeudada > 0 ? 'matrícula ' + plata(e.matricula_adeudada) : ''].filter(Boolean).join(' + ') : 'sin cuotas vencidas impagas'],
+        ['DEUDA AÑOS ANTERIORES', e.deuda_anterior > 0 ? plata(e.deuda_anterior) : 'Sin deuda', e.deuda_anterior > 0 ? ROJO : VERDE,
+            e.deuda_anterior > 0 ? `hasta ${e.anio - 1}` : ''],
+    ];
+    const anchoCaja = (W - 2 * M - 8) / 3;
+    doc.setFontSize(8);
+    const subs = cajas.map(c => doc.splitTextToSize(c[3] || '', anchoCaja - 8));
+    const altoCaja = 21 + Math.max(...subs.map(s => s.length - 1), 0) * 3.6;
+    cajas.forEach(([tit, monto, color, _], i) => {
+        const x = M + i * (anchoCaja + 4);
+        doc.setFillColor(255, 255, 255); doc.setDrawColor(226, 232, 240); doc.roundedRect(x, y, anchoCaja, altoCaja, 2, 2, 'FD');
+        doc.setFillColor(...color); doc.rect(x, y, 1.6, altoCaja, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...GRIS); doc.text(tit, x + 5, y + 6);
+        doc.setFontSize(14); doc.setTextColor(...color); doc.text(monto, x + 5, y + 13);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(subs[i], x + 5, y + 18);
+    });
+    y += altoCaja + 4;
+    // Deuda total
+    const debe = e.deuda_total > 0;
+    doc.setFillColor(...(debe ? [253, 236, 236] : [231, 246, 236])); doc.roundedRect(M, y, W - 2 * M, 11, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...(debe ? ROJO : VERDE));
+    doc.text(debe ? 'DEUDA TOTAL' : 'SIN DEUDA', M + 5, y + 7.3);
+    doc.text(debe ? plata(e.deuda_total) : 'Cuenta al día', W - M - 5, y + 7.3, { align: 'right' });
+    y += 11;
+    if (e.proximo) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+        doc.text(`Próximo vencimiento: ${e.proximo.concepto}, ${plata(e.proximo.importe)}, vence el ${fmtFecha(e.proximo.vence)}.`, M, y + 5);
+        y += 5;
+    }
+
+    // Detalle de cuotas
+    const titulo = (t, yy) => {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...NAVY); doc.text(t, M, yy);
+    };
+    y += 9;
+    titulo(`Detalle de cuotas ${e.anio}`, y);
+    let primera = true;
+    const ESTADOS = { pagada: ['Pagada', VERDE], parcial: ['Pago parcial', [180, 83, 9]], adeudada: ['Adeudada', ROJO],
+        a_vencer: ['Próxima a vencer', [37, 99, 235]], futura: ['Pendiente', GRIS] };
+    const filasCuotas = (e.items || []).map(it => {
+        let est = it.estado;
+        if (est === 'a_vencer') { est = primera ? 'a_vencer' : 'futura'; primera = false; }
+        let [txt, color] = ESTADOS[est] || [est, GRIS];
+        if (it.con_atraso && (est === 'pagada' || est === 'parcial')) txt += ' con atraso';
+        const fechas = (it.pagos || []).map(p => fmtFecha(p.fecha)).join(', ') || (it.prepaga ? 'Pagada antes' : '—');
+        return { fila: [it.concepto, fmtFecha(it.vence), plata(it.importe), plata(it.pagado), txt, est === 'pagada' || est === 'parcial' ? fechas : '—'], color };
+    });
+    doc.autoTable({
+        startY: y + 3,
+        head: [['Concepto', 'Vencimiento', 'Importe', 'Pagado', 'Estado', 'Fecha de pago']],
+        body: filasCuotas.length ? filasCuotas.map(f => f.fila) : [['Sin cuotas para este año', '', '', '', '', '']],
+        headStyles: { fillColor: NAVY, textColor: 255, fontSize: 8.5 },
+        styles: { fontSize: 8.3, cellPadding: { top: 1.3, bottom: 1.3, left: 1.8, right: 1.8 }, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [244, 247, 251] },
+        columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { fontStyle: 'bold' }, 5: { halign: 'center' } },
+        didParseCell: d => {
+            if (d.section === 'head') d.cell.styles.halign = ['left', 'center', 'right', 'right', 'left', 'center'][d.column.index];
+            else if (d.column.index === 4 && filasCuotas[d.row.index]) d.cell.styles.textColor = filasCuotas[d.row.index].color;
+        },
+        margin: { left: M, right: M, top: 20, bottom: 16 },
+    });
+
+    // Pagos efectuados
+    y = doc.lastAutoTable.finalY + 8;
+    if (y > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 24; }
+    titulo('Pagos efectuados', y);
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...GRIS);
+    doc.text('Si pagó en los últimos días y todavía no figura, puede demorar unos días en acreditarse. Ante cualquier diferencia, consulte con la Asociación.', M, y + 4.5);
+    y += 4;
+    const pagos = (e.pagos || []).slice().sort((p, q) => String(p.fecha_pago || p.fecha).localeCompare(String(q.fecha_pago || q.fecha)));
+    const aplicado = p => (p.detalle && p.detalle.length ? p.detalle : [{ concepto: p.imputado_a || 'Pago', importe: p.importe }])
+        .map(d => d.concepto).join(', ');
+    doc.autoTable({
+        startY: y + 3,
+        head: [['Fecha de pago', 'Medio de pago', 'Importe', 'Aplicado a']],
+        body: pagos.length ? pagos.map(p => [fmtFecha(p.fecha_pago || p.fecha), nombreCanal(p), plata(p.importe), aplicado(p)])
+            : [['—', 'Todavía no hay pagos registrados este año', '', '']],
+        foot: pagos.length ? [['', 'Total pagado', plata(pagos.reduce((s, p) => s + Number(p.importe || 0), 0)), '']] : undefined,
+        headStyles: { fillColor: NAVY, textColor: 255, fontSize: 8.5 },
+        footStyles: { fillColor: [232, 238, 246], textColor: NAVY, fontStyle: 'bold', fontSize: 8.5 },
+        styles: { fontSize: 8.3, cellPadding: { top: 1.3, bottom: 1.3, left: 1.8, right: 1.8 }, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [244, 247, 251] },
+        columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'right', cellWidth: 28 } },
+        didParseCell: d => { if (d.section !== 'body') d.cell.styles.halign = ['center', 'left', 'right', 'left'][d.column.index]; },
+        margin: { left: M, right: M, top: 20, bottom: 16 },
+    });
+
+    // Numeración de páginas
+    const H = doc.internal.pageSize.getHeight();
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+        doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(150);
+        doc.text(`${a.apellido}, ${a.nombre} · Estado de cuenta ${e.anio}`, M, H - 8);
+        doc.text(`Página ${i} de ${n}`, W - M, H - 8, { align: 'right' });
+    }
+    doc.save(`Estado de cuenta ${a.apellido} ${a.nombre} ${e.anio}.pdf`);
+}
+
+// Constancia de libre deuda de un curso (con el branding de los PDF del sistema)
+const libreDeudaCache = {};
+async function pdfLibreDeuda(alumnoId, cursoId) {
+    const ld = libreDeudaCache[alumnoId];
+    const c = ld && ld.cursos.find(x => x.curso_id === cursoId && x.habilitado);
+    if (!c) return toast('Ese curso no está pagado: no se puede extender el libre deuda', 'error');
+    if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    await _membreteAPAI(doc);
     // Título
     doc.setTextColor(21, 35, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
     doc.text('LIBRE DEUDA', W / 2, 62, { align: 'center' });
