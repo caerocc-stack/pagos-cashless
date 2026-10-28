@@ -6956,6 +6956,14 @@ async function pdfCuentaSector() {
         columnStyles: { 0: { cellWidth: 19 }, 2: { cellWidth: 38 }, 3: { halign: 'right', textColor: [21, 128, 61], cellWidth: 25 },
                         4: { halign: 'right', textColor: [185, 28, 28], cellWidth: 25 }, 5: { halign: 'right', fontStyle: 'bold', cellWidth: 26 } },
     });
+    // Firma al pie de la última hoja (si la tabla llega hasta abajo, va en una hoja nueva)
+    const H = doc.internal.pageSize.getHeight();
+    if (doc.lastAutoTable.finalY > H - 55) doc.addPage();
+    doc.setPage(doc.internal.getNumberOfPages());
+    doc.setDrawColor(120, 130, 145); doc.setLineWidth(0.3); doc.line(W / 2 - 35, H - 30, W / 2 + 35, H - 30);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 41, 59);
+    doc.text('Comisión Directiva - APAI', W / 2, H - 25, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
     const n = doc.internal.getNumberOfPages();
     for (let k = 1; k <= n; k++) {
         doc.setPage(k); doc.setFontSize(8); doc.setTextColor(120, 130, 145);
