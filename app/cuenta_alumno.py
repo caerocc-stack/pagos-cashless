@@ -205,9 +205,11 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                 it["pagado"] = it["importe"]
                 it["prepago"] = it["importe"]  # cubierta, pero no es plata cobrada este año
 
-    imputaciones = []
     a_favor = CERO
     ant_saldo = deuda_ant  # deuda del año anterior que todavía queda
+    # Primera pasada: cada pago va a la matrícula (por su monto) o a la cuota del mes en que se pagó. Así un pago
+    # de más (p. ej. la matrícula pagada dos veces) no corre a los demás: cada cuota se queda con el pago de su mes.
+    estado_pago = []  # por pago: [p, resto, destino, candidatos, forzado]
     for p in pagos:
         resto, destino = _dec(p.importe), []
         f = fecha_imputacion(p)
@@ -222,10 +224,17 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
             if propias:
                 exacta = next((it for it in propias if it["importe"] - it["pagado"] == resto), None)
                 resto = aplicar(exacta or propias[0], resto, destino, p)
+        estado_pago.append([p, resto, destino, candidatos, forzado])
+
+    # Segunda pasada: lo que sobró de cada pago. Si el pago ya cubrió algo, el sobrante solo paga cuotas enteras
+    # (no parte una cuota en $40.000 + $5.000); lo que no alcanza para una cuota queda como saldo a favor.
+    sobrantes = []
+    for ep in estado_pago:
+        p, resto, destino, candidatos, forzado = ep
         for it in candidatos:  # 2) lo más viejo que ya venció
             if resto <= 0:
                 break
-            if vencido(it["mes"]):
+            if vencido(it["mes"]) and (not destino or resto >= it["importe"] - it["pagado"]):
                 resto = aplicar(it, resto, destino, p)
         if resto > 0 and ant_saldo > 0 and not forzado:  # 3) deuda del año anterior
             usa = min(resto, ant_saldo)
@@ -235,11 +244,23 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         for it in candidatos:  # 4) adelanto de cuotas que todavía no vencieron
             if resto <= 0:
                 break
-            resto = aplicar(it, resto, destino, p)
+            if not destino or resto >= it["importe"] - it["pagado"]:
+                resto = aplicar(it, resto, destino, p)
+        if resto > 0:
+            sobrantes.append((p, resto, destino, candidatos))
+
+    # 5) El saldo a favor se arrastra al final: a la última cuota que falte pagar (no a la del mes siguiente)
+    for p, resto, destino, candidatos in sobrantes:
+        for it in reversed(candidatos):
+            if resto <= 0:
+                break
+            if not it["es_matricula"] and it["importe"] > it["pagado"]:
+                resto = aplicar(it, resto, destino, p)
+                destino[-1]["saldo_favor"] = True
         if resto > 0:
             a_favor += resto
             destino.append({"concepto": "Saldo a favor", "importe": resto, "tipo": "a_favor"})
-        imputaciones.append(_pago_dto(p, destino, anio))
+    imputaciones = [_pago_dto(p, destino, anio) for p, _, destino, _, _ in estado_pago]
 
     # Cursos por examen: cada pago es la inscripción a una instancia (pagada; nunca saldo a favor ni deuda)
     for clave, lista in pagos_examen.items():
@@ -386,7 +407,8 @@ def _pago_dto(p, destino: list, anio: int | None = None) -> dict:
         mes = d.get("mes")
         lineas.append({"concepto": d["concepto"], "importe": float(d["importe"]), "tipo": d["tipo"], "mes": mes,
                        "atrasada": d["tipo"] == "deuda_anterior" or (mes is not None and mes_pago is not None and mes < mes_pago),
-                       "adelanto": mes is not None and mes_pago is not None and mes > mes_pago})
+                       "adelanto": mes is not None and mes_pago is not None and mes > mes_pago,
+                       "saldo_favor": bool(d.get("saldo_favor"))})
     return {"id": p.id, "fecha": str(p.fecha), "fecha_pago": str(p.fecha_pago) if p.fecha_pago else None,
             "importe": float(p.importe), "canal": p.canal, "via": p.via, "curso_id": getattr(p, "curso_id", None),
             "imputado_a": ", ".join(x["concepto"] for x in lineas) or None, "detalle": lineas}
