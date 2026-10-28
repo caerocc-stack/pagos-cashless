@@ -285,17 +285,28 @@ function htmlResumenDeuda(e) {
         const ex = e.examenes_pagos ? ` Exámenes pagados en el año: <b>${e.examenes_pagos}</b>.` : '';
         return `<div class="cc-resumen cc-ok"><b>Al día.</b> No hay cuotas vencidas sin pagar.${ex} ${prox}</div>`;
     }
-    const partes = [];
-    if (e.cuotas_adeudadas) partes.push(`Cuotas adeudadas: <b>${e.cuotas_adeudadas}</b>`);
-    if (e.matricula_adeudada > 0) partes.push(`Matrícula adeudada: <b>${fmtMoneda(e.matricula_adeudada)}</b>`);
-    if (e.deuda_anterior > 0) partes.push(`Deuda de años anteriores: <b>${fmtMoneda(e.deuda_anterior)}</b>`);
-    partes.push(`Monto total de deuda: <b>${fmtMoneda(e.deuda_total)}</b>`);
+    // Deuda del año en curso y de años anteriores, cada una en su bloque, para que no se confundan
+    const anio = e.anio || new Date().getFullYear();
+    const deudaAnio = Math.max((e.deuda_total || 0) - (e.deuda_anterior || 0), 0);
     const meses = (e.meses_adeudados || []);
     const lista = meses.length ? (meses.length === 1 ? meses[0] : meses.slice(0, -1).join(', ') + ' y ' + meses[meses.length - 1]) : '';
     const porCurso = e.cursos && e.cursos.length > 1
         ? '<div>' + e.cursos.filter(c => c.deuda > 0).map(c => `<b>${_escCC(c.nombre)}</b>: ${_escCC(c.detalle_deuda.replace(/^Debe /, 'debe '))} (${fmtMoneda(c.deuda)})`).join('<br>') + '</div>' : '';
-    return `<div class="cc-resumen cc-mal">${partes.join(' · ')}
-        ${porCurso || (lista ? `<div>Meses sin pago registrado: <b>${_escCC(lista)}</b>.</div>` : '')}
+    const detAnio = [];
+    if (e.cuotas_adeudadas) detAnio.push(`<div>${e.cuotas_adeudadas === 1 ? '1 cuota adeudada' : e.cuotas_adeudadas + ' cuotas adeudadas'} de ${anio}</div>`);
+    if (e.matricula_adeudada > 0) detAnio.push(`<div>Matrícula ${anio} adeudada: <b>${fmtMoneda(e.matricula_adeudada)}</b></div>`);
+    detAnio.push(porCurso || (lista ? `<div>Meses sin pago: <b>${_escCC(lista)}</b></div>` : ''));
+    const bloqueAnio = deudaAnio > 0
+        ? `<div class="cc-deuda-bloque"><span class="cc-deuda-tit">Año en curso (${anio})</span>
+            <span class="cc-deuda-monto">${fmtMoneda(deudaAnio)}</span>${detAnio.join('')}</div>`
+        : `<div class="cc-deuda-bloque cc-deuda-cero"><span class="cc-deuda-tit">Año en curso (${anio})</span>
+            <span class="cc-deuda-monto">Al día</span><div>No debe cuotas de ${anio}</div></div>`;
+    const bloqueAnt = e.deuda_anterior > 0
+        ? `<div class="cc-deuda-bloque"><span class="cc-deuda-tit">Años anteriores (hasta ${anio - 1})</span>
+            <span class="cc-deuda-monto">${fmtMoneda(e.deuda_anterior)}</span><div>Saldo pendiente de ciclos lectivos anteriores</div></div>` : '';
+    return `<div class="cc-resumen cc-mal">
+        <div class="cc-deuda-grid">${bloqueAnio}${bloqueAnt}</div>
+        <div class="cc-deuda-total"><span>Deuda total</span><b>${fmtMoneda(e.deuda_total)}</b></div>
         ${prox ? `<div class="cc-prox">${prox}</div>` : ''}</div>`;
 }
 

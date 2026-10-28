@@ -155,7 +155,7 @@ function claseEstado(e) { return /debe \d{4}/i.test(e) ? 'aviso' : /al día|paga
 function renderKpis() {
     const c = datosHijo.cuotas, t = datosHijo.tarjeta;
     const subDeuda = c.deuda_total > 0
-        ? escapeHtml([c.cuotas_adeudadas ? `${c.cuotas_adeudadas} cuota${c.cuotas_adeudadas > 1 ? 's' : ''}` : '',
+        ? escapeHtml([c.cuotas_adeudadas ? `${c.cuotas_adeudadas} cuota${c.cuotas_adeudadas > 1 ? 's' : ''} de ${c.anio}` : '',
                       c.matricula_adeudada > 0 ? 'matrícula' : '', c.deuda_anterior > 0 ? 'años anteriores' : ''].filter(Boolean).join(' + '))
         : 'sin cuotas vencidas impagas';
     const cupon = datosHijo.cupones.find(x => x.origen === 'siro_pdf');
