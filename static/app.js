@@ -5439,8 +5439,13 @@ async function pdfEstadoCuenta(id) {
     doc.text('Si pagó en los últimos días y todavía no figura, puede demorar unos días en acreditarse. Ante cualquier diferencia, consulte con la Asociación.', M, y + 4.5);
     y += 4;
     const pagos = (e.pagos || []).slice().sort((p, q) => String(p.fecha_pago || p.fecha).localeCompare(String(q.fecha_pago || q.fecha)));
-    const aplicado = p => (p.detalle && p.detalle.length ? p.detalle : [{ concepto: p.imputado_a || 'Pago', importe: p.importe }])
-        .map(d => d.concepto).join(', ');
+    // Si un pago se reparte, cada parte con su importe; el saldo a favor aclarado (p. ej. una matrícula pagada dos veces)
+    const aplicado = p => {
+        const ds = p.detalle && p.detalle.length ? p.detalle : [{ concepto: p.imputado_a || 'Pago', importe: p.importe }];
+        const texto = d => d.saldo_favor ? `Saldo a favor ${plata(d.importe)} (a cuenta de la ${d.concepto.replace(/^Cuota/, 'cuota')})`
+            : d.tipo === 'a_favor' ? `Saldo a favor ${plata(d.importe)}` : d.concepto + (ds.length > 1 ? ` ${plata(d.importe)}` : '');
+        return ds.map(texto).join(' + ');
+    };
     doc.autoTable({
         startY: y + 3,
         head: [['Fecha de pago', 'Medio de pago', 'Importe', 'Aplicado a']],
