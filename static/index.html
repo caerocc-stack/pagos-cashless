@@ -1241,13 +1241,13 @@
                 <div class="conc-importar">
                     <div class="conc-importar-txt">
                         <strong>Importar pagos de SIRO</strong>
-                        <span>Subí el <b>.xls</b> del listado de cobranzas. Cada pago se asigna al alumno por
+                        <span>Subí el listado de cobranzas en <b>.xls</b> o <b>.pdf</b>. Cada pago se asigna al alumno por
                         <b>legajo</b> (o DNI), con la fecha de la <b>Fecha de Proceso</b>. Los que no matcheen quedan
                         "sin asignar" y se asignan solos cuando cargás a ese alumno.</span>
                     </div>
                     <div class="conc-importar-acc">
-                        <input type="file" id="siro-archivo" accept=".xls" style="display:none" onchange="importarSiro(this)">
-                        <button class="btn btn-primary btn-3d" onclick="document.getElementById('siro-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir cobranzas (.xls)</button>
+                        <input type="file" id="siro-archivo" accept=".xls,.pdf,application/pdf" style="display:none" onchange="importarSiro(this)">
+                        <button class="btn btn-primary btn-3d" onclick="document.getElementById('siro-archivo').click()"><svg class="ic"><use href="#i-upload"/></svg>Subir cobranzas (.xls o .pdf)</button>
                         <button class="btn btn-outline" onclick="reasignarSiro()" title="Reintenta asignar los pagos sin dueño"><svg class="ic"><use href="#i-refresh"/></svg>Reasignar pendientes</button>
                     </div>
                 </div>

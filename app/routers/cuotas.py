@@ -1,7 +1,9 @@
+import io
 import re
 import hashlib
+from collections import Counter
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 
 import xlrd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -147,25 +149,101 @@ def _parsear_siro(contenido: bytes):
     return pagos
 
 
+FILA_PDF = re.compile(r"^(\d{1,2}/\d{1,2}/\d{4})\s+(-?)\s*\$\s*(-?)([\d.]+,\d{2})\s+(\d+)\s+"
+                      r"(\d{1,2}/\d{1,2}/\d{4})\s+(?:\d{1,2}/\d{1,2}/\d{4}\s+)?(\S+)$")
+
+
+def _parsear_siro_pdf(contenido: bytes):
+    """El listado de cobranzas en PDF: los mismos pagos que el .xls, pero la fecha de pago viene sin hora."""
+    import pdfplumber  # import diferido: solo se usa al importar PDFs
+
+    try:
+        with pdfplumber.open(io.BytesIO(contenido)) as pdf:
+            lineas = [l.strip() for pg in pdf.pages for l in (pg.extract_text() or "").splitlines()]
+    except Exception:
+        raise HTTPException(400, "No se pudo abrir el PDF. Tiene que ser el listado de cobranzas descargado de SIRO.")
+    cabecera = " ".join(lineas[:3])
+    if "Listado Cobranzas" not in cabecera:
+        if "Extracto de Cuenta" in cabecera:
+            raise HTTPException(400, "Ese PDF es el extracto de cuenta del banco: se sube en Conciliación bancaria. "
+                                     "Acá va el Listado de Cobranzas.")
+        raise HTTPException(400, "El PDF no parece un listado de cobranzas SIRO.")
+
+    def _f(t):
+        return datetime.strptime(t, "%d/%m/%Y").date()
+
+    pagos, leidos = [], 0
+    repetidas: dict[str, int] = {}
+    for l in lineas:
+        m = FILA_PDF.match(l)
+        if not m:
+            continue
+        leidos += 1
+        proc, neg1, neg2, monto, cliente, pago, canal = m.groups()
+        importe = Decimal(monto.replace(".", "").replace(",", "."))
+        if neg1 or neg2:
+            importe = -importe
+        if importe == 0:
+            continue
+        fecha, fecha_pago = _f(proc), _f(pago)
+        clave = f"siro-pdf|{cliente.lstrip('0')}|{importe:.2f}|{fecha.isoformat()}|{fecha_pago.isoformat()}|{canal.upper()}"
+        repetidas[clave] = repetidas.get(clave, 0) + 1
+        if repetidas[clave] > 1:
+            clave += f"#{repetidas[clave]}"
+        h = hashlib.sha1(clave.encode()).hexdigest()[:40]
+        pagos.append({
+            "cliente_siro": _dig(cliente), "importe": importe, "fecha": fecha,
+            "fecha_pago": fecha_pago, "canal": canal,
+            "mes": fecha.month, "anio": fecha.year, "hash": h, "hash_anterior": h,
+        })
+    cant = re.search(r"Cantidad de Cobranzas:\s*(\d+)", "\n".join(lineas))
+    if cant and int(cant.group(1)) != leidos:
+        raise HTTPException(400, f"No pude leer todos los pagos del PDF ({leidos} de {cant.group(1)}). "
+                                 "Subí el .xls del mismo listado.")
+    if not leidos:
+        raise HTTPException(400, "No encontré pagos en el PDF.")
+    return pagos
+
+
+def _clave_dia(cliente, importe, fecha, fecha_pago, canal):
+    """Un pago sin la hora: cliente, importe, fecha de proceso, fecha de pago y canal."""
+    return (_dig(cliente).lstrip("0"), f"{Decimal(str(importe)):.2f}", fecha, fecha_pago, (canal or "").upper())
+
+
 @router.post("/importar")
 async def importar(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Carga el listado de cobranzas de SIRO sin duplicar: los listados se pueden superponer (del 1 al 13 y
-    después del 1 al 31) y solo entran los pagos que todavía no estaban. Cada pago se reconoce por cliente,
-    importe, fecha de proceso, fecha y hora de pago y canal."""
+    """Carga el listado de cobranzas de SIRO (.xls o .pdf) sin duplicar: los listados se pueden superponer
+    (del 1 al 13 y después del 1 al 31) y solo entran los pagos que todavía no estaban. Cada pago se reconoce por
+    cliente, importe, fecha de proceso, fecha y hora de pago y canal. El PDF no trae la hora: sus pagos se
+    reconocen sin ella, y el .xls que llegue después reconoce los que vinieron de un PDF."""
     contenido = await archivo.read()
-    pagos = _parsear_siro(contenido)
+    es_pdf = contenido[:5] == b"%PDF-"
+    pagos = _parsear_siro_pdf(contenido) if es_pdf else _parsear_siro(contenido)
     by_leg, by_dni = _indices(db)
     cargados = set()
     huellas = [h for p in pagos for h in (p["hash"], p["hash_anterior"])]
     for k in range(0, len(huellas), 500):
         cargados |= {h for (h,) in db.query(PagoCuota.hash).filter(PagoCuota.hash.in_(huellas[k:k + 500])).all()}
+    previos = Counter()  # pagos ya cargados contados sin la hora (el PDF contra todo; el .xls contra lo que vino de PDF)
+    if pagos:
+        q = db.query(PagoCuota).filter(PagoCuota.cliente_siro.isnot(None),
+                                       PagoCuota.fecha.between(min(p["fecha"] for p in pagos),
+                                                               max(p["fecha"] for p in pagos)))
+        if not es_pdf:
+            q = q.filter(PagoCuota.origen.ilike("%.pdf"))
+        previos = Counter(_clave_dia(x.cliente_siro, x.importe, x.fecha, x.fecha_pago, x.canal) for x in q)
 
     nuevos = duplicados = asignados = 0
     usadas = set()  # huellas anteriores ya reconocidas: cada pago viejo cubre un solo renglón
     for p in pagos:
         anterior = p.pop("hash_anterior")
-        if p["hash"] in cargados or (anterior in cargados and anterior not in usadas):
+        dia = _clave_dia(p["cliente_siro"], p["importe"], p["fecha"], p["fecha_pago"], p["canal"])
+        if not es_pdf and (p["hash"] in cargados or (anterior in cargados and anterior not in usadas)):
             usadas.add(anterior)
+            duplicados += 1
+            continue
+        if previos[dia] > 0 or (es_pdf and p["hash"] in cargados):
+            previos[dia] = max(previos[dia] - 1, 0)
             duplicados += 1
             continue
         a, via = _matchear(p["cliente_siro"], by_leg, by_dni)
