@@ -3480,10 +3480,11 @@ async function exportarDesglosePDF() {
     const total = m.total;
     const areas = m.areas.filter(a => m.totales[a] > 0);
     const fmt = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    const fmtT = n => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });  // tabla: sin espacio, no se parte
     const rgb = hex => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = doc.internal.pageSize.getWidth();
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
     const logo = await _imagenLogo();
 
     // Encabezado
@@ -3535,14 +3536,14 @@ async function exportarDesglosePDF() {
             ctx.restore();
         } }],
     }, 520, 520);
-    doc.addImage(torta, 'PNG', W / 2 + 12, 60, 62, 62);
+    doc.addImage(torta, 'PNG', W / 2 + 12, 60, 62, 62, 'torta', 'FAST');  // comprimidas: el PDF se comparte por WhatsApp
 
     // Evolución mensual (barras apiladas por área)
     const yBarras = Math.max(doc.lastAutoTable.finalY, 124) + 8;
     doc.setTextColor(21, 35, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Cobranza mes a mes', 14, yBarras);
     const altoBarras = Math.min((W - 28) * 0.55, H - yBarras - 22);
     const barras = _graficoImagen(_configMensual(meses, areas, null, true), 1400, Math.round(1400 * altoBarras / (W - 28)));
-    doc.addImage(barras, 'PNG', 14, yBarras + 3, W - 28, altoBarras);
+    doc.addImage(barras, 'PNG', 14, yBarras + 3, W - 28, altoBarras, 'barras', 'FAST');
 
     // Página 2: tabla del desglose mensual (entera, sin cortes)
     doc.addPage();
@@ -3555,9 +3556,9 @@ async function exportarDesglosePDF() {
     doc.autoTable({
         startY: 29, margin: { left: 14, right: 14 }, showFoot: 'lastPage', rowPageBreak: 'avoid',
         head: [['Mes', ...areas.map(nomArea), 'Total del mes']],
-        body: meses.map(x => [MESES[x.mes - 1], ...areas.map(a => x.valores[a] ? `${fmt(x.valores[a])}\n${pct(x.valores[a] / x.total * 100)}` : '—'), fmt(x.total)]),
-        foot: [['Total', ...areas.map(a => `${fmt(m.totales[a])}\n${pct(total ? m.totales[a] / total * 100 : 0)}`), fmt(total)]],
-        styles: { fontSize: 9, halign: 'right', cellPadding: 2.4, textColor: [30, 41, 59], valign: 'middle' },
+        body: meses.map(x => [MESES[x.mes - 1], ...areas.map(a => x.valores[a] ? `${fmtT(x.valores[a])}\n${pct(x.valores[a] / x.total * 100)}` : '—'), fmtT(x.total)]),
+        foot: [['Total', ...areas.map(a => `${fmtT(m.totales[a])}\n${pct(total ? m.totales[a] / total * 100 : 0)}`), fmtT(total)]],
+        styles: { fontSize: areas.length > 5 ? 8 : 9, halign: 'right', cellPadding: areas.length > 5 ? 1.8 : 2.4, textColor: [30, 41, 59], valign: 'middle' },
         headStyles: { fillColor: [21, 35, 59], textColor: 255, halign: 'right', fontStyle: 'bold' },
         footStyles: { fillColor: [232, 238, 247], textColor: [21, 35, 59], fontStyle: 'bold', halign: 'right' },
         alternateRowStyles: { fillColor: [247, 249, 252] },
@@ -6321,7 +6322,7 @@ async function pdfPresupuesto(pedidos) {
     const refs = pedidos.map(p => p.numero).join(', ');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = doc.internal.pageSize.getWidth();
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
     const logo = await _imagenLogo();
 
     doc.setFillColor(21, 35, 59); doc.rect(0, 0, W, 30, 'F');
