@@ -4014,7 +4014,7 @@ async function prepararNuevoCiclo() {
     const anio = new Date().getFullYear() + 1;
     const cuota = prompt(`Cuota mensual ${anio} (escuela y MMH):`, '50000');
     if (!cuota) return;
-    const matricula = prompt(`Matrícula ${anio}:`, '50000');
+    const matricula = prompt(`Matrícula ${anio} (para todos, ingresantes y los que ya cursan):`, '60000');
     if (!matricula) return;
     try {
         const r = await api('/api/cursos/nuevo-ciclo', { method: 'POST', body: JSON.stringify({ anio, cuota: Number(cuota), matricula: Number(matricula) }) });
