@@ -3275,9 +3275,16 @@ function sortEstado(campo) {
     filtrarEstado();
 }
 
+// Año lectivo de los listados de cuotas: el anterior, el actual y el siguiente (por defecto el actual)
+function anioLectivo(id) {
+    const sel = document.getElementById(id), hoy = new Date().getFullYear();
+    if (!sel.options.length) sel.innerHTML = [hoy - 1, hoy, hoy + 1].map(a => `<option value="${a}" ${a === hoy ? 'selected' : ''}>${a}</option>`).join('');
+    return Number(sel.value) || hoy;
+}
+
 async function cargarEstado() {
     try {
-        const p = new URLSearchParams();
+        const p = new URLSearchParams({ anio: anioLectivo('estado-f-anio') });
         const area = document.getElementById('estado-f-area').value;
         const est = document.getElementById('estado-f-estado').value;
         if (area) p.set('area', area);
@@ -3348,9 +3355,14 @@ async function verEstadoAlumno(id) {
 }
 
 // Estado de cuenta cuota por cuota + pagos imputados + cupones vigentes (ficha del alumno)
+const cuentaAnio = {};  // año elegido en el estado de cuenta de cada alumno (ficha y PDF)
 function htmlCuentaAlumno(e, cupones) {
     const cp = e.curso_param;
-    return `<h4 style="margin:1rem 0 0.2rem">Estado de cuenta ${e.anio} · ${estadoBadge(e.estado)}</h4>
+    cuentaAnio[e.id] = e.anio;
+    const anios = e.anios && e.anios.length > 1 ? `<select class="sel-anio-cuenta" aria-label="Año del estado de cuenta" onchange="cambiarAnioCuenta(${e.id}, this.value)">
+        ${e.anios.map(a => `<option value="${a}" ${a === e.anio ? 'selected' : ''}>${a}</option>`).join('')}</select>` : e.anio;
+    return `<div id="cuenta-alumno-${e.id}"><h4 style="margin:1rem 0 0.2rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">Estado de cuenta ${anios} · ${estadoBadge(e.estado)}</h4>
+        ${e.anio !== new Date().getFullYear() ? `<p class="muted" style="margin:0 0 0.2rem">Curso en ${e.anio}: <b>${escapeHtml(e.curso || '—')}</b></p>` : ''}
         <p class="muted" style="margin:0">${cp ? `${escapeHtml(cp.nombre)} · cuota ${fmtMoneda(e.cuota || cp.cuota)} × ${cp.n_cuotas}${cp.matricula ? ' + matrícula ' + fmtMoneda(cp.matricula) : ''} · ` : ''}pagado en el año ${fmtMoneda(e.pagado)}</p>
         ${htmlResumenDeuda(e)}
         <div id="ac-${e.id}" class="ac-bloque"></div>
@@ -3358,7 +3370,15 @@ function htmlCuentaAlumno(e, cupones) {
         <h4 style="margin:0.8rem 0 0.2rem">Pagos del año</h4>
         ${htmlPagosImputados(e.pagos, e.cursos)}
         <h4 style="margin:1rem 0 0.4rem">Cupones vigentes en el portal</h4>
-        ${cupones && cupones.length ? cupones.map(htmlCupon).join('') : '<p class="muted">No tiene cupones vigentes cargados.</p>'}`;
+        ${cupones && cupones.length ? cupones.map(htmlCupon).join('') : '<p class="muted">No tiene cupones vigentes cargados.</p>'}</div>`;
+}
+
+async function cambiarAnioCuenta(id, anio) {
+    try {
+        const [e, cupones] = await Promise.all([api(`/api/cuotas/estado/${id}?anio=${anio}`), api(`/api/cupones-siro/alumno/${id}`).catch(() => [])]);
+        document.getElementById('cuenta-alumno-' + id).outerHTML = htmlCuentaAlumno(e, cupones);
+        if (Number(anio) === new Date().getFullYear()) setTimeout(() => cargarCursosAlumno(id), 0);
+    } catch (err) { toast(err.message, 'error'); }
 }
 
 // ---- Estadisticas ----
@@ -3560,7 +3580,7 @@ async function cargarStats() {
             per.innerHTML = '<option value="">Hoy (cuotas vencidas a la fecha)</option>' + MESES.map((m, i) => `<option value="${i + 1}">Al cierre de ${m.toLowerCase()}</option>`).join('');
             statsFiltrosListos = true;
         }
-        const p = new URLSearchParams();
+        const p = new URLSearchParams({ anio: anioLectivo('st-anio') });
         const mes = per.value, area = document.getElementById('st-area').value, nivel = document.getElementById('st-nivel').value;
         if (mes) p.set('mes', mes);
         if (area) p.set('area', area);
@@ -3918,10 +3938,8 @@ async function cargarCursos() {
         const anios = [...new Set([hoy, ...todos.map(c => c.anio)])].sort();
         const elegido = Number(sel.value) || hoy;
         sel.innerHTML = anios.map(a => `<option value="${a}" ${a === elegido ? 'selected' : ''}>${a}</option>`).join('');
-        const btn = document.getElementById('btn-nuevo-ciclo');
-        btn.textContent = `Preparar ciclo ${hoy + 1}`;
-        btn.hidden = anios.includes(hoy + 1);
         cursosCache = todos.filter(c => c.anio === elegido);
+        cargarPanelCiclo();
         // Si no hay ninguno, ofrecer cargar la config inicial
         if (!cursosCache.length) {
             if (confirm('No hay cursos cargados. ¿Cargar la configuración inicial (Ciclo Básico, ORR, TCP, DESP AER, etc.)?')) {
@@ -3933,6 +3951,63 @@ async function cargarCursos() {
     } catch (err) {
         toast(err.message, 'error');
     }
+}
+
+// Cambio de ciclo lectivo: cursos del año siguiente, cierre del año (pase de curso) y vuelta atrás
+async function cargarPanelCiclo() {
+    const cont = document.getElementById('ciclo-panel');
+    if (!cont || usuarioActual.rol !== 'admin') return;
+    try {
+        const c = await api('/api/ciclo/');
+        const anio = c.a_cerrar, ultimo = c.cerrados[c.cerrados.length - 1];
+        cont.innerHTML = `<h3 style="margin:0 0 0.4rem">Cambio de ciclo lectivo</h3>
+            <ol class="ciclo-pasos">
+                <li class="${c.cursos_siguiente ? 'hecho' : ''}">Cursos ${anio + 1} con la cuota y la matrícula nuevas
+                    ${c.cursos_siguiente ? '<span class="badge badge-activa">listos</span>' : `<button class="btn btn-sm btn-outline" onclick="prepararNuevoCiclo()">Preparar ciclo ${anio + 1}</button>`}</li>
+                <li>Cerrar ${anio}: cada alumno pasa de curso (1°→2°, 2°→3°, 4°→5°… en la misma división; 3° queda en 4° a definir,
+                    7° egresa, los ingresantes pasan a 1° sin división), lo que debe pasa a deuda ${anio} y la matrícula ${anio + 1} pagada por adelantado queda paga.
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">
+                        <button class="btn btn-sm btn-outline" onclick="vistaCierreCiclo(${anio})">Ver qué le pasa a cada alumno</button>
+                        <button class="btn btn-sm btn-primary" ${c.cursos_siguiente ? '' : 'disabled title="Primero prepará los cursos del año siguiente"'} onclick="cerrarCiclo(${anio})">Cerrar ciclo ${anio}</button></div></li>
+                <li>Cuando lleguen los listados del año nuevo (divisiones de 1°, especialidad de 4°), subilos en <a href="#importar" onclick="mostrarSeccion('importar')">Importar padrón</a>: actualiza el curso de cada alumno.</li>
+            </ol>
+            ${ultimo ? `<p class="muted" style="margin:0.6rem 0 0">Ciclo ${ultimo} cerrado. Si entraron pagos de ${ultimo} después del cierre:
+                <button class="btn btn-sm btn-ghost" onclick="cicloAccion('recalcular-deuda', ${ultimo})">Recalcular deuda ${ultimo}</button>
+                <button class="btn btn-sm btn-ghost" onclick="cicloAccion('deshacer', ${ultimo})">Deshacer el cierre</button></p>` : ''}`;
+    } catch (err) { cont.innerHTML = ''; }
+}
+
+async function vistaCierreCiclo(anio) {
+    try {
+        toast('Calculando…');
+        const v = await api(`/api/ciclo/vista?anio=${anio}`);
+        const cambios = v.alumnos.filter(x => x.motivo !== 'inactivo');
+        document.getElementById('modal-content').innerHTML = `
+            <h2 style="margin-top:0">Cierre del ciclo ${anio}</h2>
+            <p class="muted">${Object.entries(v.resumen).map(([k, n]) => `${escapeHtml(k)}: <b>${n}</b>`).join(' · ')}<br>
+                Deuda que pasa a ${anio + 1} como "deuda ${anio}": <b>${fmtMoneda(v.deuda_que_pasa)}</b> · Matrícula ${anio + 1} ya paga: <b>${v.matriculas_pagas}</b></p>
+            <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Alumno</th><th>${anio}</th><th>${anio + 1}</th><th style="text-align:right">Deuda ${anio}</th><th>Matr. ${anio + 1}</th></tr></thead>
+            <tbody>${cambios.map(x => `<tr><td>${escapeHtml(x.alumno)}</td><td>${escapeHtml(x.curso || '')}</td><td>${escapeHtml(x.curso_nuevo || '')}</td>
+                <td style="text-align:right">${x.deuda_anterior ? fmtMoneda(x.deuda_anterior) : '—'}</td><td>${x.matricula_paga ? 'paga' : ''}</td></tr>`).join('')}</tbody></table></div>
+            <div class="form-actions"><button class="btn" onclick="cerrarModal()">Cerrar</button></div>`;
+        const ov = document.getElementById('modal-overlay');
+        ov.querySelector('.modal').classList.add('modal-ancho');
+        ov.style.display = 'flex';
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+async function cerrarCiclo(anio) {
+    if (!confirm(`¿Cerrar el ciclo ${anio}? Todos los alumnos pasan a ${anio + 1} (curso nuevo, deuda ${anio} y matrícula ${anio + 1}). El ${anio} se sigue pudiendo consultar y el cierre se puede deshacer.`)) return;
+    await cicloAccion('cerrar', anio);
+}
+
+async function cicloAccion(accion, anio) {
+    if (accion === 'deshacer' && !confirm(`¿Deshacer el cierre de ${anio}? Los alumnos vuelven al curso y la deuda que tenían en ${anio}.`)) return;
+    try {
+        const r = await api('/api/ciclo/' + accion, { method: 'POST', body: JSON.stringify({ anio }) });
+        toast(r.mensaje);
+        cargarPanelCiclo();
+    } catch (err) { toast(err.message, 'error'); }
 }
 
 async function prepararNuevoCiclo() {
@@ -5347,7 +5422,8 @@ async function _membreteAPAI(doc) {
 async function pdfEstadoCuenta(id) {
     if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
     let a, e;
-    try { [a, e] = await Promise.all([api(`/api/alumnos/${id}`), api(`/api/cuotas/estado/${id}`)]); }
+    const anio = cuentaAnio[id] || new Date().getFullYear();
+    try { [a, e] = await Promise.all([api(`/api/alumnos/${id}`), api(`/api/cuotas/estado/${id}?anio=${anio}`)]); }
     catch (err) { return toast(err.message, 'error'); }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -5371,7 +5447,7 @@ async function pdfEstadoCuenta(id) {
     const datos = [
         ['Alumno', `${a.apellido}, ${a.nombre}`],
         ['DNI', String(a.dni || '').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (legajo ? `      Legajo: ${legajo}` : '')],
-        ['Curso', [a.curso, (e.cursos_nombres || []).join(' + ')].filter(Boolean).join(' · ')],
+        ['Curso', [e.curso || a.curso, (e.cursos_nombres || []).join(' + ')].filter(Boolean).join(' · ')],
     ];
     if (plan) datos.push(['Cuota', plan]);
     datos.push(['Condición', e.condicion && e.condicion !== 'Regular' ? `${e.condicion} · ${e.estado}` : e.estado]);

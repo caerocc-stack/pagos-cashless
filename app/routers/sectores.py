@@ -23,6 +23,7 @@ from app.models.pago_cuota import PagoCuota
 from app.models.alumno import Alumno
 from app.cuenta_alumno import MESES, separar_pagos_examen, instancia_de, fecha_imputacion, es_examen
 from app.routers.cuotas import cursos_vigentes, extras_por_alumno, planes_de
+from app.ciclo import en_anio, fotos_del_anio
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/sectores", tags=["Sectores"])
@@ -112,8 +113,9 @@ def cuenta(sector: str, desde: date | None = None, hasta: date | None = None, cu
                 continue
             anio = fecha_imputacion(p).year
             if anio not in cache:
-                cache[anio] = (cursos_vigentes(db, anio), extras_por_alumno(db, anio))
-            cursos_cfg, extras = cache[anio]
+                cache[anio] = (cursos_vigentes(db, anio), extras_por_alumno(db, anio), fotos_del_anio(db, anio))
+            cursos_cfg, extras, fotos = cache[anio]
+            a = en_anio([a], fotos)[0]  # el curso que tenía ese año
             cid = curso_de_pago(planes_de(a, cursos_cfg, extras.get(a.id, [])), p)
             if cid not in elegidos:
                 continue

@@ -80,3 +80,25 @@ class CuponGenerado(Base):
     origen: Mapped[str] = mapped_column(String(20), default="planilla")  # planilla (generada acá) / importado
     lote: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)
+
+
+class AlumnoAnio(Base):
+    """Cómo estaba un alumno en un ciclo lectivo ya cerrado (curso, área, beca, deuda del año anterior…).
+    Al pasar de año el alumno cambia de curso; con esta foto se puede volver a ver ese año como era."""
+    __tablename__ = "alumno_anios"
+    __table_args__ = (UniqueConstraint("alumno_id", "anio", name="uq_alumno_anio"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id", ondelete="CASCADE"), nullable=False, index=True)
+    anio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    curso: Mapped[str] = mapped_column(String(20), nullable=False)
+    area: Mapped[str | None] = mapped_column(String(30))
+    division: Mapped[str | None] = mapped_column(String(10))
+    condicion: Mapped[str | None] = mapped_column(String(20))
+    modalidad: Mapped[str | None] = mapped_column(String(20))
+    matricula_paga: Mapped[bool] = mapped_column(Boolean, default=False)
+    deuda_anio_anterior: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=ahora_ar)

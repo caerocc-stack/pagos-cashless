@@ -17,6 +17,7 @@ from app.models.alumno import Alumno
 from app.models.curso import Curso, AlumnoCurso
 from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
+from app.ciclo import en_anio, fotos_del_anio, fotos_anios
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
 from app.cuenta_alumno import (estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior,
@@ -464,12 +465,17 @@ def _corte_texto(mes_corte: int | None) -> int:
     return mes_corte if mes_corte else max(0, ahora_ar().month - 1)
 
 
+def alumnos_del_anio(db: Session, anio: int) -> list:
+    """Alumnos activos en `anio`, como estaban ese año (si el ciclo ya se cerró, con su curso de entonces)."""
+    return [a for a in en_anio(db.query(Alumno).all(), fotos_del_anio(db, anio)) if a.activo]
+
+
 def _calcular(db: Session, anio: int, mes_corte: int | None):
     cursos = cursos_vigentes(db, anio)
     pagos = pagos_del_anio(db, anio)
     extras = extras_por_alumno(db, anio)
     return [_estado_de(a, planes_de(a, cursos, extras.get(a.id, [])), pagos.get(a.id, []), anio, mes_corte)
-            for a in db.query(Alumno).filter(Alumno.activo == True).all()]  # noqa: E712
+            for a in alumnos_del_anio(db, anio)]
 
 
 @router.get("/estado")
@@ -496,12 +502,23 @@ def estado(anio: int | None = None, mes: int | None = None,
 def detalle_alumno(db: Session, a: Alumno, anio: int | None = None) -> dict:
     """Estado de cuenta completo de un alumno: cuotas, imputación de cada pago y próximo vencimiento."""
     anio = anio or ahora_ar().year
+    a = en_anio([a], fotos_del_anio(db, anio, a.id))[0]
     planes = planes_alumno(db, a, anio)
     info = _estado_de(a, planes, pagos_del_anio(db, anio, a.id).get(a.id, []), anio, detalle=True)
     curso = planes[0]["curso"] if planes else None
     info["curso_param"] = {"nombre": curso.nombre, "cuota": float(curso.cuota), "n_cuotas": curso.n_cuotas,
                            "matricula": float(curso.matricula or 0)} if curso else None
+    info["anios"] = anios_del_alumno(db, a.id)
     return info
+
+
+def anios_del_alumno(db: Session, alumno_id: int) -> list[int]:
+    """Años que se pueden consultar del alumno: los cerrados en que figuraba, los de sus pagos y el actual."""
+    hoy = ahora_ar().year
+    cerrados = set(fotos_anios(db, alumno_id))
+    anios = cerrados | {x + 1 for x in cerrados} | {hoy}  # cerrado un año, ya está en el siguiente
+    anios |= {anio_de_pago(p) for p in db.query(PagoCuota).filter(PagoCuota.alumno_id == alumno_id).all()}
+    return sorted(x for x in anios if x <= hoy + 1)
 
 
 @router.get("/estado/{alumno_id}")
@@ -541,7 +558,8 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
     ESCUELA = {"Ciclo Basico", "Avionica", "Mecanica"}
 
     filas = []
-    for a in db.query(Alumno).filter(Alumno.activo == True).all():  # noqa: E712
+    del_anio = alumnos_del_anio(db, anio)
+    for a in del_anio:
         planes = planes_de(a, cursos_cfg, extras.get(a.id, []))
         ps = pagos.get(a.id, [])
         if mes:  # la foto al cierre del mes elegido solo considera lo pagado hasta ese mes
@@ -617,7 +635,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
 
     # Cobranza por mes y área (fecha de proceso; el área es la del curso al que corresponde el pago)
     from app.routers.sectores import curso_de_pago
-    alumnos = {x.id: x for x in db.query(Alumno).filter(Alumno.id.in_(list(pagos) or [0])).all()}
+    alumnos = {x.id: x for x in en_anio(db.query(Alumno).filter(Alumno.id.in_(list(pagos) or [0])).all(), fotos_del_anio(db, anio))}
     matriz: dict = {m: {} for m in range(1, 13)}
     for aid, ps in pagos.items():
         a = alumnos.get(aid)

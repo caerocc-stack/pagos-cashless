@@ -15,7 +15,7 @@ from app.models.pago_cuota import PagoCuota
 from app.models.portal import CuponEnviado, Consulta
 from app.routers.cursos import curso_de_alumno
 from app.padron_import import leer_padron, sin_acentos
-from app.ciclo import AREA_INGRESANTES, asegurar_curso_ingreso
+from app.ciclo import AREA_INGRESANTES, NIVEL, asegurar_curso_ingreso, es_pendiente
 from app.tz import ahora_ar
 from pydantic import BaseModel
 
@@ -75,6 +75,8 @@ def cursos_del_alumno(alumno_id: int, anio: int | None = None, db: Session = Dep
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
     anio = anio or ahora_ar().year
+    from app.ciclo import en_anio, fotos_del_anio
+    a = en_anio([a], fotos_del_anio(db, anio, a.id))[0]
     return [{"id": p.get("alumno_curso_id"), "curso_id": p.get("curso_id"), "nombre": p["nombre"],
              "mes_inicio": p["mes_inicio"], "principal": p["principal"], "cuota": float(p["curso"].cuota),
              "n_cuotas": p["curso"].n_cuotas, "matricula": float(p["curso"].matricula or 0)}
@@ -308,7 +310,13 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
             continue
         if ex is not None:
             cambios = []
-            otro = otro_curso(ex, f["curso"], area) if not sin_curso else None
+            # curso de la escuela (o provisorio del pase de año: ingresante, 4° a definir): el listado lo actualiza
+            nuevo_curso = f["curso"].strip() if not sin_curso else ""
+            cambia_curso = bool(nuevo_curso) and nuevo_curso.upper() != (ex.curso or "").strip().upper() and (
+                es_pendiente(ex.curso) or bool(NIVEL.match(nuevo_curso) and NIVEL.match(ex.curso or "")))
+            otro = otro_curso(ex, f["curso"], area) if not sin_curso and not cambia_curso else None
+            if cambia_curso:
+                cambios.append(f"pasa de {ex.curso} a {nuevo_curso}")
             if otro:
                 cambios.append(f"se le suma el curso {otro.nombre}")
             if f["email"] and f["email"] != ex.email:
@@ -327,6 +335,14 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
                 if otro:
                     resumen["cursos_sumados"] += 1
                 if aplicar:
+                    if cambia_curso:
+                        m = NIVEL.match(nuevo_curso)
+                        ex.curso = nuevo_curso[:20]
+                        ex.division = (m.group(2) or "").upper() or None if m else None
+                        if area and area != AREA_INGRESANTES:
+                            ex.area = area
+                        elif ex.area == AREA_INGRESANTES:
+                            ex.area = "Ciclo Basico"
                     if otro and ex.id:
                         agregar_curso(db, ex, otro, anio, max(3, ahora_ar().month))
                     if f["email"]:

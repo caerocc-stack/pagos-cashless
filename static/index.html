@@ -1282,6 +1282,7 @@
                 <div class="gasto-resumen" id="estado-resumen"></div>
                 <div class="toolbar">
                     <input type="text" id="buscar-estado" placeholder="Buscar alumno por nombre o legajo...">
+                    <select id="estado-f-anio" class="sel-anio-lectivo" onchange="cargarEstado()" aria-label="Año lectivo"></select>
                     <select id="estado-f-area" onchange="cargarEstado()">
                         <option value="">Todas las áreas</option>
                         <option value="Ciclo Basico">Ciclo Básico</option>
@@ -1289,6 +1290,8 @@
                         <option value="Mecanica">Mecánica</option>
                         <option value="Aeronavegantes">Aeronavegantes</option>
                         <option value="Examenes">Exámenes</option>
+                        <option value="Ingresantes">Ingresantes</option>
+                        <option value="Egresados">Egresados</option>
                     </select>
                     <select id="estado-f-estado" onchange="cargarEstado()">
                         <option value="">Todos los estados</option>
@@ -1322,6 +1325,7 @@
                     <select id="st-periodo" onchange="cargarStats()" aria-label="Período">
                         <option value="">Todo el año</option>
                     </select>
+                    <select id="st-anio" class="sel-anio-lectivo" onchange="cargarStats()" aria-label="Año lectivo"></select>
                     <select id="st-area" onchange="cargarStats()" aria-label="Área"><option value="">Todas las áreas</option></select>
                     <select id="st-nivel" onchange="cargarStats()" aria-label="Nivel"><option value="">Todos los niveles</option></select>
                     <span style="flex:1"></span>
@@ -1356,8 +1360,9 @@
             <div class="toolbar">
                 <button class="btn btn-primary btn-3d" onclick="mostrarFormCurso()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo curso</button>
                 <label style="display:flex;align-items:center;gap:0.4rem;margin:0">Año <select id="cursos-anio" onchange="cargarCursos()"></select></label>
-                <button class="btn btn-outline" id="btn-nuevo-ciclo" onclick="prepararNuevoCiclo()" title="Copia los cursos de este año al siguiente con la cuota y la matrícula nuevas">Preparar ciclo siguiente</button>
             </div>
+
+            <div id="ciclo-panel" class="card solo-admin" style="margin-bottom:1rem;padding:1rem 1.2rem"></div>
 
             <div id="form-curso" class="card form-card" style="display:none">
                 <h3 id="form-curso-titulo">Nuevo curso</h3>

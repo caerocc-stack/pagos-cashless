@@ -23,6 +23,7 @@ from app.models.curso import Curso, InstanciaExamen, CuponGenerado
 from app.models.pago_cuota import PagoCuota
 from app.cuenta_alumno import MESES, instancia_de, separar_pagos_examen, fecha_imputacion
 from app.routers.cuotas import cursos_vigentes, extras_por_alumno, pagos_del_anio, planes_de
+from app.ciclo import en_anio, fotos_del_anio
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/examenes", tags=["Exámenes"])
@@ -60,7 +61,7 @@ def detalle(curso_id: int, anio: int | None = None, db: Session = Depends(get_db
     extras = extras_por_alumno(db, anio)
     pagos = pagos_del_anio(db, anio)
     filas = []
-    for a in db.query(Alumno).filter(Alumno.id.in_(list(pagos.keys()) or [0])).all():
+    for a in en_anio(db.query(Alumno).filter(Alumno.id.in_(list(pagos.keys()) or [0])).all(), fotos_del_anio(db, anio)):
         planes = planes_de(a, cursos_cfg, extras.get(a.id, []))
         claves = {pl["clave"] for pl in planes if pl.get("curso_id") == curso_id}
         if not claves:
@@ -197,7 +198,7 @@ def _alumnos_del_curso(db: Session, curso: Curso) -> dict[int, Alumno]:
     if not any(c.id == curso.id for c in cfg):
         cfg = cfg + [curso]
     extras = extras_por_alumno(db, anio)
-    return {a.id: a for a in db.query(Alumno).all()
+    return {a.id: a for a in en_anio(db.query(Alumno).all(), fotos_del_anio(db, anio))
             if any(pl.get("curso_id") == curso.id for pl in planes_de(a, cfg, extras.get(a.id, [])))}
 
 
