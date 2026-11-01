@@ -107,6 +107,9 @@ MIGRACIONES = [
     "ALTER TABLE cursos ADD COLUMN IF NOT EXISTS por_examen BOOLEAN DEFAULT FALSE",
     "ALTER TABLE pagos_cuota ADD COLUMN IF NOT EXISTS instancia_id INTEGER REFERENCES examen_instancias(id)",
     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS sector VARCHAR(40)",
+    # Deuda de años anteriores discriminada por año (cierre de ciclo)
+    "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS deuda_anterior_detalle VARCHAR(200)",
+    "ALTER TABLE alumno_anios ADD COLUMN IF NOT EXISTS deuda_anterior_detalle VARCHAR(200)",
 ]
 
 

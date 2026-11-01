@@ -24,6 +24,8 @@ class Alumno(Base):
     modalidad: Mapped[str | None] = mapped_column(String(20))   # Mensual / ...
     legajo_completo: Mapped[str | None] = mapped_column(String(20))  # 6 dig con verificador
     deuda_anio_anterior: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # cuánto de esa deuda es de cada año ("2025:120000.00;2026:90000.00"); vacío = todo del año anterior
+    deuda_anterior_detalle: Mapped[str | None] = mapped_column(String(200))
     cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
     cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     matricula_paga: Mapped[bool] = mapped_column(Boolean, default=False)  # matrícula del año pagada por fuera (p. ej. en 2025)

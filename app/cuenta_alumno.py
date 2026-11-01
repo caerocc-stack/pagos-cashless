@@ -118,9 +118,37 @@ def etiqueta_curso(pl: dict, alumno) -> str:
     return re.sub(r"\s*\(.*\)$", "", pl.get("nombre") or "")
 
 
-def estado_con_anterior(estado: str, debe_anterior: bool, anio: int) -> str:
+def estado_con_anterior(estado: str, debe_anterior: bool, anio: int, anios: list[int] | None = None) -> str:
     """Quien está al día con el año pero debe el anterior no se muestra igual que quien no debe nada."""
-    return f"Al día · debe {anio - 1}" if debe_anterior and estado in ("Al día", "Pagado") else estado
+    if not (debe_anterior and estado in ("Al día", "Pagado")):
+        return estado
+    return "Al día · debe años anteriores" if anios and len(anios) > 1 else f"Al día · debe {(anios or [anio - 1])[0]}"
+
+
+def deuda_anterior_por_anio(alumno, anio: int) -> list[list]:
+    """[[año, importe], …] de la deuda de años anteriores, del más viejo al más nuevo. Sale del detalle que deja
+    el cierre de cada ciclo; si no hay detalle (la deuda 2025 cargada de la planilla) es toda del año anterior.
+    Si la deuda total se corrigió a mano, la diferencia va al año más nuevo."""
+    total = _dec(getattr(alumno, "deuda_anio_anterior", None))
+    partes = []
+    for tramo in (getattr(alumno, "deuda_anterior_detalle", None) or "").split(";"):
+        if ":" in tramo:
+            y, imp = tramo.split(":", 1)
+            if y.strip().isdigit() and _dec(imp) > 0:
+                partes.append([int(y), _dec(imp)])
+    partes.sort()
+    if not partes:
+        return [[anio - 1, total]] if total > 0 else []
+    dif = total - sum((x[1] for x in partes), CERO)
+    while dif < 0 and partes:  # bajó: se descuenta de los años más nuevos
+        baja = min(-dif, partes[-1][1])
+        partes[-1][1] -= baja
+        dif += baja
+        if partes[-1][1] <= 0:
+            partes.pop()
+    if dif > 0:
+        partes[-1][1] += dif
+    return [x for x in partes if x[1] > 0]
 
 
 def _detalle(adeudadas: int, meses: list[int], matricula: Decimal) -> str:
@@ -158,6 +186,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         estado = (alumno.condicion or "Exento") if exento else "Sin curso"
         base.update(esperado=0.0, deuda=0.0, deuda_total=float(deuda_ant), estado=estado,
                     pagos=[_pago_dto(p, [], anio) for p in pagos], debe_anio_anterior=deuda_ant > 0,
+                    deuda_anterior_por_anio=[{"anio": y, "original": float(imp), "saldo": float(imp)}
+                                             for y, imp in deuda_anterior_por_anio(alumno, anio)],
                     cursos=[{"clave": pl["clave"], "nombre": pl["nombre"], "etiqueta": etiqueta_curso(pl, alumno),
                              "area": getattr(pl["curso"], "area", None), "curso_id": pl.get("curso_id"),
                              "principal": bool(pl.get("principal")), "estado": estado, "cobrado": float(total_pagado) if i == 0 else 0.0,
@@ -216,7 +246,22 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                 it["prepago"] = it["importe"]  # cubierta, pero no es plata cobrada este año
 
     a_favor = CERO
-    ant_saldo = deuda_ant  # deuda del año anterior que todavía queda
+    ant_saldo = deuda_ant  # deuda de años anteriores que todavía queda
+    ant_partes = deuda_anterior_por_anio(alumno, anio)  # [[año, saldo]]: se paga primero la más vieja
+    ant_original = [(y, imp) for y, imp in ant_partes]
+
+    def pagar_anterior(monto: Decimal, destino: list) -> Decimal:
+        nonlocal ant_saldo
+        for parte in ant_partes:
+            if monto <= 0:
+                break
+            usa = min(monto, parte[1])
+            if usa > 0:
+                parte[1] -= usa
+                monto -= usa
+                ant_saldo -= usa
+                destino.append({"concepto": f"Deuda {parte[0]}", "importe": usa, "tipo": "deuda_anterior"})
+        return monto
     # Primera pasada: cada pago va a la matrícula (por su monto) o a la cuota del mes en que se pagó. Así un pago
     # de más (p. ej. la matrícula pagada dos veces) no corre a los demás: cada cuota se queda con el pago de su mes.
     estado_pago = []  # por pago: [p, resto, destino, candidatos, forzado]
@@ -236,10 +281,7 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
             mat = next((it for it in candidatos if it["es_matricula"] and it["importe"] > it["pagado"]), None)
             if mat and resto >= mat["importe"] - mat["pagado"]:
                 resto = aplicar(mat, resto, destino, p)
-            usa = min(resto, ant_saldo)
-            ant_saldo -= usa
-            resto -= usa
-            destino.append({"concepto": f"Deuda {anio - 1}", "importe": usa, "tipo": "deuda_anterior"})
+            resto = pagar_anterior(resto, destino)
         if resto > 0 and f.year == anio:  # 1) la cuota del mes en que pagó (si hay de varios cursos, la del importe pagado)
             propias = [it for it in candidatos if it["clave"] == f"cuota-{f.month}" and it["importe"] > it["pagado"]]
             if propias:
@@ -257,11 +299,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                 break
             if vencido(it["mes"]) and (not destino or resto >= it["importe"] - it["pagado"]):
                 resto = aplicar(it, resto, destino, p)
-        if resto > 0 and ant_saldo > 0 and not forzado:  # 3) deuda del año anterior
-            usa = min(resto, ant_saldo)
-            ant_saldo -= usa
-            resto -= usa
-            destino.append({"concepto": f"Deuda {anio - 1}", "importe": usa, "tipo": "deuda_anterior"})
+        if resto > 0 and ant_saldo > 0 and not forzado:  # 3) deuda de años anteriores (la más vieja primero)
+            resto = pagar_anterior(resto, destino)
         for it in candidatos:  # 4) adelanto de cuotas que todavía no vencieron
             if resto <= 0:
                 break
@@ -399,12 +438,14 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
         estado = "Sin pagos"
     else:
         estado = "Moroso"
-    estado = estado_con_anterior(estado, ant_saldo > 0, anio)
+    estado = estado_con_anterior(estado, ant_saldo > 0, anio, [y for y, imp in ant_partes if imp > 0])
 
     principal = cursos[0]
     base.update(
         esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + ant_saldo), estado=estado,
         deuda_anterior=float(ant_saldo), deuda_anterior_original=float(deuda_ant), debe_anio_anterior=ant_saldo > 0,
+        deuda_anterior_por_anio=[{"anio": y, "original": float(orig), "saldo": float(next(x[1] for x in ant_partes if x[0] == y))}
+                                 for y, orig in ant_original],
         matricula_siguiente_pagada=float(sum((_dec(p.importe) for p in anticipadas), CERO)),
         imputado_deuda_anterior=float(deuda_ant - ant_saldo),
         items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),

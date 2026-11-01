@@ -584,7 +584,8 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
             niv = f"{m.group(1)}°" if m else "—"
             estado = "Becado" if becado else c["estado"]
             if not becado and i == 0:
-                estado = estado_con_anterior(estado, info.get("debe_anio_anterior"), anio)
+                estado = estado_con_anterior(estado, info.get("debe_anio_anterior"), anio,
+                                             [x["anio"] for x in info.get("deuda_anterior_por_anio", []) if x["saldo"] > 0])
             filas.append({"curso": etq, "area": ar, "nivel": niv,
                           "grupo": f"Todos los {niv} — {ar}" if ar in ESCUELA and niv != "—" else f"{etq} — {ar}",
                           "estado": estado, "cobrado": cobrado, "cobrado_mes": cobrado_mes, "esperado": esperado, "deuda_vencida": deuda_vencida,

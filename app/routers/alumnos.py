@@ -15,7 +15,9 @@ from app.models.pago_cuota import PagoCuota
 from app.models.portal import CuponEnviado, Consulta
 from app.routers.cursos import curso_de_alumno
 from app.padron_import import leer_padron, sin_acentos
-from app.ciclo import AREA_INGRESANTES, NIVEL, asegurar_curso_ingreso, es_pendiente
+from app.ciclo import AREA_INGRESANTES, AREAS_CUOTA_MENSUAL, NIVEL, asegurar_curso_ingreso, es_pendiente
+
+ESCUELA = AREAS_CUOTA_MENSUAL | {AREA_INGRESANTES}
 from app.tz import ahora_ar
 from pydantic import BaseModel
 
@@ -250,7 +252,13 @@ def _leer_archivo(db: Session, archivo: UploadFile, curso: str | None) -> dict:
         raise HTTPException(400, str(e))
 
 
-def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
+def _nivel_escuela(curso: str | None) -> int | None:
+    """Año de la escuela (1 a 7) de un curso como "2°A", "1°" o "4° (a definir)"."""
+    m = re.match(r"\s*(\d)\s*°", curso or "")
+    return int(m.group(1)) if m else None
+
+
+def _procesar_padron(db: Session, datos: dict, aplicar: bool, completo: bool = False) -> dict:
     """Decide qué pasa con cada fila (alumno nuevo, correo actualizado, curso sumado, sin cambios o error)
     y, con `aplicar`, lo guarda."""
     filas = datos["filas"]
@@ -281,7 +289,8 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
             return None
         return otro
 
-    resumen = {"creados": 0, "actualizados": 0, "cursos_sumados": 0, "sin_cambios": 0}
+    resumen = {"creados": 0, "actualizados": 0, "cursos_sumados": 0, "sin_cambios": 0, "bajas": 0}
+    en_listado = set()  # alumnos que figuran en el listado (para las bajas del listado completo)
     errores = list(datos["errores"])
     vista, nuevos = [], []
     for f in filas:
@@ -309,6 +318,7 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
             vista.append(r)
             continue
         if ex is not None:
+            en_listado.add(ex.id)
             cambios = []
             # curso de la escuela (o provisorio del pase de año: ingresante, 4° a definir): el listado lo actualiza
             nuevo_curso = f["curso"].strip() if not sin_curso else ""
@@ -364,6 +374,23 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
         por_dni[dni] = nuevo
         vista.append(r)
 
+    # Listado completo de uno o más años de la escuela (el que manda División Alumnos al empezar el ciclo):
+    # los alumnos activos de esos años que no figuran se dieron de baja
+    niveles = {_nivel_escuela(f["curso"]) for f in filas if not f.get("error")} - {None}
+    if completo and niveles:
+        if errores:
+            errores.append("Hay filas con error: no se dan bajas hasta que el listado esté completo y sin errores.")
+        else:
+            for a in db.query(Alumno).filter(Alumno.activo.is_(True)).order_by(Alumno.apellido, Alumno.nombre).all():
+                if a.id in en_listado or _nivel_escuela(a.curso) not in niveles or a.area not in ESCUELA:
+                    continue
+                vista.append({"fila": "", "legajo": a.legajo, "dni": a.dni, "apellido": a.apellido, "nombre": a.nombre,
+                              "curso": a.curso, "email": a.email, "accion": "baja",
+                              "detalle": "No figura en el listado: pasa a baja"})
+                resumen["bajas"] += 1
+                if aplicar:
+                    a.activo, a.condicion = False, "Baja"
+
     if aplicar:
         if any(a.area == AREA_INGRESANTES for a in nuevos):
             asegurar_curso_ingreso(db, anio)
@@ -380,17 +407,19 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
 
 
 @router.post("/importar/vista")
-def importar_vista(archivo: UploadFile = File(...), curso: str | None = Form(None), db: Session = Depends(get_db)):
+def importar_vista(archivo: UploadFile = File(...), curso: str | None = Form(None), completo: bool = Form(False),
+                   db: Session = Depends(get_db)):
     """Lee el listado (formato del padrón u otro) y muestra qué haría la importación, sin guardar nada."""
     datos = _leer_archivo(db, archivo, curso)
-    r = _procesar_padron(db, datos, aplicar=False)
+    r = _procesar_padron(db, datos, aplicar=False, completo=completo)
     db.rollback()
     cursos = sorted({c for (c,) in db.query(Alumno.curso).filter(Alumno.activo == True).distinct() if c})  # noqa: E712
     return {**r, "cursos_existentes": cursos}
 
 
 @router.post("/importar")
-def importar_excel(archivo: UploadFile = File(...), curso: str | None = Form(None), db: Session = Depends(get_db)):
+def importar_excel(archivo: UploadFile = File(...), curso: str | None = Form(None), completo: bool = Form(False),
+                   db: Session = Depends(get_db)):
     """
     Importa alumnos desde un listado. Columnas del padrón: legajo, dni, nombre, apellido, curso
     (opcionales: email, area, teléfono). También acepta listados con otros encabezados y el nombre
@@ -398,6 +427,6 @@ def importar_excel(archivo: UploadFile = File(...), curso: str | None = Form(Non
     Sin legajo (exámenes, aeronavegantes) se usa "D" + DNI.
     """
     datos = _leer_archivo(db, archivo, curso)
-    r = _procesar_padron(db, datos, aplicar=True)
+    r = _procesar_padron(db, datos, aplicar=True, completo=completo)
     r.pop("filas")
     return r

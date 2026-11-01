@@ -301,9 +301,12 @@ function htmlResumenDeuda(e) {
             <span class="cc-deuda-monto">${fmtMoneda(deudaAnio)}</span>${detAnio.join('')}</div>`
         : `<div class="cc-deuda-bloque cc-deuda-cero"><span class="cc-deuda-tit">Año en curso (${anio})</span>
             <span class="cc-deuda-monto">Al día</span><div>No debe cuotas de ${anio}</div></div>`;
+    // deuda de años anteriores: el acumulado y cuánto queda de cada año (sin meses)
+    const porAnio = (e.deuda_anterior_por_anio || []).filter(x => x.saldo > 0);
     const bloqueAnt = e.deuda_anterior > 0
-        ? `<div class="cc-deuda-bloque"><span class="cc-deuda-tit">Años anteriores (hasta ${anio - 1})</span>
-            <span class="cc-deuda-monto">${fmtMoneda(e.deuda_anterior)}</span><div>Saldo pendiente de ciclos lectivos anteriores</div></div>` : '';
+        ? `<div class="cc-deuda-bloque"><span class="cc-deuda-tit">Deuda años anteriores</span>
+            <span class="cc-deuda-monto">${fmtMoneda(e.deuda_anterior)}</span>
+            ${porAnio.length ? porAnio.map(x => `<div>Deuda ${x.anio}: <b>${fmtMoneda(x.saldo)}</b></div>`).join('') : `<div>Deuda ${anio - 1}</div>`}</div>` : '';
     return `<div class="cc-resumen cc-mal">
         <div class="cc-deuda-grid">${bloqueAnio}${bloqueAnt}</div>
         <div class="cc-deuda-total"><span>Deuda total</span><b>${fmtMoneda(e.deuda_total)}</b></div>

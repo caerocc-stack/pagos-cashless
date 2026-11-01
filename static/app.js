@@ -1013,7 +1013,8 @@ async function confirmarDesactivar(tarjetaId, uid) {
 // recién con "Importar" se guarda.
 const IMP_COLUMNAS = { legajo: 'Legajo', dni: 'DNI', apellido: 'Apellido', nombre: 'Nombre', completo: 'Apellido y nombre',
     completo_nombre_primero: 'Nombre y apellido', curso: 'Curso', area: 'Área', email: 'Correo', telefono: 'Teléfono' };
-const IMP_ACCIONES = { nuevo: ['Nuevo', 'badge-activa'], actualiza: ['Actualiza', 'badge-beca'], igual: ['Sin cambios', ''], error: ['No se importa', 'badge-sin'] };
+const IMP_ACCIONES = { nuevo: ['Nuevo', 'badge-activa'], actualiza: ['Actualiza', 'badge-beca'], igual: ['Sin cambios', ''], error: ['No se importa', 'badge-sin'],
+    baja: ['Baja', 'badge-sin'] };
 let impUltima = null;
 
 function impFormData() {
@@ -1023,6 +1024,7 @@ function impFormData() {
     fd.append('archivo', file);
     const curso = document.getElementById('imp-curso').value.trim();
     if (curso) fd.append('curso', curso);
+    if (document.getElementById('imp-completo').checked) fd.append('completo', 'true');
     return fd;
 }
 
@@ -1052,7 +1054,7 @@ async function impLeer() {
     document.getElementById('imp-curso-box').hidden = r.trae_curso;
     document.getElementById('imp-cursos-lista').innerHTML = r.cursos_existentes.map(c => `<option value="${escapeHtml(c)}">`).join('');
     const faltaCurso = !r.trae_curso && !document.getElementById('imp-curso').value.trim();
-    const importables = r.creados + r.actualizados;
+    const importables = r.creados + r.actualizados + (r.bajas || 0);
     const cols = Object.entries(r.columnas).filter(([k]) => IMP_COLUMNAS[k])
         .map(([k, v]) => `<span class="imp-col"><b>${IMP_COLUMNAS[k]}</b> ← ${escapeHtml(v)}</span>`).join('');
     vista.innerHTML = `
@@ -1062,6 +1064,7 @@ async function impLeer() {
             <div><b>${r.creados}</b><span>nuevos</span></div>
             <div><b>${r.actualizados}</b><span>se actualizan</span></div>
             <div><b>${r.sin_cambios}</b><span>sin cambios</span></div>
+            ${r.bajas ? `<div class="alerta"><b>${r.bajas}</b><span>pasan a baja</span></div>` : ''}
             <div class="${r.errores.length ? 'alerta' : ''}"><b>${r.filas.filter(f => f.accion === 'error').length}</b><span>no se importan</span></div>
         </div>
         <div class="ps-tabla"><table>
@@ -1078,7 +1081,7 @@ async function impLeer() {
         <div class="imp-acciones">
             <span class="muted">${importables ? 'Revisá la lista y confirmá.' : 'No hay cambios para importar.'}</span>
             <button type="button" class="btn btn-primary btn-3d" id="imp-confirmar" onclick="importarExcel()" ${importables && !faltaCurso ? '' : 'disabled'}>
-                <svg class="ic"><use href="#i-upload"/></svg>Importar ${importables} alumno${importables === 1 ? '' : 's'}</button>
+                <svg class="ic"><use href="#i-upload"/></svg>Importar ${importables} cambio${importables === 1 ? '' : 's'}</button>
         </div>`;
     if (faltaCurso) document.getElementById('imp-curso').focus();
 }
@@ -1096,7 +1099,7 @@ async function importarExcel() {
         div.innerHTML = `
             <p style="margin:0"><strong>${data.creados}</strong> alumno${data.creados === 1 ? '' : 's'} nuevo${data.creados === 1 ? '' : 's'} ·
             <strong>${data.actualizados}</strong> actualizado${data.actualizados === 1 ? '' : 's'}${data.cursos_sumados ? ` (${data.cursos_sumados} con un curso más)` : ''} ·
-            ${data.sin_cambios} sin cambios</p>
+            ${data.sin_cambios} sin cambios${data.bajas ? ` · <strong>${data.bajas}</strong> de baja` : ''}${data.pagos_asignados ? ` · ${data.pagos_asignados} pagos asignados` : ''}</p>
             ${data.errores.length ? `<p style="margin:0.5rem 0 0"><strong>No se importaron (${data.errores.length}):</strong></p><ul>${data.errores.slice(0, 30).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : ''}`;
         document.getElementById('imp-vista').hidden = true;
         document.getElementById('archivo-excel').value = '';
@@ -3330,7 +3333,7 @@ function filtrarEstado() {
             <td>${escapeHtml(x.area || '-')}</td>
             <td style="text-align:right">${fmtMoneda(x.pagado)}</td>
             <td style="text-align:right">${fmtMoneda(x.esperado)}</td>
-            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">${fmtMoneda(x.deuda_total ?? x.deuda)}${x.detalle_deuda ? `<br><span style="font-size:.72rem;color:var(--text-muted)">${escapeHtml(x.detalle_deuda.replace(/^Debe /, ''))}</span>` : ''}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. ${fmtMoneda(x.deuda_anterior)} año ant.)</span>` : ''}</td>
+            <td style="text-align:right;${(x.deuda_total ?? x.deuda) > 0 ? 'color:var(--red)' : ''}">${fmtMoneda(x.deuda_total ?? x.deuda)}${x.detalle_deuda ? `<br><span style="font-size:.72rem;color:var(--text-muted)">${escapeHtml(x.detalle_deuda.replace(/^Debe /, ''))}</span>` : ''}${x.deuda_anterior > 0 ? `<br><span style="font-size:.72rem;color:var(--text-muted)">(incl. ${fmtMoneda(x.deuda_anterior)} años ant.)</span>` : ''}</td>
             <td>${estadoBadge(x.estado)}</td>
             <td><button class="btn btn-sm" onclick="verEstadoAlumno(${x.id})">Ver</button></td>
         </tr>`).join('') ||
@@ -3607,7 +3610,7 @@ async function cargarStats() {
             <div class="gasto-kpi gasto-kpi-total"><div class="gasto-kpi-label">Deuda a la fecha</div><div class="gasto-kpi-valor">${fmtMoneda(k.deuda)}</div><div class="gasto-kpi-sub">cuotas vencidas sin pagar</div></div>
             <div class="gasto-kpi"><div class="gasto-kpi-label">% Cumplimiento</div><div class="gasto-kpi-valor">${pct(k.cumplimiento)}</div>
                 <div class="st-progreso"><span style="width:${Math.min(100, k.cumplimiento)}%"></span></div></div>
-            <div class="gasto-kpi"><div class="gasto-kpi-label">Deben el año anterior</div><div class="gasto-kpi-valor" style="color:var(--warning)">${k.con_deuda_anterior}</div><div class="gasto-kpi-sub">${fmtMoneda(k.deuda_anterior)} pendientes</div></div>`;
+            <div class="gasto-kpi"><div class="gasto-kpi-label">Deben años anteriores</div><div class="gasto-kpi-valor" style="color:var(--warning)">${k.con_deuda_anterior}</div><div class="gasto-kpi-sub">${fmtMoneda(k.deuda_anterior)} pendientes</div></div>`;
         const est = [['Al día', k.al_dia, 'ok', 'al día y sin deuda anterior', 'Al día'], ['Pagado', k.pagado, 'ok', 'año (o curso) completo pagado', 'Pagado'],
             [`Al día · debe ${s.anio - 1}`, k.al_dia_debe_anterior, 'aviso', 'al día con el año, pero debe el anterior', 'debe-anterior'],
             ['Moroso', k.moroso, 'mal', 'tiene cuotas vencidas', 'Moroso'], ['Sin pagos', k.sin_pagos, 'mal', 'no pagó nada este año', 'Sin pagos'],
@@ -5470,7 +5473,7 @@ async function pdfEstadoCuenta(id) {
             deudaAnio > 0 ? [e.cuotas_adeudadas ? `${e.cuotas_adeudadas} cuota${e.cuotas_adeudadas > 1 ? 's' : ''}: ${enLista(meses)}` : '',
                 e.matricula_adeudada > 0 ? 'matrícula ' + plata(e.matricula_adeudada) : ''].filter(Boolean).join(' + ') : 'sin cuotas vencidas impagas'],
         ['DEUDA AÑOS ANTERIORES', e.deuda_anterior > 0 ? plata(e.deuda_anterior) : 'Sin deuda', e.deuda_anterior > 0 ? ROJO : VERDE,
-            e.deuda_anterior > 0 ? `hasta ${e.anio - 1}` : ''],
+            e.deuda_anterior > 0 ? ((e.deuda_anterior_por_anio || []).filter(x => x.saldo > 0).map(x => `${x.anio}: ${plata(x.saldo)}`).join(' · ') || `${e.anio - 1}`) : ''],
     ];
     const anchoCaja = (W - 2 * M - 8) / 3;
     doc.setFontSize(8);

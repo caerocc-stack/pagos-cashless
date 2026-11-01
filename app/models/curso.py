@@ -98,6 +98,7 @@ class AlumnoAnio(Base):
     modalidad: Mapped[str | None] = mapped_column(String(20))
     matricula_paga: Mapped[bool] = mapped_column(Boolean, default=False)
     deuda_anio_anterior: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    deuda_anterior_detalle: Mapped[str | None] = mapped_column(String(200))
     cuota_personalizada: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     cuota_excluir: Mapped[bool] = mapped_column(Boolean, default=False)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
