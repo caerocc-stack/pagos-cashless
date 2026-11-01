@@ -1355,6 +1355,8 @@
 
             <div class="toolbar">
                 <button class="btn btn-primary btn-3d" onclick="mostrarFormCurso()"><svg class="ic"><use href="#i-plus"/></svg>Nuevo curso</button>
+                <label style="display:flex;align-items:center;gap:0.4rem;margin:0">Año <select id="cursos-anio" onchange="cargarCursos()"></select></label>
+                <button class="btn btn-outline" id="btn-nuevo-ciclo" onclick="prepararNuevoCiclo()" title="Copia los cursos de este año al siguiente con la cuota y la matrícula nuevas">Preparar ciclo siguiente</button>
             </div>
 
             <div id="form-curso" class="card form-card" style="display:none">
@@ -1371,6 +1373,7 @@
                                 <option value="Mecanica">Mecánica</option>
                                 <option value="Aeronavegantes">Aeronavegantes</option>
                                 <option value="Examenes">Exámenes</option>
+                                <option value="Ingresantes">Ingresantes</option>
                             </select>
                         </div>
                         <div><label>Divisiones <span style="color:var(--text-muted);font-weight:400">(separadas por coma)</span></label><input type="text" id="cur-divisiones" placeholder="ej: A,B"></div>

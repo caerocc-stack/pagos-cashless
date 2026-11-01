@@ -1,6 +1,7 @@
 import re
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -64,6 +65,26 @@ def seed(anio: int = 2026, db: Session = Depends(get_db)):
         n += 1
     db.commit()
     return {"ok": True, "mensaje": f"Se cargaron {n} cursos", "creados": n}
+
+
+class NuevoCiclo(BaseModel):
+    anio: int
+    cuota: Decimal
+    matricula: Decimal
+
+
+@router.post("/nuevo-ciclo")
+def nuevo_ciclo(data: NuevoCiclo, db: Session = Depends(get_db)):
+    """Prepara los cursos del ciclo lectivo `anio` copiando los del año anterior (ver app/ciclo.py)."""
+    from app.ciclo import preparar_cursos
+    if db.query(Curso).filter(Curso.anio == data.anio).first():
+        raise HTTPException(409, f"Los cursos de {data.anio} ya están cargados: se editan desde la lista.")
+    nuevos = preparar_cursos(db, data.anio, data.cuota, data.matricula)
+    if not nuevos:
+        raise HTTPException(400, f"No hay cursos de {data.anio - 1} para copiar.")
+    db.commit()
+    return {"ok": True, "creados": len(nuevos),
+            "mensaje": f"Se cargaron {len(nuevos)} cursos para {data.anio}. Revisá los valores de cada uno."}
 
 
 @router.post("/", response_model=CursoResponse, status_code=201)

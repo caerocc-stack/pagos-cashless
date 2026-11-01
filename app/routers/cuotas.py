@@ -19,7 +19,8 @@ from app.models.caja import MovimientoCaja
 from app.routers.cursos import curso_de_alumno
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
-from app.cuenta_alumno import estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior, libre_deuda_cursos
+from app.cuenta_alumno import (estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior,
+                               libre_deuda_cursos, es_matricula_siguiente)
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -407,6 +408,12 @@ def planes_de(alumno, cursos: list[Curso], extras: list[AlumnoCurso]) -> list[di
 def cursos_vigentes(db: Session, anio: int) -> list[Curso]:
     cursos = db.query(Curso).filter(Curso.anio == anio, Curso.activo == True).all()  # noqa: E712
     cursos = cursos or db.query(Curso).filter(Curso.activo == True).all()  # noqa: E712
+    # matrícula del año siguiente (si ya se configuró): la que se paga en noviembre/diciembre es de ese año
+    siguientes = db.query(Curso).filter(Curso.anio == anio + 1, Curso.activo == True).all()  # noqa: E712
+    for c in cursos:
+        sig = next((x for x in siguientes if x.area == c.area and (x.patron or None) == (c.patron or None)
+                    and not x.por_examen and (x.matricula or 0) > 0), None)
+        c._matricula_siguiente = Decimal(str(sig.matricula)) if sig else None
     # cursos por examen: sus instancias, para saber a qué examen fue cada pago (ver cuenta_alumno.instancia_de)
     por_examen = {c.id: c for c in cursos if c.por_examen}
     if por_examen:
@@ -530,7 +537,7 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
     por_id_curso = {c.id: c for c in db.query(Curso).all()}
     pagos = pagos_del_anio(db, anio)
     extras = extras_por_alumno(db, anio)
-    ORDEN_AREAS = ["Ciclo Basico", "Avionica", "Mecanica", "Aeronavegantes", "Examenes"]
+    ORDEN_AREAS = ["Ciclo Basico", "Avionica", "Mecanica", "Aeronavegantes", "Examenes", "Ingresantes", f"Matrícula {anio + 1}"]
     ESCUELA = {"Ciclo Basico", "Avionica", "Mecanica"}
 
     filas = []
@@ -619,6 +626,8 @@ def estadisticas(anio: int | None = None, mes: int | None = None, area: str | No
             mes_p = _mes_cobro(p, anio)
             cid = p.curso_id if p.curso_id in por_id_curso else curso_de_pago(planes, p)
             ar = (por_id_curso[cid].area if cid in por_id_curso else None) or (a.area if a else None) or "Sin área"
+            if es_matricula_siguiente(p, planes, anio):  # matrícula del año que viene pagada por adelantado: aparte
+                ar = f"Matrícula {anio + 1}"
             matriz[mes_p][ar] = matriz[mes_p].get(ar, 0.0) + float(p.importe)
     areas_m = sorted({ar for v in matriz.values() for ar in v}, key=lambda x: (ORDEN_AREAS.index(x) if x in ORDEN_AREAS else 99, x))
     mensual = [{"mes": m, "valores": {ar: matriz[m].get(ar, 0.0) for ar in areas_m}, "total": sum(matriz[m].values())} for m in range(1, 13)]

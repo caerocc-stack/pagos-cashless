@@ -245,11 +245,12 @@ def leer_padron(contenido: bytes, nombre_archivo: str, curso: str | None = None,
             "curso": texto(val(f, "curso")) or (curso or "").strip(), "area": texto(val(f, "area")),
             "email": limpiar_emails(val(f, "email")), "telefono": texto(val(f, "telefono"))[:40] or None,
         }
-        falta = [k for k, v in (("DNI", dni), ("apellido", ape), ("nombre", nom)) if not v]
+        # sin DNI alcanza el número de cliente / legajo (ingresantes: el DNI llega después con el padrón definitivo)
+        falta = [k for k, v in (("DNI", dni or solo_digitos(legajo)), ("apellido", ape), ("nombre", nom)) if not v]
         if falta:
             errores.append(f"Fila {n}: falta {', '.join(falta)}")
             fila["error"] = "Falta " + ", ".join(falta)
-        elif not 6 <= len(dni) <= 10:
+        elif dni and not 6 <= len(dni) <= 10:
             errores.append(f"Fila {n}: el DNI «{dni}» no parece válido")
             fila["error"] = "DNI inválido"
         salida.append(fila)

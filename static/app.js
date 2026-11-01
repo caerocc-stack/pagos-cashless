@@ -3366,10 +3366,10 @@ let chartCuotasMensual = null, chartCuotasArea = null, statsUltimo = null;
 
 // Estadísticas de cuotas: comparativa de cursos (como la hoja COMPARATIVA CURSOS de la planilla), siempre A LA FECHA
 let chartCuotasCvd = null;
-const COLORES_AREA = { 'Ciclo Basico': '#2563eb', 'Avionica': '#059669', 'Mecanica': '#d97706', 'Aeronavegantes': '#7c3aed', 'Examenes': '#be123c' };
-const NOMBRE_AREA = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Aeronavegantes': 'Aeronavegantes', 'Examenes': 'Exámenes' };
+const COLORES_AREA = { 'Ciclo Basico': '#2563eb', 'Avionica': '#059669', 'Mecanica': '#d97706', 'Aeronavegantes': '#7c3aed', 'Examenes': '#be123c', 'Ingresantes': '#0891b2' };
+const NOMBRE_AREA = { 'Ciclo Basico': 'Ciclo Básico', 'Avionica': 'Aviónica', 'Mecanica': 'Mecánica', 'Aeronavegantes': 'Aeronavegantes', 'Examenes': 'Exámenes', 'Ingresantes': 'Ingresantes' };
 const nomArea = a => NOMBRE_AREA[a] || a;
-const colorArea = a => COLORES_AREA[a] || '#64748b';
+const colorArea = a => COLORES_AREA[a] || (/^Matrícula/.test(a) ? '#0d9488' : '#64748b');
 const pct = (v, dec = 1) => fmtNumero(v || 0, dec) + '%';
 const millones = v => '$' + (Math.abs(v) >= 1e6 ? fmtNumero(v / 1e6, 1) + ' M' : Math.abs(v) >= 1000 ? fmtNumero(v / 1000, 0) + ' mil' : v);
 const hexA = (hex, a) => { const h = hex.replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
@@ -3912,7 +3912,16 @@ let cursosCache = [];
 
 async function cargarCursos() {
     try {
-        cursosCache = await api('/api/cursos/');
+        // un año por vez: el actual y, si ya se preparó, el siguiente
+        const sel = document.getElementById('cursos-anio'), hoy = new Date().getFullYear();
+        const todos = await api('/api/cursos/');
+        const anios = [...new Set([hoy, ...todos.map(c => c.anio)])].sort();
+        const elegido = Number(sel.value) || hoy;
+        sel.innerHTML = anios.map(a => `<option value="${a}" ${a === elegido ? 'selected' : ''}>${a}</option>`).join('');
+        const btn = document.getElementById('btn-nuevo-ciclo');
+        btn.textContent = `Preparar ciclo ${hoy + 1}`;
+        btn.hidden = anios.includes(hoy + 1);
+        cursosCache = todos.filter(c => c.anio === elegido);
         // Si no hay ninguno, ofrecer cargar la config inicial
         if (!cursosCache.length) {
             if (confirm('No hay cursos cargados. ¿Cargar la configuración inicial (Ciclo Básico, ORR, TCP, DESP AER, etc.)?')) {
@@ -3924,6 +3933,20 @@ async function cargarCursos() {
     } catch (err) {
         toast(err.message, 'error');
     }
+}
+
+async function prepararNuevoCiclo() {
+    const anio = new Date().getFullYear() + 1;
+    const cuota = prompt(`Cuota mensual ${anio} (escuela y MMH):`, '50000');
+    if (!cuota) return;
+    const matricula = prompt(`Matrícula ${anio}:`, '50000');
+    if (!matricula) return;
+    try {
+        const r = await api('/api/cursos/nuevo-ciclo', { method: 'POST', body: JSON.stringify({ anio, cuota: Number(cuota), matricula: Number(matricula) }) });
+        toast(r.mensaje);
+        document.getElementById('cursos-anio').innerHTML = `<option value="${anio}" selected>${anio}</option>`;
+        cargarCursos();
+    } catch (err) { toast(err.message, 'error'); }
 }
 
 function renderCursos() {
@@ -3950,7 +3973,7 @@ function mostrarFormCurso() {
     document.getElementById('cur-edit-id').value = '';
     ['cur-nombre', 'cur-area', 'cur-divisiones', 'cur-patron', 'cur-cuota',
         'cur-ncuotas', 'cur-matricula', 'cur-cuota-ant'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('cur-anio').value = '2026';
+    document.getElementById('cur-anio').value = document.getElementById('cursos-anio').value || new Date().getFullYear();
     document.getElementById('cur-viejas').checked = false;
     document.getElementById('cur-examen').checked = false;
     document.getElementById('form-curso').scrollIntoView({ behavior: 'smooth', block: 'start' });

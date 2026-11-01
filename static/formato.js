@@ -324,7 +324,8 @@ function htmlPagosImputados(pagos, cursos = null) {
         const lineas = (p.detalle && p.detalle.length) ? p.detalle : [{ concepto: p.imputado_a || 'Pago', importe: p.importe }];
         const varias = lineas.length > 1;
         return lineas.map((d, i) => {
-            const marca = d.saldo_favor ? '<span class="cc-tag">Saldo a favor</span>'
+            const marca = d.tipo === 'matricula_siguiente' ? '<span class="cc-tag cc-tag-adelanto">Año siguiente</span>'
+                : d.saldo_favor ? '<span class="cc-tag">Saldo a favor</span>'
                 : d.atrasada ? '<span class="cc-tag cc-tag-atraso">Cuota atrasada</span>'
                 : d.adelanto ? '<span class="cc-tag cc-tag-adelanto">Adelanto</span>'
                 : d.tipo === 'a_favor' ? '<span class="cc-tag">Saldo a favor</span>'

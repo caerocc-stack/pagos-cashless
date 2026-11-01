@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
@@ -13,6 +15,7 @@ from app.models.pago_cuota import PagoCuota
 from app.models.portal import CuponEnviado, Consulta
 from app.routers.cursos import curso_de_alumno
 from app.padron_import import leer_padron, sin_acentos
+from app.ciclo import AREA_INGRESANTES, asegurar_curso_ingreso
 from app.tz import ahora_ar
 from pydantic import BaseModel
 
@@ -28,6 +31,8 @@ def derivar_area(curso: str) -> str | None:
         return "Mecanica"
     if "ciclo" in c or "basico" in c or "básico" in c:
         return "Ciclo Basico"
+    if "ingresante" in c:
+        return AREA_INGRESANTES
     return None
 
 
@@ -289,12 +294,14 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
             errores.append(f"Fila {f['fila']}: falta el curso")
             vista.append(r)
             continue
-        dni = f["dni"]
+        # sin DNI (ingresantes): "SL" + legajo hasta que llegue el padrón definitivo
+        dni = f["dni"] or "SL" + re.sub(r"\D", "", f["legajo"] or "")
         legajo = f["legajo"] or "D" + dni  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
         area = area_para(f["curso"], f["area"]) if not sin_curso else (f["area"] or None)
-        r["legajo"], r["area"] = legajo, area
+        r["legajo"], r["area"], r["dni"] = legajo, area, f["dni"] or "sin DNI"
         ex = existentes_por_legajo.get(legajo) or por_dni.get(dni)
-        if ex is not None and ex.dni != dni and ex.legajo == legajo:
+        sin_dni = lambda d: (d or "").startswith("SL")  # noqa: E731
+        if ex is not None and ex.dni != dni and ex.legajo == legajo and not (sin_dni(ex.dni) or sin_dni(dni)):
             r["accion"], r["detalle"] = "error", f"El legajo {legajo} ya es de {ex.apellido}, {ex.nombre} (DNI {ex.dni})"
             errores.append(f"Fila {f['fila']}: {r['detalle']}")
             vista.append(r)
@@ -308,6 +315,8 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
                 cambios.append("se carga el correo" if not ex.email else "se actualiza el correo")
             if f.get("telefono") and not ex.telefono:
                 cambios.append("se carga el teléfono")
+            if sin_dni(ex.dni) and not sin_dni(dni) and dni not in por_dni:
+                cambios.append("se carga el DNI")
             r["existente"] = f"{ex.apellido}, {ex.nombre}" + (f" ({ex.curso})" if ex.curso else "")
             if not cambios:
                 r["accion"], r["detalle"] = "igual", "Ya está en el padrón"
@@ -326,6 +335,8 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
                         ex.telefono = f["telefono"]
                     if area and not ex.area:
                         ex.area = area
+                    if sin_dni(ex.dni) and not sin_dni(dni) and dni not in por_dni:
+                        ex.dni = dni
             vista.append(r)
             continue
         r["accion"], r["detalle"] = "nuevo", "Alumno nuevo" + (" (falta elegir el curso)" if sin_curso else "")
@@ -338,11 +349,16 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool) -> dict:
         vista.append(r)
 
     if aplicar:
+        if any(a.area == AREA_INGRESANTES for a in nuevos):
+            asegurar_curso_ingreso(db, anio)
         if nuevos:
             db.add_all(nuevos)
             db.flush()
             db.add_all([Saldo(alumno_id=a.id) for a in nuevos])
         db.commit()
+        if nuevos:  # los pagos que ya habían entrado sin dueño (p. ej. matrículas de ingresantes) se asignan solos
+            from app.routers.cuotas import reasignar_pendientes
+            resumen["pagos_asignados"] = reasignar_pendientes(db)
     return {**resumen, "errores": errores, "filas": vista, "total_procesadas": len(filas),
             "columnas": datos["columnas"], "trae_curso": datos["trae_curso"]}
 

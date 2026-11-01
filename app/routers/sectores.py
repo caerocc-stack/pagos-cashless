@@ -74,7 +74,9 @@ def _fmt(n) -> float:
 @router.get("/")
 def sectores(db: Session = Depends(get_db)):
     """Sectores con los cursos que les aportan ingresos."""
-    cursos = db.query(Curso).filter(Curso.activo.is_(True)).order_by(Curso.area, Curso.nombre).all()
+    anio = ahora_ar().year
+    cursos = (db.query(Curso).filter(Curso.activo.is_(True), Curso.anio == anio).order_by(Curso.area, Curso.nombre).all()
+              or db.query(Curso).filter(Curso.activo.is_(True)).order_by(Curso.area, Curso.nombre).all())
     return [{"sector": s, "cursos": [{"id": c.id, "nombre": c.nombre, "por_examen": bool(c.por_examen)}
                                      for c in cursos_del_sector(s, cursos)]}
             for s in SECTORES]

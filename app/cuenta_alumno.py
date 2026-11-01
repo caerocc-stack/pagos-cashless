@@ -46,6 +46,14 @@ def anio_de_pago(p) -> int:
     return fecha_imputacion(p).year
 
 
+def es_matricula_siguiente(p, planes: list, anio: int) -> bool:
+    """Pago de noviembre o diciembre por el importe exacto de la matrícula del año siguiente (ya configurada):
+    es la matrícula de ese año pagada por adelantado, no una cuota de este año."""
+    f = fecha_imputacion(p)
+    sig = getattr(planes[0]["curso"], "_matricula_siguiente", None) if planes else None
+    return bool(sig) and f.year == anio and f.month >= 11 and _dec(p.importe) == _dec(sig)
+
+
 def es_examen(curso) -> bool:
     return bool(getattr(curso, "por_examen", False))
 
@@ -162,6 +170,8 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
     # Cuotas de cada curso
     items = []
     pagos, pagos_examen = separar_pagos_examen(planes, pagos)
+    anticipadas = [p for p in pagos if es_matricula_siguiente(p, planes, anio)]  # no se imputan a este año
+    pagos = [p for p in pagos if p not in anticipadas]
     for orden, pl in enumerate(planes):
         c = pl["curso"]
         cuota = _dec(getattr(alumno, "cuota_personalizada", None) if pl.get("principal") and getattr(alumno, "cuota_personalizada", None) else c.cuota)
@@ -296,8 +306,12 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
                   "pagos": [{"id": p.id, "fecha": str(p.fecha), "importe": float(importe), "mes_pago": _mes_relativo(f, anio)}]}
             items.append(it)
             imputaciones.append(_pago_dto(p, [{"concepto": concepto, "importe": importe, "plan": clave, "tipo": "examen"}], anio))
+    for p in anticipadas:
+        imputaciones.append(_pago_dto(p, [{"concepto": f"Matrícula {anio + 1} (anticipada)", "importe": _dec(p.importe),
+                                           "tipo": "matricula_siguiente"}], anio))
     if pagos_examen:
         items.sort(key=lambda it: (it["mes"], 0 if it["es_matricula"] else 1, it["orden"]))
+    if pagos_examen or anticipadas:
         imputaciones.sort(key=lambda x: (x["fecha_pago"] or x["fecha"], x["id"] or 0))
 
     # Resumen general y por curso
@@ -391,6 +405,7 @@ def estado_cuenta(alumno, planes, pagos, anio: int, hoy: date | None = None, mes
     base.update(
         esperado=float(tot["esperado"]), deuda=float(tot["deuda"]), deuda_total=float(tot["deuda"] + ant_saldo), estado=estado,
         deuda_anterior=float(ant_saldo), deuda_anterior_original=float(deuda_ant), debe_anio_anterior=ant_saldo > 0,
+        matricula_siguiente_pagada=float(sum((_dec(p.importe) for p in anticipadas), CERO)),
         imputado_deuda_anterior=float(deuda_ant - ant_saldo),
         items=salida, cuotas_adeudadas=tot["adeudadas"], matricula_adeudada=float(tot["matricula"]),
         meses_adeudados=meses_txt, detalle_deuda=detalle, proximo=proximo, saldo_a_favor=float(a_favor),
