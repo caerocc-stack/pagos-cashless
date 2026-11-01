@@ -158,27 +158,40 @@ def separar_nombre(completo: str, nombres: set[str], nombre_primero: bool = Fals
     return " ".join(t[:i]).upper(), _titulo(" ".join(t[i:]))
 
 
-def _leer_filas(contenido: bytes, nombre_archivo: str) -> list[list]:
+def _leer_hojas(contenido: bytes, nombre_archivo: str) -> list[tuple[str, list[list]]]:
+    """[(nombre de la hoja, filas)] de todas las hojas del archivo (un CSV es una sola)."""
     nombre = (nombre_archivo or "").lower()
     if nombre.endswith(".csv"):
         txt = contenido.decode("utf-8-sig", errors="replace")
         dialecto = csv.Sniffer().sniff(txt[:4000], delimiters=",;\t") if txt.strip() else csv.excel
-        return [list(r) for r in csv.reader(io.StringIO(txt), dialecto)]
+        return [("", [list(r) for r in csv.reader(io.StringIO(txt), dialecto)])]
     if nombre.endswith(".xls"):
         import xlrd
-        hoja = xlrd.open_workbook(file_contents=contenido).sheet_by_index(0)
-        return [hoja.row_values(i) for i in range(hoja.nrows)]
+        libro = xlrd.open_workbook(file_contents=contenido)
+        return [(h.name, [h.row_values(i) for i in range(h.nrows)]) for h in libro.sheets()[:40]]
     wb = openpyxl.load_workbook(io.BytesIO(contenido), data_only=True, read_only=True)
-    hojas = [[list(r) for r in ws.iter_rows(values_only=True)] for ws in wb.worksheets[:20]]
-    # con varias hojas, la que tiene el listado de alumnos (más columnas reconocidas; si empatan, más filas)
-    return max(hojas, key=lambda h: (_puntaje(h), len(h)))
+    return [(ws.title, [list(r) for r in ws.iter_rows(values_only=True)]) for ws in wb.worksheets[:40]]
 
 
-def _puntaje(filas: list[list]) -> int:
+def _es_listado(filas: list[list]) -> bool:
     _, col = _buscar_encabezados(filas)
-    tiene_id = bool({"dni", "cliente", "legajo"} & set(col))
-    tiene_nombre = bool({"apellido", "nombre", "completo", "completo_nombre_primero"} & set(col))
-    return len(col) + (10 if tiene_id and tiene_nombre else 0)
+    return bool({"dni", "cliente", "legajo"} & set(col)) and bool({"apellido", "nombre", "completo", "completo_nombre_primero"} & set(col))
+
+
+# "1°A", "1 A", "1ro A", "2do B", "3° año C", "4° A Mecánica", "7mo B": año (1 a 7) y división
+_CURSO_TXT = re.compile(r"(?<![\w])([1-7])\s*(°|º|ro|do|er|to|mo|vo|no)?\s*(?:ano\b)?\s*(?:division\b|div\.?)?\s*([a-f])?(?![a-z])")
+
+
+def curso_de_texto(txt: str) -> tuple[str | None, str | None]:
+    """(curso, área) de un nombre de hoja o un título como "2° B", "Curso: 4°A Aviónica". Sin ordinal ni
+    división no es un curso ("Hoja 1")."""
+    t = sin_acentos(str(txt or "")).lower()
+    area = "Mecanica" if "mecan" in t else "Avionica" if "avion" in t else None
+    for m in _CURSO_TXT.finditer(t):
+        nivel, ordinal, div = m.groups()
+        if ordinal or div:
+            return f"{nivel}°{(div or '').upper()}", area
+    return None, area
 
 
 def _buscar_encabezados(filas: list[list]) -> tuple[int, dict[str, int]]:
@@ -198,16 +211,39 @@ def _buscar_encabezados(filas: list[list]) -> tuple[int, dict[str, int]]:
 def leer_padron(contenido: bytes, nombre_archivo: str, curso: str | None = None,
                 nombres_conocidos: set[str] | None = None) -> dict:
     """Devuelve las filas ya en el formato del padrón (legajo, dni, apellido, nombre, curso, area, email,
-    telefono) y qué columnas se reconocieron."""
+    telefono) y qué columnas se reconocieron. Lee todas las hojas que tengan un listado de alumnos: si hay
+    una hoja por curso, el curso (y la especialidad) sale del nombre de la hoja o de un título arriba del listado."""
     try:
-        filas = _leer_filas(contenido, nombre_archivo)
+        hojas = _leer_hojas(contenido, nombre_archivo)
     except Exception as e:
         raise ValueError(f"No se pudo leer el archivo ({e.__class__.__name__}). Subí un Excel (.xlsx o .xls) o un CSV.")
     nombres = NOMBRES_BASE | (nombres_conocidos or set())
-    cab, col = _buscar_encabezados(filas)
-    if cab < 0 or not ({"dni", "cliente"} & set(col)) or not ({"apellido", "nombre", "completo", "completo_nombre_primero"} & set(col)):
+    listados = [(n, f) for n, f in hojas if _es_listado(f)]
+    if not listados:
         raise ValueError("No encontré las columnas del listado: hace falta al menos el DNI (o número de cliente) "
                          "y el nombre del alumno.")
+    varias = len(listados) > 1
+    salida, errores, columnas, trae_curso = [], [], {}, True
+    for nombre_hoja, filas in listados:
+        cab, _ = _buscar_encabezados(filas)
+        curso_hoja, area_hoja = curso_de_texto(nombre_hoja)
+        for fila in filas[:cab]:  # un título arriba del listado ("Curso: 2° B") manda sobre el nombre de la hoja
+            c, a = curso_de_texto(" ".join(texto(v) for v in fila if texto(v)))
+            if c:
+                curso_hoja, area_hoja = c, a or area_hoja
+                break
+        s, e, cols, trae = _leer_hoja(filas, nombres, curso, curso_hoja, area_hoja, f"{nombre_hoja} · " if varias else "")
+        salida += s
+        errores += e
+        columnas = columnas or cols
+        trae_curso = trae_curso and trae
+    return {"filas": salida, "errores": errores, "columnas": columnas, "trae_curso": trae_curso,
+            "hojas": [n for n, _ in listados]}
+
+
+def _leer_hoja(filas: list[list], nombres: set[str], curso: str | None, curso_hoja: str | None, area_hoja: str | None,
+               prefijo: str) -> tuple[list, list, dict, bool]:
+    cab, col = _buscar_encabezados(filas)
 
     def val(f, tipo):
         j = col.get(tipo)
@@ -241,21 +277,20 @@ def leer_padron(contenido: bytes, nombre_archivo: str, curso: str | None = None,
         if legajo and re.fullmatch(r"\d+\.0", legajo):
             legajo = legajo[:-2]
         fila = {
-            "fila": n, "legajo": legajo, "dni": dni, "apellido": ape[:100], "nombre": nom[:100],
-            "curso": texto(val(f, "curso")) or (curso or "").strip(), "area": texto(val(f, "area")),
+            "fila": f"{prefijo}{n}" if prefijo else n, "legajo": legajo, "dni": dni, "apellido": ape[:100], "nombre": nom[:100],
+            "curso": texto(val(f, "curso")) or curso_hoja or (curso or "").strip(), "area": texto(val(f, "area")) or area_hoja or "",
             "email": limpiar_emails(val(f, "email")), "telefono": texto(val(f, "telefono"))[:40] or None,
         }
         # sin DNI alcanza el número de cliente / legajo (ingresantes: el DNI llega después con el padrón definitivo)
         falta = [k for k, v in (("DNI", dni or solo_digitos(legajo)), ("apellido", ape), ("nombre", nom)) if not v]
         if falta:
-            errores.append(f"Fila {n}: falta {', '.join(falta)}")
+            errores.append(f"Fila {prefijo}{n}: falta {', '.join(falta)}")
             fila["error"] = "Falta " + ", ".join(falta)
         elif dni and not 6 <= len(dni) <= 10:
-            errores.append(f"Fila {n}: el DNI «{dni}» no parece válido")
+            errores.append(f"Fila {prefijo}{n}: el DNI «{dni}» no parece válido")
             fila["error"] = "DNI inválido"
         salida.append(fila)
     reconocidas = {t: texto(filas[cab][j]) for t, j in col.items()}
     if "cliente" in reconocidas:
         reconocidas["dni" if cliente_es_dni else "legajo"] = reconocidas.pop("cliente")
-    return {"filas": salida, "errores": errores, "columnas": reconocidas,
-            "trae_curso": "curso" in col, "fila_encabezados": cab + 1}
+    return salida, errores, reconocidas, "curso" in col or bool(curso_hoja)

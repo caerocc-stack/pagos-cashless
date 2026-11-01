@@ -1059,6 +1059,9 @@ async function impLeer() {
         .map(([k, v]) => `<span class="imp-col"><b>${IMP_COLUMNAS[k]}</b> ← ${escapeHtml(v)}</span>`).join('');
     vista.innerHTML = `
         <div class="imp-cols"><span class="muted">Columnas reconocidas:</span> ${cols}</div>
+        ${r.hojas && r.hojas.length > 1 ? `<div class="imp-cols"><span class="muted">Hojas leídas (${r.hojas.length}):</span> ${r.hojas.map(h => {
+            const n = r.filas.filter(f => String(f.fila).startsWith(h + ' · ')).length;
+            return `<span class="imp-col"><b>${escapeHtml(h)}</b> ${n} alumno${n === 1 ? '' : 's'}</span>`; }).join('')}</div>` : ''}
         ${faltaCurso ? '<div class="ps-aviso">Escribí o elegí el curso de estos alumnos para poder importarlos.</div>' : ''}
         <div class="imp-resumen">
             <div><b>${r.creados}</b><span>nuevos</span></div>

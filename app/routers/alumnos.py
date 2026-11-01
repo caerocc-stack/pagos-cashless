@@ -35,6 +35,8 @@ def derivar_area(curso: str) -> str | None:
         return "Ciclo Basico"
     if "ingresante" in c:
         return AREA_INGRESANTES
+    if re.match(r"\s*[1-3]\s*°", c):  # 1° a 3° es el ciclo básico (de 4° en adelante depende de la especialidad)
+        return "Ciclo Basico"
     return None
 
 
@@ -403,7 +405,7 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool, completo: bool = F
             from app.routers.cuotas import reasignar_pendientes
             resumen["pagos_asignados"] = reasignar_pendientes(db)
     return {**resumen, "errores": errores, "filas": vista, "total_procesadas": len(filas),
-            "columnas": datos["columnas"], "trae_curso": datos["trae_curso"]}
+            "columnas": datos["columnas"], "trae_curso": datos["trae_curso"], "hojas": datos.get("hojas", [])}
 
 
 @router.post("/importar/vista")
