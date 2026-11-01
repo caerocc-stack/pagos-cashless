@@ -1053,7 +1053,8 @@ async function impLeer() {
     const r = impUltima;
     document.getElementById('imp-curso-box').hidden = r.trae_curso;
     document.getElementById('imp-cursos-lista').innerHTML = r.cursos_existentes.map(c => `<option value="${escapeHtml(c)}">`).join('');
-    const faltaCurso = !r.trae_curso && !document.getElementById('imp-curso').value.trim();
+    // el curso solo hace falta para los alumnos nuevos (a los que ya están se les actualizan los datos)
+    const faltaCurso = !r.trae_curso && !document.getElementById('imp-curso').value.trim() && r.creados > 0;
     const importables = r.creados + r.actualizados + (r.bajas || 0);
     const cols = Object.entries(r.columnas).filter(([k]) => IMP_COLUMNAS[k])
         .map(([k, v]) => `<span class="imp-col"><b>${IMP_COLUMNAS[k]}</b> ← ${escapeHtml(v)}</span>`).join('');

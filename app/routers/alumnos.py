@@ -302,17 +302,17 @@ def _procesar_padron(db: Session, datos: dict, aplicar: bool, completo: bool = F
             vista.append(r)
             continue
         sin_curso = not f["curso"]  # el listado no lo trae y todavía no se eligió: la vista igual muestra qué pasaría
-        if sin_curso and (aplicar or datos["trae_curso"]):
+        # sin DNI (ingresantes): "SL" + legajo hasta que llegue el padrón definitivo
+        dni = f["dni"] or "SL" + re.sub(r"\D", "", f["legajo"] or "")
+        legajo = f["legajo"] or "D" + dni  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
+        ex = existentes_por_legajo.get(legajo) or por_dni.get(dni)
+        if sin_curso and ex is None and (aplicar or datos["trae_curso"]):  # a uno que ya está no le hace falta
             r["accion"], r["detalle"] = "error", "Falta el curso"
             errores.append(f"Fila {f['fila']}: falta el curso")
             vista.append(r)
             continue
-        # sin DNI (ingresantes): "SL" + legajo hasta que llegue el padrón definitivo
-        dni = f["dni"] or "SL" + re.sub(r"\D", "", f["legajo"] or "")
-        legajo = f["legajo"] or "D" + dni  # sin legajo (exámenes, aeronavegantes): el cupón va con el DNI
         area = area_para(f["curso"], f["area"]) if not sin_curso else (f["area"] or None)
         r["legajo"], r["area"], r["dni"] = legajo, area, f["dni"] or "sin DNI"
-        ex = existentes_por_legajo.get(legajo) or por_dni.get(dni)
         sin_dni = lambda d: (d or "").startswith("SL")  # noqa: E731
         if ex is not None and ex.dni != dni and ex.legajo == legajo and not (sin_dni(ex.dni) or sin_dni(dni)):
             r["accion"], r["detalle"] = "error", f"El legajo {legajo} ya es de {ex.apellido}, {ex.nombre} (DNI {ex.dni})"
