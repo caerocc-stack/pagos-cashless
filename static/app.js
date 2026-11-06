@@ -7407,7 +7407,7 @@ async function cargarImpresiones() {
             const [txt, cls] = IMX_ESTADOS[p.estado] || [p.estado, ''];
             const a = p.alumno || {};
             const opciones = [`<b>${p.copias} ${p.copias === 1 ? 'copia' : 'copias'}</b>`, imxMB(p.tamanio)].filter(Boolean).join(' · ');
-            const marcas = `<span class="imx-hoja">${escapeHtml(p.hoja || 'Sin tamaño')}</span>${p.color ? '<span class="imx-color">A color</span>' : '<span class="imx-bn">B/N</span>'}`;
+            const marcas = `<span class="imx-hoja">${escapeHtml(p.hoja || 'Sin tamaño')}</span>${p.color ? '<span class="imx-color">A color</span>' : '<span class="imx-bn">B/N</span>'}${p.doble_faz ? '<span class="imx-doble">Doble faz</span>' : ''}`;
             const resuelto = p.estado === 'impreso' ? `Impreso el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}`
                 : p.estado === 'descartado' ? `Descartado el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}: ${escapeHtml(p.motivo || '')}`
                 : p.estado === 'cancelado' ? `Cancelado el ${fmtFechaHora(p.resuelto)}` : '';

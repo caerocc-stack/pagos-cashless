@@ -1220,4 +1220,5 @@ td:has(> .td-acc) { width: 1%; }
 .imx-color, .imx-bn { padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
 .imx-color { background: linear-gradient(90deg, #c2185b, #f57c00, #2e7d32, #1565c0); color: #fff; }
 .imx-bn { background: var(--surface-3); color: var(--text-muted); }
+.imx-doble { padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; background: var(--warning); color: #fff; }
 .imx-arch { flex-wrap: wrap; }

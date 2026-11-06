@@ -90,7 +90,7 @@ def get_alumno(request: Request, db: Session = Depends(get_db)) -> CuentaAlumno:
 
 
 def _dto(p: PedidoImpresion, con_alumno=False) -> dict:
-    d = {"id": p.id, "archivo": p.archivo_nombre, "tamanio": p.tamanio, "copias": p.copias, "hoja": p.hoja, "color": bool(p.color),
+    d = {"id": p.id, "archivo": p.archivo_nombre, "tamanio": p.tamanio, "copias": p.copias, "hoja": p.hoja, "color": bool(p.color), "doble_faz": bool(p.doble_faz),
          "notas": p.notas, "estado": p.estado, "motivo": p.motivo, "enviado": _fmt(p.created_at),
          "resuelto": _fmt(p.resuelto_at), "resuelto_por": p.resuelto_por if con_alumno else None,
          "archivo_disponible": not p.archivo_borrado}
@@ -205,6 +205,7 @@ class NuevoPedido(BaseModel):
     copias: int = 1
     hoja: str = ""
     color: bool = False
+    doble_faz: bool = False
     notas: str | None = None
 
 
@@ -248,7 +249,7 @@ def crear_pedido(data: NuevoPedido, request: Request, c: CuentaAlumno = Depends(
     if hoja not in hojas_en_nombre(nombre):  # la norma: el tamaño va en el nombre del archivo
         nombre = f"{hoja} - {nombre}"
     p = PedidoImpresion(alumno_id=c.alumno_id, archivo_nombre=nombre, archivo_ruta=data.ruta, tamanio=data.tamanio,
-                        copias=max(1, min(int(data.copias or 1), 50)), hoja=hoja, color=bool(data.color),
+                        copias=max(1, min(int(data.copias or 1), 50)), hoja=hoja, color=bool(data.color), doble_faz=bool(data.doble_faz),
                         notas=(data.notas or "").strip()[:300] or None)
     db.add(p)
     db.commit()

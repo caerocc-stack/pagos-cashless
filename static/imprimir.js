@@ -4,7 +4,7 @@
 const $ = id => document.getElementById(id);
 let yo = null;
 let claveIngreso = null;   // la clave con la que entró (el DNI) para el cambio obligatorio
-let elegidos = [];         // [{file, hoja, color}]
+let elegidos = [];         // [{file, hoja, color, doble}]
 let copias = 1;
 
 function escapeHtml(s) {
@@ -119,7 +119,7 @@ function elegirArchivos(files, esFoto = false) {
         }
         if (!permitidas.has(extension(file.name))) { toast(`«${file.name}» no se puede imprimir. Mandá PDF, fotos o Word.`, 'error'); continue; }
         if (file.size > yo.max_mb * 1024 * 1024) { toast(`«${file.name}» pesa más de ${yo.max_mb} MB.`, 'error'); continue; }
-        elegidos.push({ file, hoja: hojaDelNombre(file.name), color: false });
+        elegidos.push({ file, hoja: hojaDelNombre(file.name), color: false, doble: false });
     }
     $('im-archivos').value = ''; $('im-camara').value = '';
     pintarElegidos();
@@ -134,6 +134,7 @@ function nombreFinal(x) { return hojasDelNombre(x.file.name).includes(x.hoja) ? 
 function quitarElegido(i) { elegidos.splice(i, 1); pintarElegidos(); }
 function elegirHoja(i, h) { elegidos[i].hoja = h; pintarElegidos(); }
 function alternarColor(i) { elegidos[i].color = !elegidos[i].color; pintarElegidos(); }
+function alternarDoble(i) { elegidos[i].doble = !elegidos[i].doble; pintarElegidos(); }
 
 function pintarElegidos() {
     $('im-elegidos').innerHTML = elegidos.map((x, i) => {
@@ -151,6 +152,8 @@ function pintarElegidos() {
             </div>
             <button type="button" role="switch" aria-checked="${x.color}" class="im-chip im-chip-color ${x.color ? 'on' : ''}" onclick="alternarColor(${i})">
                 <svg class="ic"><use href="#i-palette"/></svg>${x.color ? 'A color' : 'Blanco y negro'}</button>
+            <button type="button" role="switch" aria-checked="${x.doble}" class="im-chip ${x.doble ? 'on' : ''}" onclick="alternarDoble(${i})">
+                <svg class="ic"><use href="#i-copy"/></svg>${x.doble ? 'Doble faz' : 'Simple faz'}</button>
         </div>
         ${!x.hoja ? '<small class="im-el-falta">Elegí el tamaño de hoja</small>'
             : choca ? `<small class="im-el-falta">El nombre dice ${otras.join(' y ')}: si tiene hojas de distintos tamaños, separalo en un archivo por tamaño.</small>` : ''}
@@ -195,7 +198,7 @@ async function enviar(e) {
             const firma = await api('/api/imprimir/firma', { method: 'POST', body: JSON.stringify({ nombre: f.name, tamanio: f.size }) });
             await subir(firma.upload_url, f, p => avance(p * f.size, i));
             await api('/api/imprimir/pedidos', { method: 'POST', body: JSON.stringify({
-                ruta: firma.ruta, nombre: nombreFinal(x), tamanio: f.size, hoja: x.hoja, color: x.color, ...opciones }) });
+                ruta: firma.ruta, nombre: nombreFinal(x), tamanio: f.size, hoja: x.hoja, color: x.color, doble_faz: x.doble, ...opciones }) });
             hechos += f.size; enviados++;
         }
         toast(enviados > 1 ? `Listo: ${enviados} archivos enviados a la oficina.` : 'Listo: tu archivo llegó a la oficina.');
@@ -223,7 +226,7 @@ async function cargarPedidos() {
         const lista = await api('/api/imprimir/pedidos');
         $('im-lista').innerHTML = lista.length ? lista.map(p => {
             const [txt, ic, cls] = ESTADOS[p.estado] || [p.estado, 'i-file', 'neutro'];
-            const detalle = [p.hoja, p.color ? 'a color' : 'blanco y negro', p.copias > 1 ? `${p.copias} copias` : '1 copia', fmtMB(p.tamanio)].filter(Boolean).join(' · ');
+            const detalle = [p.hoja, p.color ? 'a color' : 'blanco y negro', p.doble_faz ? 'doble faz' : 'simple faz', p.copias > 1 ? `${p.copias} copias` : '1 copia', fmtMB(p.tamanio)].filter(Boolean).join(' · ');
             const cuando = p.estado === 'impreso' ? `Impreso ${fmtFecha(p.resuelto)} · retiralo en la oficina`
                 : p.estado === 'descartado' ? `Descartado ${fmtFecha(p.resuelto)}`
                 : p.estado === 'cancelado' ? `Cancelado ${fmtFecha(p.resuelto)}` : `Enviado ${fmtFecha(p.enviado)}`;
