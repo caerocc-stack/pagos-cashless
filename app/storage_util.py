@@ -80,7 +80,9 @@ def _traducir(code: int, detalle: str) -> str:
 
 
 def _es_bucket_inexistente(code: int, cuerpo: str) -> bool:
-    return code == 404 or "bucket not found" in (cuerpo or "").lower()
+    # Supabase avisa de varias formas: 404, "Bucket not found" o un 400 con "related resource does not exist"
+    c = (cuerpo or "").lower().replace(" ", "")
+    return code == 404 or "bucketnotfound" in c or "relatedresourcedoesnotexist" in c or '"statuscode":"404"' in c
 
 
 def _preparar(filename: str):

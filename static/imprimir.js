@@ -5,7 +5,6 @@ const $ = id => document.getElementById(id);
 let yo = null;
 let claveIngreso = null;   // la clave con la que entró (el DNI) para el cambio obligatorio
 let elegidos = [];         // [{file, hoja, color, doble}]
-let copias = 1;
 
 function escapeHtml(s) {
     return s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -119,7 +118,7 @@ function elegirArchivos(files, esFoto = false) {
         }
         if (!permitidas.has(extension(file.name))) { toast(`«${file.name}» no se puede imprimir. Mandá PDF, fotos o Word.`, 'error'); continue; }
         if (file.size > yo.max_mb * 1024 * 1024) { toast(`«${file.name}» pesa más de ${yo.max_mb} MB.`, 'error'); continue; }
-        elegidos.push({ file, hoja: hojaDelNombre(file.name), color: false, doble: false });
+        elegidos.push({ file, hoja: hojaDelNombre(file.name), color: false, doble: false, copias: 1 });
     }
     $('im-archivos').value = ''; $('im-camara').value = '';
     pintarElegidos();
@@ -155,6 +154,14 @@ function pintarElegidos() {
             <button type="button" role="switch" aria-checked="${x.doble}" class="im-chip ${x.doble ? 'on' : ''}" onclick="alternarDoble(${i})">
                 <svg class="ic"><use href="#i-copy"/></svg>${x.doble ? 'Doble faz' : 'Simple faz'}</button>
         </div>
+        <div class="im-el-copias">
+            <span id="lbl-copias-${i}">Copias de este archivo</span>
+            <div class="im-stepper" role="group" aria-labelledby="lbl-copias-${i}">
+                <button type="button" onclick="cambiarCopias(${i}, -1)" aria-label="Una copia menos" ${x.copias <= 1 ? 'disabled' : ''}><svg class="ic"><use href="#i-minus"/></svg></button>
+                <output aria-live="polite">${x.copias}</output>
+                <button type="button" onclick="cambiarCopias(${i}, 1)" aria-label="Una copia más"><svg class="ic"><use href="#i-plus"/></svg></button>
+            </div>
+        </div>
         ${!x.hoja ? '<small class="im-el-falta">Elegí el tamaño de hoja</small>'
             : choca ? `<small class="im-el-falta">El nombre dice ${otras.join(' y ')}: si tiene hojas de distintos tamaños, separalo en un archivo por tamaño.</small>` : ''}
     </li>`; }).join('');
@@ -165,7 +172,7 @@ function pintarElegidos() {
         : elegidos.length > 1 ? `Enviar ${elegidos.length} archivos` : 'Enviar a imprimir';
 }
 
-function cambiarCopias(d) { copias = Math.max(1, Math.min(50, copias + d)); $('im-copias').textContent = copias; }
+function cambiarCopias(i, d) { elegidos[i].copias = Math.max(1, Math.min(50, elegidos[i].copias + d)); pintarElegidos(); }
 
 function subir(url, file, alAvanzar) {
     // XMLHttpRequest para poder mostrar el avance (con datos móviles tarda)
@@ -191,18 +198,18 @@ async function enviar(e) {
         $('im-barra').style.width = Math.round((hechos + parcial) / total * 100) + '%';
         $('im-progreso-txt').textContent = `Subiendo ${i + 1} de ${elegidos.length}…`;
     };
-    const opciones = { copias, notas: $('im-notas').value };
+    const opciones = { notas: $('im-notas').value };
     try {
         for (let i = 0; i < elegidos.length; i++) {
             const x = elegidos[i], f = x.file;
             const firma = await api('/api/imprimir/firma', { method: 'POST', body: JSON.stringify({ nombre: f.name, tamanio: f.size }) });
             await subir(firma.upload_url, f, p => avance(p * f.size, i));
             await api('/api/imprimir/pedidos', { method: 'POST', body: JSON.stringify({
-                ruta: firma.ruta, nombre: nombreFinal(x), tamanio: f.size, hoja: x.hoja, color: x.color, doble_faz: x.doble, ...opciones }) });
+                ruta: firma.ruta, nombre: nombreFinal(x), tamanio: f.size, hoja: x.hoja, color: x.color, doble_faz: x.doble, copias: x.copias, ...opciones }) });
             hechos += f.size; enviados++;
         }
         toast(enviados > 1 ? `Listo: ${enviados} archivos enviados a la oficina.` : 'Listo: tu archivo llegó a la oficina.');
-        elegidos = []; copias = 1; $('im-copias').textContent = 1; $('im-notas').value = '';
+        elegidos = []; $('im-notas').value = '';
     } catch (err) {
         if (err.message) toast(err.message, 'error');
         elegidos = elegidos.slice(enviados);   // los que ya llegaron no se vuelven a mandar
