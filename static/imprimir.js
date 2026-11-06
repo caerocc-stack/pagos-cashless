@@ -149,10 +149,12 @@ function pintarElegidos() {
             <div class="im-hojas" role="radiogroup" aria-label="Tamaño de hoja de ${escapeHtml(x.file.name)}">
                 ${yo.hojas.map(h => `<button type="button" role="radio" aria-checked="${x.hoja === h}" class="im-chip ${x.hoja === h ? 'on' : ''}" onclick="elegirHoja(${i}, '${h}')">${h}</button>`).join('')}
             </div>
+            <div class="im-toggles">
             <button type="button" role="switch" aria-checked="${x.color}" class="im-chip im-chip-color ${x.color ? 'on' : ''}" onclick="alternarColor(${i})">
                 <svg class="ic"><use href="#i-palette"/></svg>${x.color ? 'A color' : 'Blanco y negro'}</button>
             <button type="button" role="switch" aria-checked="${x.doble}" class="im-chip ${x.doble ? 'on' : ''}" onclick="alternarDoble(${i})">
                 <svg class="ic"><use href="#i-copy"/></svg>${x.doble ? 'Doble faz' : 'Simple faz'}</button>
+            </div>
         </div>
         <div class="im-el-copias">
             <span id="lbl-copias-${i}">Copias de este archivo</span>
