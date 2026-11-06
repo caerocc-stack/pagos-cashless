@@ -7379,6 +7379,8 @@ const imxMB = b => b == null ? '' : b < 1048576 ? Math.max(1, Math.round(b / 102
 async function imxActualizarBadge() {
     try {
         const c = await api('/api/impresiones/contador');
+        const sel = document.getElementById('imx-hoja');
+        if (sel) [...sel.options].forEach(o => { if (o.value) o.textContent = o.value + (c.por_hoja[o.value] ? ` (${c.por_hoja[o.value]} para imprimir)` : ''); });
         for (const id of ['side-badge-impresiones', 'imx-badge']) {
             const b = document.getElementById(id);
             if (b) { b.textContent = c.pendientes; b.hidden = !c.pendientes; }
@@ -7396,14 +7398,16 @@ function imxBuscarLuego() { clearTimeout(imxTimer); imxTimer = setTimeout(cargar
 async function cargarImpresiones() {
     document.getElementById('imx-url').textContent = location.origin + '/imprimir';
     const cont = document.getElementById('imx-lista');
-    const qs = new URLSearchParams({ estado: imxEstado, q: document.getElementById('imx-buscar').value });
+    const qs = new URLSearchParams({ estado: imxEstado, q: document.getElementById('imx-buscar').value,
+        hoja: document.getElementById('imx-hoja').value, color: document.getElementById('imx-color').value });
     try {
         const lista = await api('/api/impresiones/?' + qs);
         const puede = usuarioActual.rol === 'admin';
         cont.innerHTML = lista.length ? lista.map(p => {
             const [txt, cls] = IMX_ESTADOS[p.estado] || [p.estado, ''];
             const a = p.alumno || {};
-            const opciones = [`<b>${p.copias} ${p.copias === 1 ? 'copia' : 'copias'}</b>`, p.doble_faz ? '<b>doble faz</b>' : 'simple faz', imxMB(p.tamanio)].filter(Boolean).join(' · ');
+            const opciones = [`<b>${p.copias} ${p.copias === 1 ? 'copia' : 'copias'}</b>`, imxMB(p.tamanio)].filter(Boolean).join(' · ');
+            const marcas = `<span class="imx-hoja">${escapeHtml(p.hoja || 'Sin tamaño')}</span>${p.color ? '<span class="imx-color">A color</span>' : '<span class="imx-bn">B/N</span>'}`;
             const resuelto = p.estado === 'impreso' ? `Impreso el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}`
                 : p.estado === 'descartado' ? `Descartado el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}: ${escapeHtml(p.motivo || '')}`
                 : p.estado === 'cancelado' ? `Cancelado el ${fmtFechaHora(p.resuelto)}` : '';
@@ -7417,7 +7421,7 @@ async function cargarImpresiones() {
                 : (p.estado !== 'cancelado' && p.archivo_disponible ? `<button class="btn btn-sm btn-ghost" onclick="imxEstadoPedido(${p.id}, 'pendiente')">Volver a pendiente</button>` : '');
             return `<div class="imx-item imx-${p.estado}">
                 <div class="imx-info">
-                    <div class="imx-arch"><svg class="ic"><use href="#i-printer"/></svg><b>${escapeHtml(p.archivo)}</b></div>
+                    <div class="imx-arch">${marcas}<b>${escapeHtml(p.archivo)}</b></div>
                     <div class="imx-alumno">${escapeHtml(a.nombre || '')} <span class="muted">· ${escapeHtml(a.curso || '')} · DNI ${escapeHtml(a.dni || '')}</span></div>
                     <div class="imx-opc">${opciones}</div>
                     ${p.notas ? `<div class="imx-notas">“${escapeHtml(p.notas)}”</div>` : ''}

@@ -28,17 +28,40 @@
 
 .im-elegidos { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; margin: 0.75rem 0 0; }
 .im-elegidos:empty { display: none; }
-.im-elegidos li { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.4rem 0.5rem 0.7rem; border: 1px solid var(--border);
+.im-elegidos li { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.5rem 0.4rem 0.65rem 0.7rem; border: 1px solid var(--border);
     border-radius: var(--radius-sm); background: var(--surface); }
-.im-elegidos li > .ic { color: var(--primary); flex: none; }
-.im-elegidos li div { flex: 1; min-width: 0; }
+.im-elegidos li.im-falta { border-color: var(--warning); background: var(--warning-soft); }
+.im-el-top { display: flex; align-items: center; gap: 0.6rem; }
+.im-el-top > .ic { color: var(--primary); flex: none; }
+.im-el-top > div { flex: 1; min-width: 0; }
 .im-elegidos b { display: block; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .im-elegidos small { color: var(--text-muted); font-size: 0.76rem; }
+.im-el-opc { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; padding-right: 0.3rem; }
+.im-hojas { display: flex; gap: 0.35rem; }
+.im-chip { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 40px; padding: 0 0.85rem; border: 1px solid var(--border-strong);
+    border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; }
+.im-chip .ic { width: 16px; height: 16px; }
+.im-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.im-chip-color.on { background: linear-gradient(90deg, #c2185b, #f57c00, #2e7d32, #1565c0); border-color: transparent; }
+.im-elegidos .im-el-falta { color: var(--warning); font-weight: 600; font-size: 0.8rem; }
+
+/* Cartel de reglas de impresión */
+.im-aviso { margin-bottom: 1.1rem; padding: 1rem 1.1rem 1.05rem; border: 2px solid var(--warning); border-radius: var(--radius);
+    background: var(--warning-soft); color: var(--text); }
+.im-aviso-head { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.6rem; }
+.im-aviso-head .ic { width: 30px; height: 30px; color: var(--warning); flex: none; }
+.im-aviso h2 { margin: 0; font-size: 1.3rem; letter-spacing: 0.01em; text-transform: uppercase; color: var(--warning); }
+.im-aviso ol { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 1rem; line-height: 1.45; }
+.im-aviso li::marker { font-weight: 700; color: var(--warning); }
+.im-ej { display: block; margin-top: 0.2rem; font-size: 0.88rem; color: var(--text-muted); }
+.im-ej code { background: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px; color: var(--heading); font-size: 0.88rem; }
+.im-aviso > p { margin: 0.75rem 0 0; padding-top: 0.6rem; border-top: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); font-size: 0.9rem; }
 .im-quitar { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; background: none; color: var(--text-muted);
     border-radius: 50%; cursor: pointer; }
 .im-quitar:hover { background: var(--danger-soft); color: var(--danger); }
 
-.im-opciones { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin: 1rem 0 0.25rem; }
+.im-opciones { display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin: 1rem 0 0.25rem; }
 .im-opcion { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 52px; padding: 0.35rem 0.5rem 0.35rem 0.8rem;
     border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); font-weight: 600; font-size: 0.92rem; }
 .im-stepper { display: flex; align-items: center; gap: 0.15rem; }

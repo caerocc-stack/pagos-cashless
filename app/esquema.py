@@ -110,6 +110,9 @@ MIGRACIONES = [
     # Deuda de años anteriores discriminada por año (cierre de ciclo)
     "ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS deuda_anterior_detalle VARCHAR(200)",
     "ALTER TABLE alumno_anios ADD COLUMN IF NOT EXISTS deuda_anterior_detalle VARCHAR(200)",
+    # Impresiones: tamaño de hoja y color por archivo
+    "ALTER TABLE pedidos_impresion ADD COLUMN IF NOT EXISTS hoja VARCHAR(10)",
+    "ALTER TABLE pedidos_impresion ADD COLUMN IF NOT EXISTS color BOOLEAN DEFAULT FALSE",
 ]
 
 

@@ -1215,3 +1215,9 @@ td:has(> .td-acc) { width: 1%; }
     .imx-acciones .btn { min-height: 42px; }
     #imx-buscar { min-width: 0; width: 100%; }
 }
+.imx-hoja { display: inline-grid; place-items: center; min-width: 52px; padding: 0.15rem 0.5rem; border-radius: 6px; background: var(--navy, #15233b);
+    color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
+.imx-color, .imx-bn { padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+.imx-color { background: linear-gradient(90deg, #c2185b, #f57c00, #2e7d32, #1565c0); color: #fff; }
+.imx-bn { background: var(--surface-3); color: var(--text-muted); }
+.imx-arch { flex-wrap: wrap; }

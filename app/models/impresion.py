@@ -34,7 +34,9 @@ class PedidoImpresion(Base):
     archivo_ruta: Mapped[str] = mapped_column(String(300), nullable=False)
     tamanio: Mapped[int | None] = mapped_column(Integer)
     copias: Mapped[int] = mapped_column(Integer, default=1)
-    doble_faz: Mapped[bool] = mapped_column(Boolean, default=False)
+    doble_faz: Mapped[bool] = mapped_column(Boolean, default=False)   # ya no se ofrece: no se imprime doble faz
+    hoja: Mapped[str | None] = mapped_column(String(10))               # A4 / A3 / Oficio (va también en el nombre)
+    color: Mapped[bool] = mapped_column(Boolean, default=False)
     notas: Mapped[str | None] = mapped_column(String(300))
     estado: Mapped[str] = mapped_column(String(15), default="pendiente")   # pendiente / impreso / descartado / cancelado
     motivo: Mapped[str | None] = mapped_column(String(300))                # por qué se descartó

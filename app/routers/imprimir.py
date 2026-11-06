@@ -39,6 +39,8 @@ DIAS_ARCHIVO = 30
 MAX_PENDIENTES = 20
 EXTENSIONES = {"pdf", "jpg", "jpeg", "png", "webp", "heic", "heif", "doc", "docx", "odt"}
 MSG_CRED = "DNI o contraseña incorrectos."
+HOJAS = ("A4", "A3", "Oficio")
+_HOJA_EN_NOMBRE = {h: re.compile(rf"(?<![a-z0-9]){h}(?![a-z0-9])", re.I) for h in HOJAS}
 COOKIE = "atoken"
 
 
@@ -48,6 +50,11 @@ def _solo_digitos(s) -> str:
 
 def _fmt(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%S") if dt else None
+
+
+def hojas_en_nombre(nombre: str) -> set[str]:
+    """Tamaños de hoja que menciona el nombre del archivo (A4, A3, Oficio)."""
+    return {h for h, rx in _HOJA_EN_NOMBRE.items() if rx.search(nombre or "")}
 
 
 def _alumno_por_dni(db: Session, dni: str) -> Alumno | None:
@@ -83,7 +90,7 @@ def get_alumno(request: Request, db: Session = Depends(get_db)) -> CuentaAlumno:
 
 
 def _dto(p: PedidoImpresion, con_alumno=False) -> dict:
-    d = {"id": p.id, "archivo": p.archivo_nombre, "tamanio": p.tamanio, "copias": p.copias, "doble_faz": bool(p.doble_faz),
+    d = {"id": p.id, "archivo": p.archivo_nombre, "tamanio": p.tamanio, "copias": p.copias, "hoja": p.hoja, "color": bool(p.color),
          "notas": p.notas, "estado": p.estado, "motivo": p.motivo, "enviado": _fmt(p.created_at),
          "resuelto": _fmt(p.resuelto_at), "resuelto_por": p.resuelto_por if con_alumno else None,
          "archivo_disponible": not p.archivo_borrado}
@@ -161,7 +168,7 @@ def me(c: CuentaAlumno = Depends(get_alumno)):
     a = c.alumno
     return {"nombre": a.nombre, "apellido": a.apellido, "curso": a.curso, "division": a.division, "legajo": a.legajo,
             "debe_cambiar_password": bool(c.debe_cambiar_password), "max_mb": storage_util.MAX_IMPRESION_MB,
-            "extensiones": sorted(EXTENSIONES)}
+            "extensiones": sorted(EXTENSIONES), "hojas": list(HOJAS)}
 
 
 @router.post("/cambiar-password")
@@ -196,7 +203,8 @@ class NuevoPedido(BaseModel):
     nombre: str
     tamanio: int | None = None
     copias: int = 1
-    doble_faz: bool = False
+    hoja: str = ""
+    color: bool = False
     notas: str | None = None
 
 
@@ -229,9 +237,18 @@ def crear_pedido(data: NuevoPedido, request: Request, c: CuentaAlumno = Depends(
                                                   PedidoImpresion.estado == "pendiente").count()
     if pendientes >= MAX_PENDIENTES:
         raise HTTPException(400, f"Ya tenés {MAX_PENDIENTES} archivos esperando. Esperá que se impriman para mandar más.")
-    nombre = re.sub(r"[\x00-\x1f]", "", (data.nombre or "").strip())[:200] or f"archivo.{_extension(data.ruta)}"
+    hoja = next((h for h in HOJAS if h.lower() == (data.hoja or "").strip().lower()), None)
+    if not hoja:
+        raise HTTPException(400, "Elegí el tamaño de hoja del archivo: A4, A3 u Oficio.")
+    nombre = re.sub(r"[\x00-\x1f]", "", (data.nombre or "").strip())[:180] or f"archivo.{_extension(data.ruta)}"
+    otras = hojas_en_nombre(nombre) - {hoja}
+    if otras:
+        raise HTTPException(400, f"El nombre del archivo dice {', '.join(sorted(otras))} pero elegiste {hoja}. "
+                                 "Si tiene hojas de distintos tamaños, separalo en un archivo por tamaño.")
+    if hoja not in hojas_en_nombre(nombre):  # la norma: el tamaño va en el nombre del archivo
+        nombre = f"{hoja} - {nombre}"
     p = PedidoImpresion(alumno_id=c.alumno_id, archivo_nombre=nombre, archivo_ruta=data.ruta, tamanio=data.tamanio,
-                        copias=max(1, min(int(data.copias or 1), 50)), doble_faz=bool(data.doble_faz),
+                        copias=max(1, min(int(data.copias or 1), 50)), hoja=hoja, color=bool(data.color),
                         notas=(data.notas or "").strip()[:300] or None)
     db.add(p)
     db.commit()
@@ -282,15 +299,21 @@ def limpiar_viejos(db: Session):
 
 @oficina.get("/contador")
 def contador(db: Session = Depends(get_db)):
-    return {"pendientes": db.query(PedidoImpresion).filter(PedidoImpresion.estado == "pendiente").count()}
+    filas = db.query(PedidoImpresion.hoja, PedidoImpresion.color).filter(PedidoImpresion.estado == "pendiente").all()
+    return {"pendientes": len(filas), "por_hoja": {h: sum(1 for x, _ in filas if x == h) for h in HOJAS},
+            "color": sum(1 for _, c in filas if c)}
 
 
 @oficina.get("/")
-def listar(estado: str = "pendiente", q: str = "", db: Session = Depends(get_db)):
+def listar(estado: str = "pendiente", q: str = "", hoja: str = "", color: str = "", db: Session = Depends(get_db)):
     limpiar_viejos(db)
     consulta = db.query(PedidoImpresion).join(Alumno, Alumno.id == PedidoImpresion.alumno_id)
     if estado:
         consulta = consulta.filter(PedidoImpresion.estado == estado)
+    if hoja:
+        consulta = consulta.filter(PedidoImpresion.hoja == hoja)
+    if color in ("si", "no"):
+        consulta = consulta.filter(PedidoImpresion.color.is_(color == "si"))
     if (q := q.strip()):
         patron = f"%{q}%"
         consulta = consulta.filter(Alumno.apellido.ilike(patron) | Alumno.nombre.ilike(patron) | Alumno.dni.ilike(patron)

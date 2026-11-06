@@ -4,7 +4,7 @@
 const $ = id => document.getElementById(id);
 let yo = null;
 let claveIngreso = null;   // la clave con la que entró (el DNI) para el cambio obligatorio
-let elegidos = [];         // File[]
+let elegidos = [];         // [{file, hoja, color}]
 let copias = 1;
 
 function escapeHtml(s) {
@@ -114,26 +114,52 @@ function elegirArchivos(files, esFoto = false) {
             file = new File([f], `foto.${file.type.split('/')[1] || 'jpg'}`, { type: f.type });
         }
         if (esFoto) {
-            const n = elegidos.filter(x => x.name.startsWith('Foto ')).length + 1;
+            const n = elegidos.filter(x => x.file.name.includes('Foto ')).length + 1;
             file = new File([file], `Foto ${n}.${extension(file.name) || 'jpg'}`, { type: file.type });
         }
         if (!permitidas.has(extension(file.name))) { toast(`«${file.name}» no se puede imprimir. Mandá PDF, fotos o Word.`, 'error'); continue; }
         if (file.size > yo.max_mb * 1024 * 1024) { toast(`«${file.name}» pesa más de ${yo.max_mb} MB.`, 'error'); continue; }
-        elegidos.push(file);
+        elegidos.push({ file, hoja: hojaDelNombre(file.name), color: false });
     }
     $('im-archivos').value = ''; $('im-camara').value = '';
     pintarElegidos();
 }
 
+// Tamaño de hoja que dice el nombre (A4, A3, Oficio); si dice más de uno, hay que separar el archivo
+function hojasDelNombre(nombre) { return yo.hojas.filter(h => new RegExp(`(^|[^a-z0-9])${h}([^a-z0-9]|$)`, 'i').test(nombre)); }
+function hojaDelNombre(nombre) { const h = hojasDelNombre(nombre); return h.length === 1 ? h[0] : null; }
+// Nombre con el que llega a la oficina: el tamaño siempre va en el nombre
+function nombreFinal(x) { return hojasDelNombre(x.file.name).includes(x.hoja) ? x.file.name : `${x.hoja} - ${x.file.name}`; }
+
 function quitarElegido(i) { elegidos.splice(i, 1); pintarElegidos(); }
+function elegirHoja(i, h) { elegidos[i].hoja = h; pintarElegidos(); }
+function alternarColor(i) { elegidos[i].color = !elegidos[i].color; pintarElegidos(); }
 
 function pintarElegidos() {
-    $('im-elegidos').innerHTML = elegidos.map((f, i) => `<li>
-        <svg class="ic"><use href="#${f.type.startsWith('image/') ? 'i-camera' : 'i-file'}"/></svg>
-        <div><b>${escapeHtml(f.name)}</b><small>${fmtMB(f.size)}</small></div>
-        <button type="button" class="im-quitar" onclick="quitarElegido(${i})" aria-label="Quitar ${escapeHtml(f.name)}"><svg class="ic"><use href="#i-x"/></svg></button></li>`).join('');
-    $('im-enviar').disabled = !elegidos.length;
-    $('im-enviar').querySelector('span').textContent = elegidos.length > 1 ? `Enviar ${elegidos.length} archivos` : 'Enviar a imprimir';
+    $('im-elegidos').innerHTML = elegidos.map((x, i) => {
+        const otras = hojasDelNombre(x.file.name).filter(h => h !== x.hoja);
+        const choca = x.hoja && otras.length;
+        return `<li class="${x.hoja && !choca ? '' : 'im-falta'}">
+        <div class="im-el-top">
+            <svg class="ic"><use href="#${x.file.type.startsWith('image/') ? 'i-camera' : 'i-file'}"/></svg>
+            <div><b>${escapeHtml(x.hoja && !choca ? nombreFinal(x) : x.file.name)}</b><small>${fmtMB(x.file.size)}</small></div>
+            <button type="button" class="im-quitar" onclick="quitarElegido(${i})" aria-label="Quitar ${escapeHtml(x.file.name)}"><svg class="ic"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="im-el-opc">
+            <div class="im-hojas" role="radiogroup" aria-label="Tamaño de hoja de ${escapeHtml(x.file.name)}">
+                ${yo.hojas.map(h => `<button type="button" role="radio" aria-checked="${x.hoja === h}" class="im-chip ${x.hoja === h ? 'on' : ''}" onclick="elegirHoja(${i}, '${h}')">${h}</button>`).join('')}
+            </div>
+            <button type="button" role="switch" aria-checked="${x.color}" class="im-chip im-chip-color ${x.color ? 'on' : ''}" onclick="alternarColor(${i})">
+                <svg class="ic"><use href="#i-palette"/></svg>${x.color ? 'A color' : 'Blanco y negro'}</button>
+        </div>
+        ${!x.hoja ? '<small class="im-el-falta">Elegí el tamaño de hoja</small>'
+            : choca ? `<small class="im-el-falta">El nombre dice ${otras.join(' y ')}: si tiene hojas de distintos tamaños, separalo en un archivo por tamaño.</small>` : ''}
+    </li>`; }).join('');
+    const faltan = elegidos.filter(x => !x.hoja || hojasDelNombre(x.file.name).some(h => h !== x.hoja)).length;
+    const btn = $('im-enviar');
+    btn.disabled = !elegidos.length || faltan > 0;
+    btn.querySelector('span').textContent = faltan ? `Revisá el tamaño de hoja (${faltan})`
+        : elegidos.length > 1 ? `Enviar ${elegidos.length} archivos` : 'Enviar a imprimir';
 }
 
 function cambiarCopias(d) { copias = Math.max(1, Math.min(50, copias + d)); $('im-copias').textContent = copias; }
@@ -155,24 +181,25 @@ async function enviar(e) {
     e.preventDefault();
     if (!elegidos.length) return;
     const btn = $('im-enviar'); btn.disabled = true;
-    const total = elegidos.reduce((s, f) => s + f.size, 0) || 1;
+    const total = elegidos.reduce((s, x) => s + x.file.size, 0) || 1;
     let hechos = 0, enviados = 0;
     $('im-progreso').hidden = false;
     const avance = (parcial, i) => {
         $('im-barra').style.width = Math.round((hechos + parcial) / total * 100) + '%';
         $('im-progreso-txt').textContent = `Subiendo ${i + 1} de ${elegidos.length}…`;
     };
-    const opciones = { copias, doble_faz: $('im-doble').checked, notas: $('im-notas').value };
+    const opciones = { copias, notas: $('im-notas').value };
     try {
         for (let i = 0; i < elegidos.length; i++) {
-            const f = elegidos[i];
+            const x = elegidos[i], f = x.file;
             const firma = await api('/api/imprimir/firma', { method: 'POST', body: JSON.stringify({ nombre: f.name, tamanio: f.size }) });
             await subir(firma.upload_url, f, p => avance(p * f.size, i));
-            await api('/api/imprimir/pedidos', { method: 'POST', body: JSON.stringify({ ruta: firma.ruta, nombre: f.name, tamanio: f.size, ...opciones }) });
+            await api('/api/imprimir/pedidos', { method: 'POST', body: JSON.stringify({
+                ruta: firma.ruta, nombre: nombreFinal(x), tamanio: f.size, hoja: x.hoja, color: x.color, ...opciones }) });
             hechos += f.size; enviados++;
         }
         toast(enviados > 1 ? `Listo: ${enviados} archivos enviados a la oficina.` : 'Listo: tu archivo llegó a la oficina.');
-        elegidos = []; copias = 1; $('im-copias').textContent = 1; $('im-doble').checked = false; $('im-notas').value = '';
+        elegidos = []; copias = 1; $('im-copias').textContent = 1; $('im-notas').value = '';
     } catch (err) {
         if (err.message) toast(err.message, 'error');
         elegidos = elegidos.slice(enviados);   // los que ya llegaron no se vuelven a mandar
@@ -196,7 +223,7 @@ async function cargarPedidos() {
         const lista = await api('/api/imprimir/pedidos');
         $('im-lista').innerHTML = lista.length ? lista.map(p => {
             const [txt, ic, cls] = ESTADOS[p.estado] || [p.estado, 'i-file', 'neutro'];
-            const detalle = [p.copias > 1 ? `${p.copias} copias` : '1 copia', p.doble_faz ? 'doble faz' : '', fmtMB(p.tamanio)].filter(Boolean).join(' · ');
+            const detalle = [p.hoja, p.color ? 'a color' : 'blanco y negro', p.copias > 1 ? `${p.copias} copias` : '1 copia', fmtMB(p.tamanio)].filter(Boolean).join(' · ');
             const cuando = p.estado === 'impreso' ? `Impreso ${fmtFecha(p.resuelto)} · retiralo en la oficina`
                 : p.estado === 'descartado' ? `Descartado ${fmtFecha(p.resuelto)}`
                 : p.estado === 'cancelado' ? `Cancelado ${fmtFecha(p.resuelto)}` : `Enviado ${fmtFecha(p.enviado)}`;
