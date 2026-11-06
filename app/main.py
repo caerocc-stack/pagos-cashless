@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, Response, JSONResponse
 from app.auth import verify_token, get_current_user
 from app.esquema import preparar_base
 from app.routers import alumnos, tarjetas, operaciones, reportes, admin, cupones, config, proveedores, gastos, caja, conciliacion, cursos, cuotas, horario
-from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos, escaneo, examenes, sectores, ciclo
+from app.routers import auth as auth_router, usuarios, mantenimiento, importar_gastos, portal, consultas, cupones_siro, facturas_recibidas, planilla_siro, pedidos, escaneo, examenes, sectores, ciclo, imprimir
 
 # En Vercel la base se prepara una vez por deploy (scripts/preparar_base.py),
 # no en cada instancia que arranca.
@@ -69,7 +69,7 @@ async def headers_seguridad(request: Request, call_next):
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"  # datos personales: que no queden en caché
-    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer", "/portal", "/facturas", "/pedidos"):
+    elif request.url.path.startswith("/static/") or request.url.path in ("/", "/login", "/restablecer", "/portal", "/facturas", "/pedidos", "/imprimir"):
         # Siempre revalidar (ETag): después de cada actualización nadie queda con CSS/JS viejos
         response.headers["Cache-Control"] = "no-cache"
     return response
@@ -129,6 +129,8 @@ app.include_router(ciclo.router, dependencies=_auth)
 app.include_router(pedidos.publico)  # formulario público de pedidos de materiales (sin cuenta)
 # Portal de familias: tiene su propia sesión (cookie 'ptoken'), no usa la del personal
 app.include_router(portal.router)
+app.include_router(imprimir.router)  # portal de alumnos (sesión propia)
+app.include_router(imprimir.oficina, dependencies=_auth)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -162,6 +164,11 @@ def login_page():
 @app.get("/portal")
 def portal_page():
     return FileResponse(str(STATIC_DIR / "portal.html"))
+
+
+@app.get("/imprimir")
+def imprimir_page():
+    return FileResponse(str(STATIC_DIR / "imprimir.html"))
 
 
 @app.get("/facturas")

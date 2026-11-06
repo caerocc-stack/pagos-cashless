@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#15233b">
+    <meta name="referrer" content="no-referrer">
+    <title>Imprimir · APAI</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="apple-touch-icon" href="/static/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/portal.css">
+    <link rel="stylesheet" href="/static/imprimir.css">
+</head>
+<body class="portal imprimir">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+        <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/></symbol>
+    </svg>
+
+    <header class="p-top">
+        <div class="p-marca">
+            <img src="/static/logo.png" alt="" class="p-logo">
+            <div><div class="p-t1">Imprimir en APAI</div><div class="p-t2">Asociación de Padres y Alumnos del I.N.A.C.</div></div>
+        </div>
+        <div class="p-usuario" id="p-usuario" hidden>
+            <button class="btn btn-sm p-salir" onclick="salir()" aria-label="Salir"><svg class="ic"><use href="#i-logout"/></svg><span>Salir</span></button>
+        </div>
+    </header>
+
+    <main class="p-main im-main" id="contenido">
+        <!-- INGRESO -->
+        <section id="v-login" class="p-vista" hidden>
+            <div class="card p-card-login">
+                <div class="im-hero"><svg class="ic"><use href="#i-printer"/></svg></div>
+                <h1>Mandá tus archivos a imprimir</h1>
+                <p class="muted">Subí PDF, fotos o Word desde el celular y retiralos impresos en la oficina de APAI.</p>
+                <div class="p-msg" id="login-msg" role="alert" hidden></div>
+                <form id="f-login" onsubmit="ingresar(event)">
+                    <label for="l-dni">DNI</label>
+                    <input type="text" id="l-dni" inputmode="numeric" autocomplete="username" required placeholder="Sin puntos" maxlength="12">
+                    <label for="l-pass">Contraseña</label>
+                    <div class="p-pass"><input type="password" id="l-pass" autocomplete="current-password" required>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="verClave('l-pass', this)">Ver</button></div>
+                    <p class="p-ayuda"><svg class="ic"><use href="#i-alert"/></svg>
+                        <span><b>¿Primera vez?</b> Tu contraseña también es tu <b>DNI</b>. Después vas a crear una propia.</span></p>
+                    <button type="submit" class="btn btn-primary p-ancho">Ingresar</button>
+                </form>
+                <p class="im-olvide">¿Te olvidaste la contraseña? Pedí en la oficina de APAI que te restablezcan el acceso y volvés a entrar con tu DNI.</p>
+            </div>
+        </section>
+
+        <!-- CREAR CONTRASEÑA -->
+        <section id="v-clave" class="p-vista" hidden>
+            <div class="card p-card-login">
+                <h1>Creá tu contraseña</h1>
+                <p class="muted">Desde ahora vas a entrar con tu DNI y esta contraseña. Mínimo 8 caracteres, con letras y números.</p>
+                <div class="p-msg" id="clave-msg" role="alert" hidden></div>
+                <form onsubmit="guardarClave(event)">
+                    <div id="clave-actual-wrap" hidden>
+                        <label for="c-actual">Contraseña actual (tu DNI)</label>
+                        <input type="password" id="c-actual" inputmode="numeric" autocomplete="current-password">
+                    </div>
+                    <label for="c-nueva">Contraseña nueva</label>
+                    <div class="p-pass"><input type="password" id="c-nueva" autocomplete="new-password" required>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="verClave('c-nueva', this)">Ver</button></div>
+                    <label for="c-repetir">Repetila</label>
+                    <input type="password" id="c-repetir" autocomplete="new-password" required>
+                    <button type="submit" class="btn btn-primary p-ancho">Guardar y seguir</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- APLICACIÓN -->
+        <section id="v-app" class="p-vista" hidden>
+            <div class="im-saludo">
+                <div class="im-ini" id="im-ini" aria-hidden="true"></div>
+                <div><b id="im-nombre"></b><small id="im-curso"></small></div>
+            </div>
+
+            <form class="card im-envio" id="f-envio" onsubmit="enviar(event)">
+                <h2>Nuevo envío</h2>
+                <input type="file" id="im-archivos" multiple hidden onchange="elegirArchivos(this.files)"
+                       accept=".pdf,.doc,.docx,.odt,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                <input type="file" id="im-camara" accept="image/*" capture="environment" hidden onchange="elegirArchivos(this.files, true)">
+                <div class="im-elegir">
+                    <button type="button" class="im-boton-grande" onclick="document.getElementById('im-archivos').click()">
+                        <svg class="ic"><use href="#i-file"/></svg><b>Elegir archivos</b><small>PDF, Word o fotos</small></button>
+                    <button type="button" class="im-boton-grande" onclick="document.getElementById('im-camara').click()">
+                        <svg class="ic"><use href="#i-camera"/></svg><b>Sacar una foto</b><small>De una hoja o el pizarrón</small></button>
+                </div>
+                <ul class="im-elegidos" id="im-elegidos" aria-live="polite"></ul>
+
+                <div class="im-opciones">
+                    <div class="im-opcion">
+                        <span id="lbl-copias">Copias</span>
+                        <div class="im-stepper" role="group" aria-labelledby="lbl-copias">
+                            <button type="button" onclick="cambiarCopias(-1)" aria-label="Una copia menos"><svg class="ic"><use href="#i-minus"/></svg></button>
+                            <output id="im-copias" aria-live="polite">1</output>
+                            <button type="button" onclick="cambiarCopias(1)" aria-label="Una copia más"><svg class="ic"><use href="#i-plus"/></svg></button>
+                        </div>
+                    </div>
+                    <label class="im-opcion im-switch">
+                        <span>Doble faz</span>
+                        <input type="checkbox" id="im-doble" role="switch"><span class="im-track" aria-hidden="true"></span>
+                    </label>
+                </div>
+                <label for="im-notas" class="im-lbl">Aclaraciones <span class="muted">(opcional)</span></label>
+                <textarea id="im-notas" rows="2" maxlength="300" placeholder="Ej.: solo las páginas 2 a 5, en color, abrochado…"></textarea>
+
+                <div class="im-progreso" id="im-progreso" hidden><div class="im-barra"><span id="im-barra"></span></div><small id="im-progreso-txt"></small></div>
+                <button type="submit" class="btn btn-primary p-ancho im-enviar" id="im-enviar" disabled>
+                    <svg class="ic"><use href="#i-upload"/></svg><span>Enviar a imprimir</span></button>
+            </form>
+
+            <div class="im-lista-head">
+                <h2>Mis envíos</h2>
+                <button class="btn btn-ghost btn-sm" onclick="cargarPedidos()" aria-label="Actualizar"><svg class="ic"><use href="#i-refresh"/></svg>Actualizar</button>
+            </div>
+            <ul class="im-lista" id="im-lista"></ul>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/imprimir.js"></script>
+</body>
+</html>

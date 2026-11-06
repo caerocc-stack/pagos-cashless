@@ -196,3 +196,65 @@ def url_privada_firmada(ruta: str, segundos: int = 300) -> str:
                   json.dumps({"expiresIn": segundos}).encode(), "application/json") as resp:
         firma = json.loads(resp.read())
     return f"{url}/storage/v1{firma.get('signedURL') or firma.get('signedUrl')}"
+
+
+# ---------------------------------------------------------------- depósito PRIVADO de impresiones (portal de alumnos)
+BUCKET_IMPRESIONES = "impresiones"
+MAX_IMPRESION_MB = 25
+
+
+def _asegurar_bucket_impresiones(url: str, key: str):
+    cuerpo = json.dumps({"name": BUCKET_IMPRESIONES, "id": BUCKET_IMPRESIONES, "public": False,
+                         "file_size_limit": MAX_IMPRESION_MB * 1024 * 1024}).encode()
+    try:
+        _request("POST", f"{url}/storage/v1/bucket", key, cuerpo, "application/json")
+    except urllib.error.HTTPError as e:
+        cb = _leer_cuerpo(e)
+        if e.code not in (400, 409) and "exist" not in cb.lower():
+            raise ValueError(_traducir(e.code, cb))
+
+
+def firmar_subida_impresion(ruta: str) -> str:
+    """URL firmada para que el celular del alumno suba el archivo directo al depósito privado."""
+    url, key, _ = _cfg()
+    if not (url and key):
+        raise ValueError("El servicio de archivos no está configurado. Avisá en la oficina de APAI.")
+
+    def _firmar():
+        with _request("POST", f"{url}/storage/v1/object/upload/sign/{BUCKET_IMPRESIONES}/{ruta}",
+                      key, b"{}", "application/json") as resp:
+            return json.loads(resp.read())
+    try:
+        try:
+            firma = _firmar()
+        except urllib.error.HTTPError as e:
+            cuerpo = _leer_cuerpo(e)
+            if not _es_bucket_inexistente(e.code, cuerpo):
+                raise ValueError(_traducir(e.code, cuerpo))
+            _asegurar_bucket_impresiones(url, key)
+            firma = _firmar()
+    except urllib.error.URLError as e:
+        raise ValueError(f"No se pudo conectar con el servicio de archivos: {getattr(e, 'reason', e)}")
+    return f"{url}/storage/v1{firma['url']}"
+
+
+def url_impresion_firmada(ruta: str, descargar_como: str | None = None, segundos: int = 600) -> str:
+    """Enlace temporal para abrir (o descargar con su nombre) un archivo enviado a imprimir."""
+    url, key, _ = _cfg()
+    with _request("POST", f"{url}/storage/v1/object/sign/{BUCKET_IMPRESIONES}/{ruta}", key,
+                  json.dumps({"expiresIn": segundos}).encode(), "application/json") as resp:
+        firma = json.loads(resp.read())
+    enlace = f"{url}/storage/v1{firma.get('signedURL') or firma.get('signedUrl')}"
+    if descargar_como:
+        from urllib.parse import quote
+        enlace += ("&" if "?" in enlace else "?") + "download=" + quote(descargar_como)
+    return enlace
+
+
+def borrar_impresiones(rutas: list[str]):
+    """Borra archivos del depósito de impresiones (los que no existan se ignoran)."""
+    url, key, _ = _cfg()
+    if not (url and key and rutas):
+        return
+    _request("DELETE", f"{url}/storage/v1/object/{BUCKET_IMPRESIONES}", key,
+             json.dumps({"prefixes": rutas}).encode(), "application/json").close()

@@ -20,6 +20,7 @@ const PAGINAS = {
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
     'cupones-siro': ['Cobranzas y alumnos', 'Cupones de pago', 'Enviá el cupón de la cuota por correo y publicá en el portal los cupones que descargás de SIRO.'],
     examenes: ['Cobranzas y alumnos', 'Exámenes por instancia', 'RAAC 147 y Pericia se rinden por examen: cargá los meses en que hubo examen y mirá quién pagó cada instancia, con la fecha de proceso.'],
+    impresiones: ['Cobranzas y alumnos', 'Impresiones de alumnos', 'Archivos que mandan los alumnos desde su portal para la fotocopiadora. Marcalos como impresos o descartalos con el motivo.'],
     consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
     operaciones: ['Tarjeta APAI', 'Recargas y cupones', 'Recargas, reintegros, transferencias entre alumnos y envío de cupones de pago.'],
@@ -1375,7 +1376,8 @@ async function cargarUsuario() {
         await cargarSistema();
         irAlHash();  // con los permisos ya aplicados, abrir la sección del enlace
         actualizarContadorConsultas();
-        setInterval(actualizarContadorConsultas, 120000);
+        imxActualizarBadge();
+        setInterval(() => { actualizarContadorConsultas(); imxActualizarBadge(); }, 120000);
     } catch {
         window.location.href = '/login';
     }
@@ -7363,3 +7365,96 @@ document.addEventListener('click', ev => {
         if (!d.contains(ev.target) || ev.target.closest('.mas-menu button')) d.open = false;
     });
 });
+
+// =====================================================================
+//  Impresiones de alumnos (portal /imprimir)
+// =====================================================================
+let imxEstado = 'pendiente';
+let imxTimer = null;
+const IMX_ESTADOS = { pendiente: ['Para imprimir', 'badge-pdx-nuevo'], impreso: ['Impreso', 'badge-activa'],
+    descartado: ['Descartado', 'badge-pdx-no'], cancelado: ['Cancelado por el alumno', ''] };
+const IMX_MOTIVOS = ['El archivo no se puede abrir', 'Está borroso o no se lee', 'Faltan páginas', 'Está mal armado', 'Mandaste una versión nueva'];
+const imxMB = b => b == null ? '' : b < 1048576 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' MB';
+
+async function imxActualizarBadge() {
+    try {
+        const c = await api('/api/impresiones/contador');
+        for (const id of ['side-badge-impresiones', 'imx-badge']) {
+            const b = document.getElementById(id);
+            if (b) { b.textContent = c.pendientes; b.hidden = !c.pendientes; }
+        }
+    } catch {}
+}
+
+function imxFiltrar(btn) {
+    document.querySelectorAll('#imx-filtros .cuota-tab').forEach(b => b.classList.toggle('activo', b === btn));
+    imxEstado = btn.dataset.estado;
+    cargarImpresiones();
+}
+function imxBuscarLuego() { clearTimeout(imxTimer); imxTimer = setTimeout(cargarImpresiones, 300); }
+
+async function cargarImpresiones() {
+    document.getElementById('imx-url').textContent = location.origin + '/imprimir';
+    const cont = document.getElementById('imx-lista');
+    const qs = new URLSearchParams({ estado: imxEstado, q: document.getElementById('imx-buscar').value });
+    try {
+        const lista = await api('/api/impresiones/?' + qs);
+        const puede = usuarioActual.rol === 'admin';
+        cont.innerHTML = lista.length ? lista.map(p => {
+            const [txt, cls] = IMX_ESTADOS[p.estado] || [p.estado, ''];
+            const a = p.alumno || {};
+            const opciones = [`<b>${p.copias} ${p.copias === 1 ? 'copia' : 'copias'}</b>`, p.doble_faz ? '<b>doble faz</b>' : 'simple faz', imxMB(p.tamanio)].filter(Boolean).join(' · ');
+            const resuelto = p.estado === 'impreso' ? `Impreso el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}`
+                : p.estado === 'descartado' ? `Descartado el ${fmtFechaHora(p.resuelto)} por ${escapeHtml(p.resuelto_por || '')}: ${escapeHtml(p.motivo || '')}`
+                : p.estado === 'cancelado' ? `Cancelado el ${fmtFechaHora(p.resuelto)}` : '';
+            const abrir = p.archivo_disponible
+                ? `<a class="btn btn-sm btn-outline" href="/api/impresiones/${p.id}/archivo" target="_blank" rel="noopener"><svg class="ic"><use href="#i-external"/></svg>Abrir</a>
+                   <a class="btn btn-sm btn-ghost" href="/api/impresiones/${p.id}/archivo?descargar=true" rel="noopener">Descargar</a>`
+                : '<span class="muted" title="Se borra a los 30 días de resuelto">Archivo borrado</span>';
+            const acciones = !puede ? '' : p.estado === 'pendiente'
+                ? `<button class="btn btn-sm btn-primary" onclick="imxEstadoPedido(${p.id}, 'impreso')"><svg class="ic"><use href="#i-check"/></svg>Impreso</button>
+                   <button class="btn btn-sm btn-ghost" onclick="imxDescartar(${p.id})"><svg class="ic"><use href="#i-x"/></svg>Descartar</button>`
+                : (p.estado !== 'cancelado' && p.archivo_disponible ? `<button class="btn btn-sm btn-ghost" onclick="imxEstadoPedido(${p.id}, 'pendiente')">Volver a pendiente</button>` : '');
+            return `<div class="imx-item imx-${p.estado}">
+                <div class="imx-info">
+                    <div class="imx-arch"><svg class="ic"><use href="#i-printer"/></svg><b>${escapeHtml(p.archivo)}</b></div>
+                    <div class="imx-alumno">${escapeHtml(a.nombre || '')} <span class="muted">· ${escapeHtml(a.curso || '')} · DNI ${escapeHtml(a.dni || '')}</span></div>
+                    <div class="imx-opc">${opciones}</div>
+                    ${p.notas ? `<div class="imx-notas">“${escapeHtml(p.notas)}”</div>` : ''}
+                    <small class="muted">Enviado el ${fmtFechaHora(p.enviado)}${resuelto ? ' · ' + resuelto : ''}</small>
+                </div>
+                <div class="imx-acciones"><span class="badge ${cls}">${txt}</span>${abrir}${acciones}</div>
+            </div>`;
+        }).join('') : `<p class="muted" style="text-align:center;padding:2rem 1rem">${imxEstado === 'pendiente' ? 'No hay archivos esperando. Cuando un alumno mande uno, aparece acá.' : 'No hay envíos con este filtro.'}</p>`;
+        imxActualizarBadge();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function imxEstadoPedido(id, estado, motivo = null) {
+    try {
+        await api(`/api/impresiones/${id}/estado`, { method: 'POST', body: JSON.stringify({ estado, motivo }) });
+        toast(estado === 'impreso' ? 'Marcado como impreso' : estado === 'descartado' ? 'Descartado: el alumno ve el motivo en su portal' : 'Volvió a pendientes');
+        cerrarModal();
+        cargarImpresiones();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function imxDescartar(id) {
+    document.getElementById('modal-content').innerHTML = `
+        <h3>Descartar el archivo</h3>
+        <p class="muted">El alumno ve el motivo en su portal para corregirlo y mandarlo de nuevo.</p>
+        <div class="imx-motivos">${IMX_MOTIVOS.map(m => `<button type="button" class="chip" onclick="document.getElementById('imx-motivo').value=this.textContent">${escapeHtml(m)}</button>`).join('')}</div>
+        <label class="mc-lbl" for="imx-motivo">Motivo</label>
+        <textarea id="imx-motivo" class="mc-inp" rows="2" maxlength="300"></textarea>
+        <div class="form-actions"><button class="btn btn-danger" onclick="imxEstadoPedido(${id}, 'descartado', document.getElementById('imx-motivo').value)">Descartar</button>
+            <button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button></div>`;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('imx-motivo').focus();
+}
+
+async function imxRestablecer() {
+    const dni = prompt('DNI del alumno que se olvidó la contraseña (vuelve a entrar con su DNI):');
+    if (!dni) return;
+    try { toast((await api('/api/impresiones/restablecer-acceso', { method: 'POST', body: JSON.stringify({ dni }) })).mensaje); }
+    catch (e) { toast(e.message, 'error'); }
+}

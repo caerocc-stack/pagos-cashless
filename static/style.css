@@ -1190,3 +1190,28 @@ td:has(> .td-acc) { width: 1%; }
 .sel-anio-cuenta { font-size: 0.95rem; padding: 0.15rem 0.4rem; width: auto; }
 .imp-completo { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0.8rem 0 0; font-size: 0.88rem; line-height: 1.45; cursor: pointer; }
 .imp-completo input { width: auto; margin-top: 0.2rem; }
+
+/* ---------- Impresiones de alumnos ---------- */
+#sec-impresiones .pdx-enlace { margin-bottom: 1rem; }
+#sec-impresiones .pdx-enlace-btns { flex-wrap: wrap; }
+#imx-buscar { min-width: 220px; }
+.imx-lista { display: flex; flex-direction: column; gap: 0.6rem; }
+.imx-item { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem 1.25rem; flex-wrap: wrap; padding: 0.85rem 1rem;
+    background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.imx-item.imx-impreso { border-left-color: var(--success); }
+.imx-item.imx-descartado { border-left-color: var(--danger); }
+.imx-item.imx-cancelado { border-left-color: var(--border-strong); opacity: 0.75; }
+.imx-info { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.imx-arch { display: flex; align-items: center; gap: 0.45rem; }
+.imx-arch .ic { color: var(--primary); flex: none; }
+.imx-arch b { word-break: break-word; }
+.imx-alumno { font-weight: 500; }
+.imx-opc { font-size: 0.88rem; }
+.imx-notas { font-size: 0.88rem; padding: 0.3rem 0.55rem; background: var(--warning-soft); border-radius: var(--radius-sm); align-self: flex-start; }
+.imx-acciones { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+.imx-motivos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.25rem; }
+@media (max-width: 640px) {
+    .imx-acciones { justify-content: flex-start; width: 100%; }
+    .imx-acciones .btn { min-height: 42px; }
+    #imx-buscar { min-width: 0; width: 100%; }
+}
