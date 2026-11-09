@@ -1,4 +1,4 @@
-# Auditoría de Seguridad y Rendimiento — APAI Pay
+# Auditoría de Seguridad y Rendimiento — ALAS
 
 Análisis de todas las capas (infraestructura, backend y frontend), plan de remediación
 priorizado, cambios aplicados y recomendaciones de mantenimiento.

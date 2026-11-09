@@ -1,5 +1,5 @@
 // ===================================================================
-//  Formatos unificados de APAI Pay
+//  Formatos unificados de ALAS
 //  - Importes: $ 1.234.567,89 (es-AR), también MIENTRAS se escriben
 //  - Fechas: dd/mm/aaaa (también en los campos de fecha)
 //  - Horas: siempre en hora de Argentina (America/Argentina/Buenos_Aires)

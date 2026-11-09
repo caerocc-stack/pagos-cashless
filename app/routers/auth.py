@@ -52,9 +52,9 @@ def _notificar(u: Usuario, asunto: str, mensaje_html: str):
     if not u.email or not email_configurado():
         return
     try:
-        enviar_email(u.email, f"APAI Pay · {asunto}", f"""
+        enviar_email(u.email, f"ALAS · {asunto}", f"""
             <div style="font-family:Arial,sans-serif;max-width:520px;color:#1e293b">
-              <h2 style="color:#15233b;margin:0 0 12px">APAI Pay</h2>
+              <h2 style="color:#15233b;margin:0 0 12px">ALAS</h2>
               <p>Hola {escape(u.nombre)},</p>
               {mensaje_html}
               <p style="color:#64748b;font-size:13px;margin-top:24px">
@@ -369,9 +369,9 @@ def olvide(data: OlvideRequest, request: Request, db: Session = Depends(get_db))
         auditar(db, "pedido_reset", u.username, None, request)
         db.commit()
         try:
-            enviar_email(u.email, "APAI Pay · Crear una contraseña nueva", f"""
+            enviar_email(u.email, "ALAS · Crear una contraseña nueva", f"""
                 <div style="font-family:Arial,sans-serif;max-width:520px;color:#1e293b">
-                  <h2 style="color:#15233b">APAI Pay</h2>
+                  <h2 style="color:#15233b">ALAS</h2>
                   <p>Hola {escape(u.nombre)}, recibimos un pedido para cambiar tu contraseña.</p>
                   <p><a href="{link}" style="display:inline-block;background:#15233b;color:#fff;padding:12px 22px;
                      border-radius:8px;text-decoration:none;font-weight:bold">Crear contraseña nueva</a></p>

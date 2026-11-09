@@ -52,16 +52,16 @@ def _enviar_link(db: Session, u: Usuario, bienvenida: bool) -> bool:
         return False
     token = crear_token_acceso(db, "reset_usuario", u.id, minutos=60 * 48 if bienvenida else 60)
     link = f"{APP_URL}/restablecer?t={token}"
-    titulo = "Te dieron acceso a APAI Pay" if bienvenida else "Crear una contraseña nueva"
+    titulo = "Te dieron acceso a ALAS" if bienvenida else "Crear una contraseña nueva"
     texto = (f"Te crearon un usuario <b>{escape(ROLES.get(u.rol, u.rol))}</b> en el sistema de gestión de APAI. "
              f"Tu usuario es <b>{escape(u.username)}</b> (también podés entrar con este correo)."
              if bienvenida else "El administrador del sistema te envió un link para crear una contraseña nueva.")
     vence = "48 horas" if bienvenida else "1 hora"
     db.commit()
     try:
-        enviar_email(u.email, f"APAI Pay · {titulo}", f"""
+        enviar_email(u.email, f"ALAS · {titulo}", f"""
             <div style="font-family:Arial,sans-serif;max-width:520px;color:#1e293b">
-              <h2 style="color:#15233b">APAI Pay</h2>
+              <h2 style="color:#15233b">ALAS</h2>
               <p>Hola {escape(u.nombre)},</p><p>{texto}</p>
               <p><a href="{link}" style="display:inline-block;background:#15233b;color:#fff;padding:12px 22px;
                  border-radius:8px;text-decoration:none;font-weight:bold">Crear mi contraseña</a></p>

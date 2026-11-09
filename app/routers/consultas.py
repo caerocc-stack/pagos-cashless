@@ -113,7 +113,7 @@ def responder(cid: int, data: Respuesta, request: Request, admin=Depends(requier
     elif x.usuario_id:
         u = db.get(Usuario, x.usuario_id)
         if u and u.email:
-            cu.enviar_seguro(u.email, f"APAI Pay · Respuesta a tu reporte #{x.id}",
+            cu.enviar_seguro(u.email, f"ALAS · Respuesta a tu reporte #{x.id}",
                              f"<p>Respuesta a «{escape(x.asunto)}»:</p><p>{escape(texto[:1500])}</p>")
     return {"ok": True, "mensaje": "Respuesta enviada" + (" y consulta cerrada" if data.cerrar else "")}
 

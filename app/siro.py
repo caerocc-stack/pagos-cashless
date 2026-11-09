@@ -29,7 +29,7 @@ def codigo_cliente_empresa(alumno) -> str:
     return (empresa.zfill(9) + alumno.codigo_siro)[-19:]
 
 
-def generar_cupon(alumno, monto, concepto: str = "Recarga de saldo APAI Pay") -> dict:
+def generar_cupon(alumno, monto, concepto: str = "Recarga de saldo ALAS") -> dict:
     """
     Crea una intencion de pago en SIRO y devuelve la URL del cupon para el padre.
     Devuelve: {"url": ..., "nro_cliente": ..., "hash": ..., "id_resultado": ...}

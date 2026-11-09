@@ -56,7 +56,7 @@ def _cuerpo_email(db: Session, tipo: str, alumno, monto, url) -> str:
     return f"""
     <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;color:#15233b">
         <div style="background:#15233b;color:#fff;padding:16px 20px;border-radius:10px 10px 0 0">
-            <h2 style="margin:0">APAI Pay</h2>
+            <h2 style="margin:0">ALAS</h2>
             <div style="color:#9bb6d6;font-size:13px">{titulo}</div>
         </div>
         <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 10px 10px">

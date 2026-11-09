@@ -52,9 +52,9 @@ function mostrarSeccion(seccion) {
         document.getElementById('page-miga').textContent = info[0];
         document.getElementById('page-titulo').textContent = info[1];
         document.getElementById('page-desc').textContent = info[2];
-        document.title = `${info[1]} · APAI Pay`;
+        document.title = `${info[1]} · ALAS`;
     } else {
-        document.title = 'APAI Pay';
+        document.title = 'ALAS';
     }
     // Enlace directo (se puede guardar en favoritos y el botón "Atrás" funciona)
     const hash = seccion === 'inicio' ? '' : '#' + seccion;

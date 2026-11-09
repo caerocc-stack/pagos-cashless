@@ -31,7 +31,7 @@ def _html_a_texto(html: str) -> str:
     texto = re.sub(r"</p>", "\n\n", texto, flags=re.IGNORECASE)
     texto = re.sub(r"<[^>]+>", "", texto)
     texto = re.sub(r"\n{3,}", "\n\n", texto)
-    return texto.strip() or "Mensaje de APAI Pay"
+    return texto.strip() or "Mensaje de ALAS"
 
 
 def email_configurado() -> bool:
@@ -60,7 +60,7 @@ def _enviar_mailjet(destino: str, asunto: str, cuerpo_html: str):
     api_key = os.getenv("MAILJET_API_KEY")
     secret = os.getenv("MAILJET_SECRET_KEY")
     from_email = os.getenv("MAILJET_FROM_EMAIL")
-    from_name = os.getenv("MAILJET_FROM_NAME", "APAI Pay")
+    from_name = os.getenv("MAILJET_FROM_NAME", "ALAS")
     if not from_email:
         raise RuntimeError("Falta MAILJET_FROM_EMAIL (el email remitente verificado en Mailjet).")
 
@@ -93,7 +93,7 @@ def _enviar_mailjet(destino: str, asunto: str, cuerpo_html: str):
 def _enviar_brevo(destino: str, asunto: str, cuerpo_html: str):
     api_key = os.getenv("BREVO_API_KEY")
     from_email = os.getenv("BREVO_FROM_EMAIL") or os.getenv("SMTP_USER")
-    from_name = os.getenv("BREVO_FROM_NAME", "APAI Pay")
+    from_name = os.getenv("BREVO_FROM_NAME", "ALAS")
     if not from_email:
         raise RuntimeError("Falta BREVO_FROM_EMAIL (el email remitente verificado en Brevo).")
 

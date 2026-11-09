@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Genera capturas de ejemplo (mockups) del sistema APAI Pay con la estetica real."""
+"""Genera capturas de ejemplo (mockups) del sistema ALAS con la estetica real."""
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
@@ -43,7 +43,7 @@ def header(d, w, activo="Cobrar"):
     # logo circle
     d.ellipse([16, 12, 48, 44], fill=WHITE)
     text(d, (32, 28), "AP", font(13, True), NAVY, anchor="mm")
-    text(d, (60, 17), "APAI Pay", font(16, True), WHITE)
+    text(d, (60, 17), "ALAS", font(16, True), WHITE)
     text(d, (60, 38), "Sistema de Pagos Cashless", font(9), (155, 182, 210))
     items = ["Cobrar", "Alumnos", "Operaciones", "Tarjetas", "Reportes", "Importar"]
     x = 250
@@ -202,7 +202,7 @@ def cap_cupones():
     header(d, w, "Operaciones")
 
     rrect(d, [30, 84, 1070, 330], 12, CARD)
-    text(d, (52, 102), "Cupones APAI Pay (cuota y recarga)", font(15, True), NAVY)
+    text(d, (52, 102), "Cupones ALAS (cuota y recarga)", font(15, True), NAVY)
     rrect(d, [52, 134, 190, 166], 7, SKY)
     text(d, (121, 150), "Cuota del mes", font(10, True), WHITE, anchor="mm")
     rrect(d, [200, 134, 340, 166], 7, (241, 245, 249), LINE, 1)
@@ -228,7 +228,7 @@ def cap_cupones():
     rrect(d, [ex, ey, ex + ew, ey + 210], 10, CARD, LINE, 1)
     d.rectangle([ex, ey, ex + ew, ey + 52], fill=NAVY)
     # redondear top con tapa
-    text(d, (ex + 18, ey + 12), "APAI Pay", font(14, True), WHITE)
+    text(d, (ex + 18, ey + 12), "ALAS", font(14, True), WHITE)
     text(d, (ex + 18, ey + 32), "Cuota societaria", font(9), (155, 182, 210))
     text(d, (ex + ew / 2, ey + 74), "$45.000,00", font(20, True), GREEN, anchor="ma")
     text(d, (ex + 18, ey + 108), "Estimada familia de GONZALEZ, Mateo:", font(9), DARK)

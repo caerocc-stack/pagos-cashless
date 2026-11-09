@@ -81,7 +81,7 @@ CATEGORIAS = {
     # Solo para el personal (botón «Reportar un problema» dentro del sistema)
     "sistema": {
         "titulo": "Problema en el sistema",
-        "desc": "Error o funcionamiento incorrecto de APAI Pay.",
+        "desc": "Error o funcionamiento incorrecto de ALAS.",
         "comprobante": False,
         "ayuda": [],
     },
@@ -116,7 +116,7 @@ def enviar_seguro(destino: str | None, asunto: str, html: str):
 
 def avisar_admins(db: Session, asunto: str, cuerpo_html: str, enlace: str):
     for u in db.query(Usuario).filter(Usuario.rol == "admin", Usuario.activo.is_(True), Usuario.email.isnot(None)).all():
-        enviar_seguro(u.email, f"APAI Pay · {asunto}", _plantilla("Mesa de ayuda", cuerpo_html, enlace, "Ver en el sistema"))
+        enviar_seguro(u.email, f"ALAS · {asunto}", _plantilla("Mesa de ayuda", cuerpo_html, enlace, "Ver en el sistema"))
 
 
 def avisar_padre(email: str, asunto: str, cuerpo_html: str, enlace: str):

@@ -16,7 +16,7 @@ if not os.getenv("VERCEL"):
     preparar_base()
 
 app = FastAPI(
-    title="APAI Pay",
+    title="ALAS",
     description="Sistema de pagos cashless para el colegio — APAI",
     version="2.0.0",
     docs_url=None,       # deshabilita Swagger UI publico

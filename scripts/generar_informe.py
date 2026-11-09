@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Informe institucional EXTENSO de APAI Pay - autor Carlos Cambareri (sin logo APAI)."""
+"""Informe institucional EXTENSO de ALAS - autor Carlos Cambareri (sin logo APAI)."""
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 from PIL import Image
@@ -31,7 +31,7 @@ class PDF(FPDF):
         self.set_xy(14, 4.5)
         self.set_font("Helvetica", "B", 11)
         self.set_text_color(255, 255, 255)
-        self.cell(0, 7, "APAI Pay", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.cell(0, 7, "ALAS", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_xy(150, 5.5)
         self.set_font("Helvetica", "", 8)
         self.set_text_color(180, 195, 215)
@@ -44,7 +44,7 @@ class PDF(FPDF):
         self.set_y(-12)
         self.set_font("Helvetica", "", 7.5)
         self.set_text_color(*GRAY)
-        self.cell(0, 6, "APAI Pay  -  Elaborado por Carlos Cambareri", align="L")
+        self.cell(0, 6, "ALAS  -  Elaborado por Carlos Cambareri", align="L")
         self.set_y(-12)
         self.cell(0, 6, f"Pagina {self.page_no() - 1}", align="R")
 
@@ -141,7 +141,7 @@ pdf.rect(0, 96, 210, 2, "F")
 pdf.set_xy(0, 110)
 pdf.set_font("Helvetica", "B", 42)
 pdf.set_text_color(255, 255, 255)
-pdf.cell(210, 16, "APAI Pay", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+pdf.cell(210, 16, "ALAS", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 pdf.set_xy(0, 134)
 pdf.set_font("Helvetica", "", 13.5)
 pdf.set_text_color(150, 180, 215)
@@ -164,9 +164,9 @@ pdf.cell(210, 6, f"{hoy.day} de {meses[hoy.month-1]} de {hoy.year}", align="C")
 
 # ===================== 1. RESUMEN =====================
 pdf.add_page()
-titulo(pdf, "1.  Que es APAI Pay")
+titulo(pdf, "1.  Que es ALAS")
 parrafo(pdf,
-    "APAI Pay es una plataforma integral, desarrollada a medida, que administra de punta a punta el dinero "
+    "ALAS es una plataforma integral, desarrollada a medida, que administra de punta a punta el dinero "
     "del colegio. Reune en un solo sistema cuatro funciones que hoy se hacen por separado y de forma manual: "
     "el cobro sin efectivo en los puntos de venta, la carga de saldo de los alumnos, la gestion de la cuota "
     "societaria (un aporte voluntario de las familias) y el envio de cupones de pago.")
@@ -179,7 +179,7 @@ parrafo(pdf,
     "tiempo real para controlar todo lo que ocurre.")
 subt(pdf, "En una frase")
 parrafo(pdf,
-    "APAI Pay reemplaza el efectivo, las planillas sueltas y el seguimiento manual de cuotas por un sistema "
+    "ALAS reemplaza el efectivo, las planillas sueltas y el seguimiento manual de cuotas por un sistema "
     "unico, ordenado, seguro y disponible las 24 horas desde cualquier computadora.")
 subt(pdf, "Todo lo que incluye")
 bullet(pdf, "Cobro sin efectivo con tarjeta RFID en los puntos de venta.")
@@ -199,17 +199,17 @@ titulo(pdf, "2.  Los problemas que resuelve")
 parrafo(pdf,
     "La administracion de APAI maneja todos los dias dinero en efectivo, cobros de cuota de cientos de "
     "familias e informacion repartida en multiples planillas. Eso genera trabajo, riesgo y falta de "
-    "control. APAI Pay ataca cada uno de esos puntos.")
+    "control. ALAS ataca cada uno de esos puntos.")
 vinheta(pdf, "El manejo de efectivo",
         "Los alumnos llevan dinero que se pierde, se extravia o se gasta en otra cosa. En los puntos de venta hay que cuidar la plata, dar vuelto y cuadrar caja. Con la tarjeta, el efectivo desaparece del circuito diario.")
 vinheta(pdf, "El envio y seguimiento de la cuota",
-        "Enviar y controlar los cupones de la cuota (voluntaria) de cientos de familias es un trabajo manual enorme y propenso a errores. APAI Pay lo hace en pocos clics, mes a mes, completando el nombre del mes automaticamente.")
+        "Enviar y controlar los cupones de la cuota (voluntaria) de cientos de familias es un trabajo manual enorme y propenso a errores. ALAS lo hace en pocos clics, mes a mes, completando el nombre del mes automaticamente.")
 vinheta(pdf, "La falta de control y transparencia",
         "Hoy es dificil saber con exactitud cuanto se vendio, cuanto se cobro y quien hizo cada operacion. El sistema registra todo con fecha, hora, monto y operador, y lo informa al instante.")
 vinheta(pdf, "La informacion dispersa",
         "Los datos de alumnos, pagos y saldos viven en planillas separadas. La plataforma centraliza todo en un solo lugar, ordenado, respaldado y accesible desde cualquier equipo.")
 vinheta(pdf, "El riesgo de perdida de datos",
-        "Una planilla se puede borrar o corromper. APAI Pay hace una copia de seguridad completa todos los dias de forma automatica.")
+        "Una planilla se puede borrar o corromper. ALAS hace una copia de seguridad completa todos los dias de forma automatica.")
 
 # ===================== 3. EL DINERO =====================
 titulo(pdf, "3.  El dinero: donde esta y como se mueve")
@@ -357,7 +357,7 @@ bullet(pdf, "Descripcion del concepto y operador que la realizo.")
 # ===================== 9. CUOTAS =====================
 titulo(pdf, "10.  Cuota societaria mensual")
 parrafo(pdf,
-    "El modulo que convierte a APAI Pay en una herramienta de gestion completa. Permite enviar la cuota "
+    "El modulo que convierte a ALAS en una herramienta de gestion completa. Permite enviar la cuota "
     "mensual (un aporte voluntario de las familias) de forma masiva, ordenada y con un minimo de trabajo.")
 subt(pdf, "Envio masivo en pocos clics")
 parrafo(pdf,
@@ -404,7 +404,7 @@ parrafo(pdf,
 # ===================== 11. REPORTES =====================
 titulo(pdf, "12.  Reportes y estadisticas")
 parrafo(pdf,
-    "APAI Pay no solo cobra: informa. Toda la actividad se traduce en indicadores, tablas y graficos en "
+    "ALAS no solo cobra: informa. Toda la actividad se traduce en indicadores, tablas y graficos en "
     "tiempo real, con filtros por rango de fechas, para tomar decisiones con datos y rendir cuentas con "
     "transparencia.")
 subt(pdf, "Panel de indicadores (KPIs)")
@@ -493,9 +493,9 @@ bullet(pdf, "Dos hermanos: se transfiere saldo de una tarjeta a la otra.")
 bullet(pdf, "Fin de mes: se exporta a Excel el resumen para la contabilidad.")
 
 # ===================== 16. CONCLUSION =====================
-titulo(pdf, "16.  Por que conviene APAI Pay")
+titulo(pdf, "16.  Por que conviene ALAS")
 parrafo(pdf,
-    "APAI Pay no es un proyecto a futuro: es un sistema ya desarrollado, probado y funcionando, con mas de "
+    "ALAS no es un proyecto a futuro: es un sistema ya desarrollado, probado y funcionando, con mas de "
     "600 alumnos cargados y clasificados. Esta listo para ponerse en marcha.")
 vinheta(pdf, "Mas orden y transparencia",
         "Cada movimiento queda registrado de forma automatica, con fecha, hora, monto y operador. Se termina el seguimiento manual y se gana claridad para informar a la comunidad.")

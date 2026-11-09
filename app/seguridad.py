@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.tz import ahora_ar
 from app.models.seguridad import IntentoLogin, TokenAcceso, Auditoria
 
-EMISOR_2FA = "APAI Pay"
+EMISOR_2FA = "ALAS"
 
 
 # ---------------------------------------------------------------- red
