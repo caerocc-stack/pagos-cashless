@@ -37,7 +37,7 @@ from app.routers.cupones_siro import cupones_vigentes, ultimo_codigo_pago
 from app.seguridad import (ip_cliente, auditar, segundos_bloqueo, registrar_fallo, limpiar_fallos, error_password,
                            crear_token_acceso, consumir_token_acceso)
 from app.storage_util import crear_subida_firmada
-from app import consultas_util as cu, config_util
+from app import consultas_util as cu, config_util, demo
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/portal", tags=["Portal de familias"])
@@ -95,6 +95,8 @@ def get_padre(request: Request, db: Session = Depends(get_db)) -> CuentaPadre:
     libre = request.url.path in ("/api/portal/me", "/api/portal/cambiar-password", "/api/portal/logout")
     if c.debe_cambiar_password and not libre:
         raise HTTPException(403, "Antes de continuar tenés que crear tu contraseña personal.")
+    if demo.es_correo_demo(c.email):
+        demo.controlar(request.method, request.url.path, salidas=("/api/portal/logout",))
     return c
 
 
@@ -222,6 +224,7 @@ def me(c: CuentaPadre = Depends(get_padre), db: Session = Depends(get_db)):
     no_leidas = db.query(Consulta).filter(Consulta.cuenta_id == c.id, Consulta.leida_autor.is_(False)).count()
     return {"email": c.email, "debe_cambiar_password": bool(c.debe_cambiar_password), "consultas_sin_leer": no_leidas,
             "vista_admin": getattr(c, "vista_admin", None), "tarjeta_activa": config_util.tarjeta_activa(db),
+            "demo": demo.es_correo_demo(c.email),
             "hijos": [{"id": a.id, "nombre": a.nombre, "apellido": a.apellido, "curso": a.curso,
                        "division": a.division, "legajo": a.legajo} for a in hijos]}
 

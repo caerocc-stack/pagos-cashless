@@ -27,7 +27,7 @@ from app.auth import SECRET_KEY, ALGORITHM, hash_password, verify_password, HASH
 from app.models.alumno import Alumno
 from app.models.impresion import CuentaAlumno, PedidoImpresion
 from app.seguridad import ip_cliente, auditar, segundos_bloqueo, registrar_fallo, limpiar_fallos, error_password
-from app import storage_util
+from app import storage_util, demo
 from app.tz import ahora_ar
 
 router = APIRouter(prefix="/api/imprimir", tags=["Portal de alumnos"])
@@ -85,6 +85,8 @@ def get_alumno(request: Request, db: Session = Depends(get_db)) -> CuentaAlumno:
     libre = request.url.path in ("/api/imprimir/me", "/api/imprimir/cambiar-password", "/api/imprimir/logout")
     if c.debe_cambiar_password and not libre:
         raise HTTPException(403, "Antes de continuar tenés que crear tu contraseña personal.")
+    if demo.es_correo_demo(a.email):
+        demo.controlar(request.method, request.url.path, salidas=("/api/imprimir/logout",))
     c.alumno = a
     return c
 
@@ -168,7 +170,7 @@ def me(c: CuentaAlumno = Depends(get_alumno)):
     a = c.alumno
     return {"nombre": a.nombre, "apellido": a.apellido, "curso": a.curso, "division": a.division, "legajo": a.legajo,
             "debe_cambiar_password": bool(c.debe_cambiar_password), "max_mb": storage_util.MAX_IMPRESION_MB,
-            "extensiones": sorted(EXTENSIONES), "hojas": list(HOJAS)}
+            "extensiones": sorted(EXTENSIONES), "hojas": list(HOJAS), "demo": demo.es_correo_demo(a.email)}
 
 
 @router.post("/cambiar-password")

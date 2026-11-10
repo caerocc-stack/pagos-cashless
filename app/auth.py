@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.usuario import Usuario
+from app import demo
 
 # Clave para firmar los tokens. Debe definirse en el entorno (SECRET_KEY).
 # Si falta, se genera una aleatoria por proceso: es segura, pero las sesiones
@@ -87,6 +88,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     # Reportar un problema está permitido para todos (también solo lectura)
     if usuario.rol == "lectura" and request.method not in METODOS_LECTURA and not libre and ruta != "/api/consultas/reportar":
         raise HTTPException(403, "Tu usuario es de solo lectura: no puede modificar datos.")
+    if usuario.rol == "demo":
+        demo.controlar(request.method, ruta, salidas=("/api/auth/logout",))
 
     return {"uid": usuario.id, "sub": usuario.username, "nombre": usuario.nombre,
             "rol": usuario.rol, "email": usuario.email}

@@ -1369,6 +1369,7 @@ async function cargarUsuario() {
         const esAdmin = user.rol === 'admin';
         document.body.classList.toggle('rol-lectura', !esAdmin);
         document.querySelectorAll('.solo-admin').forEach(el => el.style.display = esAdmin ? '' : 'none');
+        if (user.rol === 'demo') activarModoDemo();
         if (!esAdmin) mostrarAvisoLectura();
         if (typeof dashSaludoYFecha === 'function') dashSaludoYFecha();
         if (user.debe_cambiar_password) abrirCambioObligatorio();
@@ -1388,8 +1389,45 @@ function mostrarAvisoLectura() {
     const div = document.createElement('div');
     div.id = 'aviso-lectura';
     div.className = 'aviso-banda';
-    div.textContent = '👁 Estás en modo solo lectura: podés consultar todo, pero no modificar datos.';
+    div.textContent = usuarioActual.rol === 'demo'
+        ? '👁 Modo demostración: podés recorrer todo el sistema, pero no modificar datos ni descargar archivos.'
+        : '👁 Estás en modo solo lectura: podés consultar todo, pero no modificar datos.';
     document.querySelector('main').prepend(div);
+}
+
+// Usuario de demostración: el servidor ya rechaza cambios y descargas; acá se evita que el navegador
+// genere archivos por su cuenta (PDF con jsPDF, CSV, enlaces de descarga).
+const DEMO_DESCARGA = /(excel|exportar|backup|plantilla$|\/archivo(\?|$)|\/adjuntos\/)/i;
+function activarModoDemo() {
+    document.body.classList.add('rol-demo');
+    const aviso = () => toast('Modo demostración: no se pueden descargar archivos.', 'warning');
+    const bloquearPdf = () => {
+        const Orig = window.jspdf && window.jspdf.jsPDF;
+        if (!Orig || Orig.__demo) return;
+        // Cada PDF nuevo sale sin "guardar" ni "exportar": se arma igual, pero no se puede bajar
+        const Demo = function (...args) {
+            const doc = new Orig(...args);
+            doc.save = () => { aviso(); return doc; };
+            doc.output = () => { aviso(); throw new Error('Modo demostración: no se pueden descargar archivos.'); };
+            return doc;
+        };
+        Object.setPrototypeOf(Demo, Orig);
+        Demo.prototype = Orig.prototype;
+        Demo.API = Orig.API;
+        Demo.__demo = true;
+        window.jspdf.jsPDF = Demo;
+    };
+    bloquearPdf();
+    window.addEventListener('load', bloquearPdf);
+    const clickOriginal = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+        if (this.hasAttribute('download') || DEMO_DESCARGA.test(this.getAttribute('href') || '')) { aviso(); return; }
+        return clickOriginal.call(this);
+    };
+    document.addEventListener('click', e => {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (a && (a.hasAttribute('download') || DEMO_DESCARGA.test(a.getAttribute('href')))) { e.preventDefault(); e.stopPropagation(); aviso(); }
+    }, true);
 }
 
 function avisoActivar2FA() {
@@ -4475,6 +4513,7 @@ async function cargarUsuarios() {
                     <select onchange="cambiarRolUsuario(${u.id}, this.value)" ${u.username === yo ? 'disabled' : ''}>
                         <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option>
                         <option value="lectura" ${u.rol === 'lectura' ? 'selected' : ''}>Solo lectura</option>
+                        <option value="demo" ${u.rol === 'demo' ? 'selected' : ''}>Demostración (solo ver)</option>
                     </select>
                 </td>
                 <td>${u.totp_activo ? '<span class="badge badge-activa">Activo</span>' : '<span class="badge badge-inactiva">No</span>'}</td>

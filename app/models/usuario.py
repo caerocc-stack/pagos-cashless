@@ -7,6 +7,7 @@ from app.tz import ahora_ar
 ROLES = {
     "admin": "Administrador",
     "lectura": "Solo lectura",
+    "demo": "Demostración (solo ver)",
 }
 
 

@@ -97,8 +97,23 @@ async function cargarApp() {
     $('im-nombre').textContent = `${yo.nombre} ${yo.apellido}`;
     $('im-curso').textContent = yo.curso + ' · legajo ' + yo.legajo;
     mostrar('v-app');
+    bandaDemo();
     pintarElegidos();
     cargarPedidos();
+}
+
+function bandaDemo() {
+    let b = $('im-demo');
+    if (!yo.demo) { if (b) b.remove(); return; }
+    if (!b) {
+        b = document.createElement('div');
+        b.id = 'im-demo';
+        b.className = 'im-aviso';
+        b.setAttribute('role', 'note');
+        $('v-app').prepend(b);
+    }
+    b.innerHTML = '<p><b>Cuenta de demostración.</b> Así ve el portal un alumno. Los datos son ficticios '
+        + 'y no se pueden enviar archivos ni cambiar nada.</p>';
 }
 
 // ---------------------------------------------------------------- nuevo envío

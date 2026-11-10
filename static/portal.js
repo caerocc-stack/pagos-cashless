@@ -104,8 +104,14 @@ async function salir() {
 
 function bandaVistaAdmin() {
     let b = $('p-vista-admin');
-    if (!yo.vista_admin) { if (b) b.remove(); return; }
+    if (!yo.vista_admin && !yo.demo) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('div'); b.id = 'p-vista-admin'; b.className = 'p-vista-admin'; $('contenido').prepend(b); }
+    if (yo.demo) {
+        b.innerHTML = `<svg class="ic"><use href="#i-lock"/></svg>
+            <div><b>Cuenta de demostración</b> · Así ve el portal una familia. Los datos son ficticios
+            y no se pueden enviar consultas ni cambiar nada.</div>`;
+        return;
+    }
     b.innerHTML = `<svg class="ic"><use href="#i-lock"/></svg>
         <div><b>Vista previa del administrador</b> · Estás viendo el portal tal cual lo ve la familia de <b>${escapeHtml(yo.email)}</b>.
         Es solo lectura: no se envían consultas ni se marcan mensajes como leídos. Vence en 30 minutos.</div>
