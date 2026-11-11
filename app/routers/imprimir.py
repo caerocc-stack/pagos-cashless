@@ -86,7 +86,7 @@ def get_alumno(request: Request, db: Session = Depends(get_db)) -> CuentaAlumno:
     if c.debe_cambiar_password and not libre:
         raise HTTPException(403, "Antes de continuar tenés que crear tu contraseña personal.")
     if demo.es_correo_demo(a.email):
-        demo.controlar(request.method, request.url.path, salidas=("/api/imprimir/logout",))
+        demo.controlar(db, request, demo.ALUMNOS, salidas=("/api/imprimir/logout",), anotar_lecturas=True)
     c.alumno = a
     return c
 
@@ -153,6 +153,8 @@ def login(data: Login, request: Request, db: Session = Depends(get_db)):
     cuenta.bloqueado_hasta = None
     cuenta.ultimo_ingreso = ahora_ar()
     db.commit()
+    if demo.es_correo_demo(a.email):
+        demo.registrar(db, request, demo.ALUMNOS, "ingreso")
     resp = JSONResponse({"ok": True, "debe_cambiar_password": bool(cuenta.debe_cambiar_password)})
     _cookie(resp, _token(cuenta))
     return resp

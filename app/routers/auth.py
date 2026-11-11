@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import timedelta
 from html import escape
 
@@ -9,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app import demo
 from app.models.usuario import Usuario, ROLES
 from app.auth import (verify_password, hash_password, create_token, create_token_2fa, verify_token,
                       get_current_user, poner_cookie_sesion, HASH_SENUELO)
@@ -191,6 +193,15 @@ def me(user=Depends(get_current_user), db: Session = Depends(get_db)):
         "debe_cambiar_password": bool(u.debe_cambiar_password),
         "ultimo_ingreso": u.ultimo_ingreso.strftime("%d/%m/%Y %H:%M") if u.ultimo_ingreso else None,
     }
+
+
+@router.get("/demo-vio")
+def demo_vio(seccion: str, request: Request, descarga: bool = False, user=Depends(get_current_user),
+             db: Session = Depends(get_db)):
+    """La cuenta de demostración avisa qué sección abrió (o que intentó bajar un PDF) para el registro."""
+    if user["rol"] == "demo" and re.fullmatch(r"[a-z-]{1,30}", seccion or ""):
+        demo.registrar(db, request, demo.SISTEMA, f"seccion:{seccion}" + (":descarga" if descarga else ""))
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- cuenta propia

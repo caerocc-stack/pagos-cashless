@@ -89,7 +89,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     if usuario.rol == "lectura" and request.method not in METODOS_LECTURA and not libre and ruta != "/api/consultas/reportar":
         raise HTTPException(403, "Tu usuario es de solo lectura: no puede modificar datos.")
     if usuario.rol == "demo":
-        demo.controlar(request.method, ruta, salidas=("/api/auth/logout",))
+        demo.controlar(db, request, demo.SISTEMA, salidas=("/api/auth/logout",))
 
     return {"uid": usuario.id, "sub": usuario.username, "nombre": usuario.nombre,
             "rol": usuario.rol, "email": usuario.email}

@@ -45,6 +45,7 @@ function mostrarSeccion(seccion) {
     });
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     sec.classList.add('active');
+    demoAnotar(seccion);
     const info = PAGINAS[seccion];
     const head = document.getElementById('page-head');
     head.hidden = !info;
@@ -1398,9 +1399,18 @@ function mostrarAvisoLectura() {
 // Usuario de demostración: el servidor ya rechaza cambios y descargas; acá se evita que el navegador
 // genere archivos por su cuenta (PDF con jsPDF, CSV, enlaces de descarga).
 const DEMO_DESCARGA = /(excel|exportar|backup|plantilla$|\/archivo(\?|$)|\/adjuntos\/)/i;
+// Cuenta de demostración: deja anotado qué sección abrió (o que intentó bajar un PDF) en el registro
+function demoAnotar(seccion, descarga) {
+    try { if (usuarioActual.rol !== 'demo') return; } catch { return; }
+    fetch(`/api/auth/demo-vio?seccion=${encodeURIComponent(seccion)}${descarga ? '&descarga=1' : ''}`,
+        { credentials: 'same-origin' }).catch(() => {});
+}
+const seccionActiva = () => ((document.querySelector('.section.active') || {}).id || 'sec-inicio').slice(4);
+
 function activarModoDemo() {
     document.body.classList.add('rol-demo');
-    const aviso = () => toast('Modo demostración: no se pueden descargar archivos.', 'warning');
+    demoAnotar(location.hash.slice(1) || 'inicio');
+    const aviso = () => { toast('Modo demostración: no se pueden descargar archivos.', 'warning'); demoAnotar(seccionActiva(), true); };
     const bloquearPdf = () => {
         const Orig = window.jspdf && window.jspdf.jsPDF;
         if (!Orig || Orig.__demo) return;
@@ -4502,8 +4512,10 @@ const ACCIONES_AUDITORIA = {
 async function cargarUsuarios() {
     renderConfigSistema();
     try {
-        const [lista, audit] = await Promise.all([api('/api/usuarios/'), api('/api/usuarios/auditoria')]);
+        const [lista, audit, demoAct] = await Promise.all([api('/api/usuarios/'), api('/api/usuarios/auditoria'),
+            api('/api/usuarios/actividad-demo').catch(() => [])]);
         usuariosCache = lista;
+        renderActividadDemo(demoAct);
         const yo = usuarioActual.username;
         document.getElementById('body-usuarios').innerHTML = lista.map(u => `
             <tr class="${u.activo ? '' : 'fila-inactiva'}">
@@ -4544,6 +4556,40 @@ async function cargarUsuarios() {
                 <td><small>${escapeHtml(a.ip || '')}</small></td>
             </tr>`).join('') || '<tr><td colspan="5" class="muted">Sin actividad registrada todavía.</td></tr>';
     } catch (err) { toast(err.message, 'error'); }
+}
+
+// Qué hizo la cuenta de demostración (sistema y portales): ingresos, pantallas e intentos bloqueados
+function renderActividadDemo(filas) {
+    const caja = document.getElementById('actividad-demo');
+    if (!caja) return;
+    const hayDemo = filas.length || (usuariosCache || []).some(u => u.rol === 'demo');
+    caja.hidden = !hayDemo;
+    if (!hayDemo) return;
+    const ingresos = filas.filter(f => f.que === 'Inició sesión');
+    const pantallas = filas.filter(f => !f.bloqueado && f.que !== 'Inició sesión').length;
+    const dias = [...new Set(filas.map(f => f.fecha.slice(0, 10)))];
+    const donde = [...new Set(filas.map(f => f.donde))];
+    const bloq = filas.filter(f => f.bloqueado).length;
+    const resumen = !filas.length
+        ? '<b>Todavía no entró nadie con la cuenta de demostración.</b>'
+        : `<b>Entró ${ingresos.length || 1} ${ingresos.length === 1 ? 'vez' : 'veces'}</b>
+           · primera: ${escapeHtml(filas[filas.length - 1].fecha)} · última: ${escapeHtml(filas[0].fecha)}
+           · ${dias.length} ${dias.length === 1 ? 'día' : 'días'} · usó: ${escapeHtml(donde.join(', '))}
+           · ${pantallas} pantallas vistas${bloq ? ` · ${bloq} intentos bloqueados` : ''}`;
+    caja.innerHTML = `
+        <div class="section-titulo" style="margin-top:2rem;font-size:1.1rem">Actividad de la cuenta de demostración</div>
+        <p class="muted" style="margin-bottom:0.6rem">Lo que vio o intentó hacer quien entró con la cuenta demo en el sistema y en los portales (la misma pantalla se anota una vez cada 10 minutos).</p>
+        <div class="card" style="margin-bottom:0.8rem">${resumen}</div>
+        ${filas.length ? `<table>
+            <thead><tr><th>Fecha y hora</th><th>Dónde</th><th>Qué hizo</th><th>Dispositivo</th><th>IP</th></tr></thead>
+            <tbody>${filas.map(f => `
+                <tr class="${f.bloqueado ? 'fila-alerta' : ''}">
+                    <td style="white-space:nowrap">${escapeHtml(f.fecha)}</td>
+                    <td>${escapeHtml(f.donde)}</td>
+                    <td>${escapeHtml(f.que)}</td>
+                    <td>${escapeHtml(f.dispositivo || '—')}</td>
+                    <td><small>${escapeHtml(f.ip)}</small></td>
+                </tr>`).join('')}</tbody></table>` : ''}`;
 }
 
 function mostrarFormUsuario() {

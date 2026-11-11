@@ -96,7 +96,7 @@ def get_padre(request: Request, db: Session = Depends(get_db)) -> CuentaPadre:
     if c.debe_cambiar_password and not libre:
         raise HTTPException(403, "Antes de continuar tenés que crear tu contraseña personal.")
     if demo.es_correo_demo(c.email):
-        demo.controlar(request.method, request.url.path, salidas=("/api/portal/logout",))
+        demo.controlar(db, request, demo.FAMILIAS, salidas=("/api/portal/logout",), anotar_lecturas=True)
     return c
 
 

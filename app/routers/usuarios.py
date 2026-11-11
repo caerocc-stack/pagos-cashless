@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app import demo
 from app.auth import requiere_admin, hash_password
 from app.models.usuario import Usuario, ROLES
 from app.models.seguridad import Auditoria
@@ -243,6 +244,13 @@ def cerrar_sesiones(uid: int, request: Request, admin=Depends(requiere_admin), d
 
 @router.get("/auditoria")
 def auditoria(limite: int = 200, db: Session = Depends(get_db)):
-    filas = db.query(Auditoria).order_by(Auditoria.fecha.desc()).limit(min(limite, 1000)).all()
+    filas = (db.query(Auditoria).filter(~Auditoria.accion.in_((demo.VIO, demo.BLOQUEADO)))
+             .order_by(Auditoria.fecha.desc()).limit(min(limite, 1000)).all())
     return [{"fecha": _fmt(a.fecha), "usuario": a.usuario, "accion": a.accion,
              "detalle": a.detalle, "ip": a.ip} for a in filas]
+
+
+@router.get("/actividad-demo")
+def actividad_demo(db: Session = Depends(get_db)):
+    """Qué hizo la cuenta de demostración: ingresos, pantallas que abrió e intentos bloqueados."""
+    return demo.actividad(db)
