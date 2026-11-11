@@ -69,7 +69,8 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // Abrir la sección del enlace (#gastos, #caja, ...) y responder al botón Atrás/Adelante
 function irAlHash() {
-    const s = location.hash.slice(1) || 'inicio';
+    let s = location.hash.slice(1) || 'inicio';
+    if (usuarioActual.rol === 'demo' && SECCION_DEMO[s]) s = SECCION_DEMO[s];
     const btn = document.querySelector(`.nav-btn[data-section="${s}"]`);
     if (btn && !btn.classList.contains('active') && btn.style.display !== 'none') btn.click();
     else if (!btn) mostrarSeccion('inicio');
@@ -1407,8 +1408,15 @@ function demoAnotar(seccion, descarga) {
 }
 const seccionActiva = () => ((document.querySelector('.section.active') || {}).id || 'sec-inicio').slice(4);
 
+// La cuenta demo no ve el Libro de caja: se quita del menú y del inicio, y #caja lleva a Conciliación
+const SECCION_DEMO = { caja: 'conciliacion' };
+
 function activarModoDemo() {
     document.body.classList.add('rol-demo');
+    Object.keys(SECCION_DEMO).forEach(sec => {
+        document.querySelectorAll(`.nav-btn[data-section="${sec}"], .dash-card[onclick*="dashIr('${sec}')"], #sec-${sec}`)
+            .forEach(el => el.remove());
+    });
     demoAnotar(location.hash.slice(1) || 'inicio');
     const aviso = () => { toast('Modo demostración: no se pueden descargar archivos.', 'warning'); demoAnotar(seccionActiva(), true); };
     const bloquearPdf = () => {
@@ -1676,6 +1684,7 @@ async function guardarPassword(obligatorio = false) {
 // --- DASHBOARD DE INICIO ---
 // =========================================================
 function dashIr(seccion, callback) {
+    if (usuarioActual.rol === 'demo' && SECCION_DEMO[seccion]) seccion = SECCION_DEMO[seccion];
     const btn = document.querySelector(`.nav-btn[data-section="${seccion}"]`);
     if (btn) btn.click();
     if (callback === true && seccion === 'reportes' && typeof cargarReportes === 'function') {
@@ -2084,14 +2093,14 @@ async function abrirVincularPago(id) {
             <h3 style="margin:1rem 0 .4rem">👤 Transferencia a un encargado que hizo la compra</h3>
             <table><thead><tr><th>Fecha</th><th>Encargado</th><th>Coincide</th><th></th></tr></thead>
             <tbody>${fRend}</tbody></table>
-            <h3 style="margin:1rem 0 .4rem">💵 Efectivo (movimiento de caja)</h3>
+            ${usuarioActual.rol === 'demo' ? '' : `<h3 style="margin:1rem 0 .4rem">💵 Efectivo (movimiento de caja)</h3>
             <table><thead><tr><th>Fecha</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
             <tbody>${fCaja}</tbody></table>
             <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:space-between">
                 <span class="pago-efectivo-box"><label for="pago-ef-fecha">Pagada en efectivo el</label>
                     <input type="date" id="pago-ef-fecha" value="${hoyISO()}" max="${hoyISO()}">
                     <button class="btn btn-success" onclick="pagoEfectivoNuevo(${id})">+ Registrar pago en efectivo (crea el egreso de caja)</button></span>
-            </div>`;
+            </div>`}`;
         document.getElementById('modal-content').innerHTML = html;
         document.getElementById('modal-overlay').style.display = 'flex';
     } catch (err) {

@@ -541,7 +541,7 @@ def actualizar(gasto_id: int, data: GastoUpdate, db: Session = Depends(get_db)):
 
 
 @router.get("/{gasto_id}/candidatos-pago")
-def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
+def candidatos_pago(gasto_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Movimientos (banco o caja efectivo) que podrían ser el pago de este gasto."""
     g = db.get(Gasto, gasto_id)
     if not g:
@@ -576,6 +576,8 @@ def candidatos_pago(gasto_id: int, db: Session = Depends(get_db)):
                 "id": c.id, "fecha": str(c.fecha), "concepto": c.concepto,
                 "tipo_movimiento": c.tipo_movimiento, "importe": float(c.monto),
             })
+    if user["rol"] == "demo":  # la cuenta de demostración no ve los movimientos de caja
+        cajas = []
     return {"banco": bancos, "caja": cajas}
 
 

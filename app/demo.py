@@ -30,7 +30,10 @@ _DESCARGA = re.compile(r"(excel|exportar|backup|plantilla$|/archivo$|/adjuntos/)
 SISTEMA, FAMILIAS, ALUMNOS = "demo (sistema)", "demo (portal de familias)", "demo (portal de alumnos)"
 VIO, BLOQUEADO = "demo_vio", "demo_bloqueado"
 PRUEBAS_LOCALES = ("testclient", "127.0.0.1", "::1")  # pruebas hechas desde la compu de desarrollo: no cuentan
-REPETIDO_MIN = 10  # la misma pantalla dentro de estos minutos no se vuelve a anotar
+REPETIDO_MIN = 10
+# Partes del sistema que la cuenta demo no ve (sin cartel: no aparecen en el menú y si entra por enlace va a otra sección)
+RUTAS_OCULTAS = ("/api/caja",)
+SECCION_EN_LUGAR_DE = {"caja": "conciliacion"}  # la misma pantalla dentro de estos minutos no se vuelve a anotar
 
 
 def es_correo_demo(email: str | None) -> bool:
@@ -49,6 +52,9 @@ def controlar(db: Session, request: Request, cuenta: str, salidas: tuple[str, ..
     """Corta el pedido si modifica datos (salvo cerrar sesión) o si baja un archivo, y lo anota.
     Con anotar_lecturas también anota lo que mira (portales: cada pedido es una pantalla)."""
     metodo, ruta = request.method, request.url.path
+    if ruta.startswith(RUTAS_OCULTAS):
+        registrar(db, request, cuenta, f"{metodo} {ruta}", BLOQUEADO)
+        raise HTTPException(404, "No encontrado")
     if bloquea(metodo, ruta, salidas):
         registrar(db, request, cuenta, f"{metodo} {ruta}", BLOQUEADO)
         raise HTTPException(403, MSG)
@@ -125,6 +131,8 @@ def describir(cuenta: str | None, accion: str, detalle: str | None) -> str:
     if que == "ingreso":
         return "Inició sesión"
     metodo, _, ruta = que.partition(" ")
+    if accion == BLOQUEADO and ruta.startswith("/api/caja"):
+        return "Intentó entrar al Libro de caja (oculto)"
     if accion == BLOQUEADO:
         if metodo in METODOS_LECTURA:
             return f"Intentó descargar un archivo en {_seccion_api(ruta)} (bloqueado)"
