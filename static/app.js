@@ -20,6 +20,7 @@ const PAGINAS = {
     importar: ['Cobranzas y alumnos', 'Importar padrón', 'Cargá o actualizá alumnos desde una planilla de Excel.'],
     'cupones-siro': ['Cobranzas y alumnos', 'Cupones de pago', 'Enviá el cupón de la cuota por correo y publicá en el portal los cupones que descargás de SIRO.'],
     examenes: ['Cobranzas y alumnos', 'Exámenes por instancia', 'RAAC 147 y Pericia se rinden por examen: cargá los meses en que hubo examen y mirá quién pagó cada instancia, con la fecha de proceso.'],
+    'libre-deuda': ['Cobranzas y alumnos', 'Libre deuda de años anteriores', 'Constancia para alumnos que cursaron otro año y ya no figuran en el padrón: cargás nombre, apellido, DNI, curso y año, y sale el PDF de siempre.'],
     impresiones: ['Cobranzas y alumnos', 'Impresiones de alumnos', 'Archivos que mandan los alumnos desde su portal para la fotocopiadora. Marcalos como impresos o descartalos con el motivo.'],
     consultas: ['Cobranzas y alumnos', 'Consultas de familias', 'Mensajes del portal de familias y problemas reportados por el personal. Respondé desde acá.'],
     cobrar: ['Tarjeta APAI', 'Cobrar con tarjeta', 'Pasá la tarjeta por el lector o buscá al alumno por nombre, elegí el monto y cobrá.'],
@@ -5681,6 +5682,14 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     const ld = libreDeudaCache[alumnoId];
     const c = ld && ld.cursos.find(x => x.curso_id === cursoId && x.habilitado);
     if (!c) return toast('Ese curso no está pagado: no se puede extender el libre deuda', 'error');
+    await _pdfLibreDeudaDoc({ nombre: ld.nombre, apellido: ld.apellido, dni: ld.dni, legajo: ld.legajo,
+        curso: c.nombre_completo || c.etiqueta || c.nombre, examen: c.examen, instancias: c.instancias, anio: ld.anio,
+        archivo: `Libre deuda ${ld.apellido} ${ld.nombre} ${c.etiqueta || c.nombre}.pdf` });
+}
+
+// Arma y descarga la constancia. La usan la del alumno del año y la de años anteriores cargada a mano:
+// d = { nombre, apellido, dni, legajo, curso (nombre completo), examen, instancias, anio, archivo }
+async function _pdfLibreDeudaDoc(d) {
     if (typeof window.jspdf === 'undefined') return toast('No se pudo cargar el generador de PDF', 'error');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -5692,19 +5701,19 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.setDrawColor(160, 30, 34); doc.setLineWidth(0.8); doc.line(W / 2 - 30, 66, W / 2 + 30, 66);
     // Texto
     // Redacción neutra (sin "el/la alumno/a"): la Asociación certifica, el alumno con nombre y apellido
-    const nombre = `${ld.nombre} ${ld.apellido}`.toUpperCase();
-    const curso = c.nombre_completo || c.etiqueta || c.nombre;
+    const nombre = `${d.nombre} ${d.apellido}`.toUpperCase();
+    const curso = d.curso;
     const enLista = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : xs.join('');
     // "junio 2026", "octubre 2026" → "las instancias de junio y octubre de 2026"
-    const inst = c.instancias.map(i => i.split(' ')), anios = [...new Set(inst.map(i => i[1]))];
-    const instancias = !inst.length ? `del ciclo lectivo ${ld.anio}`
+    const inst = (d.instancias || []).map(i => i.split(' ')), anios = [...new Set(inst.map(i => i[1]))];
+    const instancias = !inst.length ? `del ciclo lectivo ${d.anio}`
         : (inst.length > 1 ? 'en las instancias de ' : 'en la instancia de ')
           + (anios.length === 1 ? `${enLista(inst.map(i => i[0]))} de ${anios[0]}` : enLista(inst.map(i => `${i[0]} de ${i[1]}`)));
-    const por = c.examen ? `por el examen ${curso}, ${instancias}` : `por la carrera de ${curso}, ciclo lectivo ${ld.anio}`;
-    const dni = String(ld.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const por = d.examen ? `por el examen ${curso}, ${instancias}` : `por la carrera de ${curso}, ciclo lectivo ${d.anio}`;
+    const dni = String(d.dni).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     // El legajo solo si es uno real (5 dígitos): a los de exámenes sin legajo se les puso "D" + DNI
-    const digLegajo = String(ld.legajo || '').replace(/\D/g, '');
-    const legajo = /^\d{5}$/.test(digLegajo) && digLegajo !== String(ld.dni).replace(/\D/g, '') ? `, legajo ${ld.legajo}` : '';
+    const digLegajo = String(d.legajo || '').replace(/\D/g, '');
+    const legajo = /^\d{5}$/.test(digLegajo) && digLegajo !== String(d.dni).replace(/\D/g, '') ? `, legajo ${d.legajo}` : '';
     doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(12.5);
     const opc = { lineHeightFactor: 1.7 }, alto = n => n * 12.5 * 1.7 * 0.3528;
     const p1 = doc.splitTextToSize(`La Asociación de Padres y Alumnos del I.N.A.C. certifica que ${nombre}, DNI ${dni}${legajo}, no registra deuda con esta Asociación ${por}.`, W - 50);
@@ -5719,7 +5728,37 @@ async function pdfLibreDeuda(alumnoId, cursoId) {
     doc.setFontSize(10); doc.setTextColor(91, 107, 128);
     doc.text('Firma y sello', W / 2, 201, { align: 'center' });
     doc.text('Asociación de Padres y Alumnos del I.N.A.C.', W / 2, 206, { align: 'center' });
-    doc.save(`Libre deuda ${ld.apellido} ${ld.nombre} ${c.etiqueta || c.nombre}.pdf`);
+    doc.save(d.archivo);
+}
+
+// =========================================================
+// LIBRE DEUDA DE AÑOS ANTERIORES (alumnos que ya no están en el padrón; datos a mano)
+// =========================================================
+let ldmCursos = [];
+async function cargarLibreDeudaManual() {
+    const selAnio = document.getElementById('ldm-anio'), selCurso = document.getElementById('ldm-curso');
+    if (!selAnio.options.length) {
+        const hoy = new Date().getFullYear();
+        selAnio.innerHTML = Array.from({ length: 10 }, (_, i) => hoy - 1 - i).map(a => `<option value="${a}">${a}</option>`).join('');
+    }
+    if (ldmCursos.length) return;
+    try {
+        ldmCursos = await api('/api/cuotas/libre-deuda-cursos');
+        selCurso.innerHTML = '<option value="">Elegí el curso</option>'
+            + ldmCursos.map((c, i) => `<option value="${i}">${escapeHtml(c.nombre_completo)}</option>`).join('');
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function emitirLibreDeudaManual(ev) {
+    ev.preventDefault();
+    const val = id => document.getElementById(id).value.trim().replace(/\s+/g, ' ');
+    const nombre = val('ldm-nombre'), apellido = val('ldm-apellido'), anio = Number(val('ldm-anio'));
+    const dni = val('ldm-dni').replace(/\D/g, '');
+    if (dni.length < 7 || dni.length > 8) return toast('Revisá el DNI: tiene que tener 7 u 8 números', 'error');
+    const c = ldmCursos[val('ldm-curso')];
+    if (!c) return toast('Elegí el curso', 'error');
+    await _pdfLibreDeudaDoc({ nombre, apellido, dni, legajo: '', curso: c.nombre_completo, examen: c.examen, instancias: [], anio,
+        archivo: `Libre deuda ${apellido} ${nombre} ${c.nombre} ${anio}.pdf` });
 }
 
 async function agregarCursoAlumno(id) {

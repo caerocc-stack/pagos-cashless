@@ -21,7 +21,7 @@ from app.ciclo import en_anio, fotos_del_anio, fotos_anios
 from app.schemas.pago_cuota import PagoCuotaResponse
 from app.tz import ahora_ar
 from app.cuenta_alumno import (estado_cuenta, anio_de_pago, fecha_cobro, plan_simple, MES_INICIO, estado_con_anterior,
-                               libre_deuda_cursos, es_matricula_siguiente)
+                               libre_deuda_cursos, es_matricula_siguiente, AREAS_LIBRE_DEUDA, nombre_completo)
 
 router = APIRouter(prefix="/api/cuotas", tags=["Cuotas"])
 
@@ -538,6 +538,19 @@ def libre_deuda(alumno_id: int, anio: int | None = None, db: Session = Depends(g
     info = detalle_alumno(db, a, anio)
     return {"alumno_id": a.id, "apellido": a.apellido, "nombre": a.nombre, "dni": a.dni, "legajo": a.legajo,
             "anio": info["anio"], "cursos": libre_deuda_cursos(info)}
+
+
+@router.get("/libre-deuda-cursos")
+def cursos_libre_deuda(db: Session = Depends(get_db)):
+    """Cursos para el libre deuda de años anteriores (cargado a mano): los de aeronavegantes y exámenes de
+    cualquier año, una vez cada uno, con el nombre completo que va en la constancia."""
+    vistos = {}
+    q = db.query(Curso).filter(or_(Curso.area.in_(AREAS_LIBRE_DEUDA), Curso.por_examen.is_(True))).order_by(Curso.nombre)
+    for c in q.all():
+        completo = nombre_completo(c.nombre)
+        vistos.setdefault(completo.upper(), {"nombre": re.sub(r"\s*\(.*\)$", "", c.nombre).strip(),
+                                             "nombre_completo": completo, "examen": bool(c.por_examen)})
+    return sorted(vistos.values(), key=lambda x: x["nombre_completo"].upper())
 
 
 @router.get("/estadisticas")

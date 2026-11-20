@@ -97,6 +97,7 @@
                 <button class="nav-btn side-item" data-section="cuotas" onclick="cargarCuotasSec();cerrarSidebarMobile()"><svg class="ic"><use href="#i-wallet"/></svg>Cuotas y estado de cuenta</button>
                 <button class="nav-btn side-item" data-section="examenes" onclick="cargarExamenes();cerrarSidebarMobile()"><svg class="ic"><use href="#i-calendar"/></svg>Exámenes (RAAC / Pericia)</button>
                 <button class="nav-btn side-item" data-section="alumnos" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-users"/></svg>Alumnos</button>
+                <button class="nav-btn side-item" data-section="libre-deuda" onclick="cargarLibreDeudaManual();cerrarSidebarMobile()"><svg class="ic"><use href="#i-file"/></svg>Libre deuda años anteriores</button>
                 <button class="nav-btn side-item" data-section="importar" onclick="cerrarSidebarMobile()"><svg class="ic"><use href="#i-upload"/></svg>Importar padrón</button>
                 <button class="nav-btn side-item" data-section="cupones-siro" onclick="cargarLotesCupones();cerrarSidebarMobile()"><svg class="ic"><use href="#i-receipt"/></svg>Cupones de pago</button>
                 <button class="nav-btn side-item" data-section="consultas" onclick="cargarConsultas();cerrarSidebarMobile()"><svg class="ic"><use href="#i-chat"/></svg>Consultas de familias <span class="side-badge" id="side-badge-consultas" hidden></span></button>
@@ -699,6 +700,26 @@
             <div class="gasto-resumen" id="ex-resumen"></div>
             <div class="cuotas-tabs" id="ex-tabs" role="tablist"></div>
             <div id="ex-detalle"></div>
+        </section>
+
+        <section id="sec-libre-deuda" class="section">
+            <div class="card form-card" style="max-width:760px">
+                <h3>Libre deuda de años anteriores</h3>
+                <p class="muted" style="margin:0.2rem 0 0">Para alumnos que cursaron otro año y no están en el padrón actual. Completás los datos a mano y sale la constancia con el mismo formato que la de los alumnos de este año.</p>
+                <form onsubmit="emitirLibreDeudaManual(event)" autocomplete="off">
+                    <div class="form-grid">
+                        <div><label for="ldm-nombre">Nombre</label><input type="text" id="ldm-nombre" required></div>
+                        <div><label for="ldm-apellido">Apellido</label><input type="text" id="ldm-apellido" required></div>
+                        <div><label for="ldm-dni">DNI</label><input type="text" id="ldm-dni" required inputmode="numeric" placeholder="Sin puntos"></div>
+                        <div><label for="ldm-curso">Curso</label><select id="ldm-curso" required></select></div>
+                        <div><label for="ldm-anio">Año (ciclo lectivo)</label><select id="ldm-anio" required></select></div>
+                    </div>
+                    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+                        <button type="submit" class="btn btn-primary btn-3d"><svg class="ic"><use href="#i-download"/></svg>Emitir libre deuda (PDF)</button>
+                        <button type="reset" class="btn btn-ghost">Limpiar</button>
+                    </div>
+                </form>
+            </div>
         </section>
 
         <section id="sec-consultas" class="section">
